@@ -1370,29 +1370,42 @@ fn kaliski_forward(b: &mut Builder, v_in: &[QubitId], st: &KaliskiState, p: U256
     add_nbit_const(b, &st.r, p.wrapping_add(U256::from(1)));
 }
 
-/// Compute `output ^= v_in^{-1} mod p` without mutating `v_in`. `st` and
-/// `output` are caller-provided scratch (both |0⟩ on entry) and are left
-/// in their algorithm-intermediate state: `st` returns to |0⟩, `output`
-/// holds the inverse. The caller uncomputes `output` by running this
-/// same function under `emit_inverse`.
-fn kal_compute_into(
+/// Run `body` with `inv` holding `v_in^{-1} mod p`, leaving `v_in`
+/// unchanged. Allocates the kaliski state and `inv` register itself, then
+/// frees them at the end. The body must NOT touch `st` or `v_in`.
+///
+/// Implementation keeps `st` live across the body, so we only run
+/// `kaliski_forward` ONCE (and its emit_inverse once), instead of the
+/// 4-call structure of the previous Bennett-cleaned `kal_compute_into`.
+/// Halves the dominant kaliski cost.
+fn with_kal_inv<F: FnOnce(&mut Builder, &[QubitId])>(
     b: &mut Builder,
     v_in: &[QubitId],
-    output: &[QubitId],
-    st: &KaliskiState,
     p: U256,
+    body: F,
 ) {
     let n = v_in.len();
-    // Forward pass: st.r[..n] holds the raw form = inverse * 2^(2n) mod p.
-    kaliski_forward(b, v_in, st, p);
-    // Copy the raw form into output (output ^= raw).
-    for i in 0..n { b.cx(st.r[i], output[i]); }
-    // Uncompute st entirely.
-    emit_inverse(b, |b| kaliski_forward(b, v_in, st, p));
-    // Correction: output *= 2^(-2n) mod p ≡ halve output 2n times. Cheaper
-    // than the generic in_place_mul_const(output, k_const) by a factor of
-    // ~2× because mod_halve_inplace is just one Solinas reduction.
-    for _ in 0..(2 * n) { mod_halve_inplace(b, output, p); }
+    let st = alloc_kaliski_state(b, n);
+    let inv = b.alloc_qubits(n);
+
+    // Forward kaliski. st.r[..n] holds raw = v_in^{-1} * 2^(2n) mod p.
+    kaliski_forward(b, v_in, &st, p);
+    // Copy raw into inv.
+    for i in 0..n { b.cx(st.r[i], inv[i]); }
+    // Apply the 2^(-2n) correction by halving 2n times.
+    for _ in 0..(2 * n) { mod_halve_inplace(b, &inv, p); }
+
+    body(b, &inv);
+
+    // Un-halve to restore inv to raw form.
+    for _ in 0..(2 * n) { mod_double_inplace(b, &inv, p); }
+    // CX-cancel inv against raw → inv = 0.
+    for i in 0..n { b.cx(st.r[i], inv[i]); }
+    // Reverse kaliski_forward → st = 0.
+    emit_inverse(b, |b| kaliski_forward(b, v_in, &st, p));
+
+    b.assert_zero_and_free_vec(&inv);
+    free_kaliski_state(b, st);
 }
 
 fn kaliski_inv_inplace(b: &mut Builder, v_in: &[QubitId], p: U256) {
@@ -1482,20 +1495,12 @@ pub fn build(b: &mut Builder) -> Layout {
 
     let lam = b.alloc_qubits(N);
 
-    // Pair 1 (folded): keep tx holding dx throughout, compute dx^{-1} into
-    // `inv` ancilla, use it, then uncompute. Replaces two kaliski_inv_inplace
-    // involutions (≈4 Bennett passes) with one kal_compute_into and its
-    // emit_inverse (≈2 Bennett passes).
-    {
-        let st1 = alloc_kaliski_state(b, N);
-        let inv = b.alloc_qubits(N);
-        kal_compute_into(b, &tx, &inv, &st1, p);     // inv = dx^{-1}
-        mod_mul_add_qq(b, &lam, &ty, &inv, p);       // lam += dy · dx^{-1} = λ
+    // Pair 1: keep tx holding dx throughout, compute dx^{-1} into inv via
+    // with_kal_inv, use it, let with_kal_inv handle the uncompute.
+    with_kal_inv(b, &tx, p, |b, inv| {
+        mod_mul_add_qq(b, &lam, &ty, inv, p);        // lam += dy · dx^{-1} = λ
         mod_mul_sub_qq(b, &ty, &lam, &tx, p);        // Py -= λ·dx = 0
-        emit_inverse(b, |b| kal_compute_into(b, &tx, &inv, &st1, p));
-        b.assert_zero_and_free_vec(&inv);
-        free_kaliski_state(b, st1);
-    }
+    });
 
     // Px := λ² - Px_orig - Qx
     mod_mul_sub_qq(b, &tx, &lam, &lam, p);
@@ -1511,17 +1516,11 @@ pub fn build(b: &mut Builder) -> Layout {
     // Uncompute lam using λ = (Qy + Ry) / (Qx - Rx).
     mod_sub_qb(b, &tx, &ox, p);
     mod_neg_inplace(b, &tx, p);                   // tx = Qx - Rx
-    // Pair 2 (folded): keep tx = Qx-Rx throughout, put its inverse in `inv`.
-    {
-        let st2 = alloc_kaliski_state(b, N);
-        let inv = b.alloc_qubits(N);
-        kal_compute_into(b, &tx, &inv, &st2, p);
-        mod_mul_sub_qq(b, &lam, &ty, &inv, p);
-        mod_mul_sub_qb(b, &lam, &inv, &oy, p);
-        emit_inverse(b, |b| kal_compute_into(b, &tx, &inv, &st2, p));
-        b.assert_zero_and_free_vec(&inv);
-        free_kaliski_state(b, st2);
-    }
+    // Pair 2: keep tx = Qx-Rx throughout, with_kal_inv supplies its inverse.
+    with_kal_inv(b, &tx, p, |b, inv| {
+        mod_mul_sub_qq(b, &lam, &ty, inv, p);
+        mod_mul_sub_qb(b, &lam, inv, &oy, p);
+    });
     mod_neg_inplace(b, &tx, p);                   // tx = -(Qx-Rx) = Rx - Qx
     mod_add_qb(b, &tx, &ox, p);                   // tx = Rx
 

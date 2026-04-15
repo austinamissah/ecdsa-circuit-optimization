@@ -13,3 +13,4 @@ timestamp	commit	toffoli	clifford	qubits	ops	correct	notes
 1776221412	3536f4c	35826074.000	59505316.766	3339	123462695	OK	MAJ-only cmp_lt_into
 1776222098	56bbf14	33729434.000	55310640.672	3339	115073063	OK	with_gt fusion in kaliski step 2
 1776222151	34c64b9	31642202.000	55053049.812	3339	102286375	OK	with_eq_zero fusion in kaliski step 0
+1776224365	b655093	20608890.000	39266755.016	3339	69105779	OK	with_kal_inv: hold st across body, halve kaliski calls
