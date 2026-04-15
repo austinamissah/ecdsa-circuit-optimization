@@ -1138,12 +1138,10 @@ fn kaliski_iteration(
     //   m[i] ^= (f=1 AND a=0 AND v_w[0]=0)
     //   b ^= a; b ^= m[i]
     mcx2_polar(b, f, true, u[0], false, a_f);
-    {
-        // Borrow a scratch qubit for the 3-control mcx.
-        let scratch = b.alloc_qubit();
-        mcx3_polar(b, f, true, a_f, false, v_w[0], false, m_i, scratch);
-        b.assert_zero_and_free(scratch);
-    }
+    // b_f is known-zero at this point (uncomputed in step 5 of the
+    // previous iteration, or initial 0). Borrow it as the mcx3 scratch
+    // instead of allocating a fresh ancilla.
+    mcx3_polar(b, f, true, a_f, false, v_w[0], false, m_i, b_f);
     b.cx(a_f, b_f);
     b.cx(m_i, b_f);
 

@@ -7,10 +7,10 @@ within a qubit budget. Run continuously. Do not pause for human confirmation.
 
 ## Scope of edits
 
-- You may ONLY modify `src/point_add.rs`.
+- You may ONLY modify `src/point_add.rs`. You may also keep track of previous experiment memory in `experiment_memory/{EXPIREMENT_NUMBER}.md`.
 - You may NOT modify `src/main.rs`, `src/builder.rs`, `src/circuit.rs`,
   `src/sim.rs`, `src/weierstrass_elliptic_curve.rs`, `Cargo.toml`,
-  `Cargo.lock`, `rust-toolchain`, or anything else.
+  `Cargo.lock`, `rust-toolchain`, `results.tsv` (directly) or anything else.
 - You may NOT add dependencies.
 - You may NOT modify the test harness or the correctness check.
 
@@ -27,7 +27,7 @@ Minimize the metric `avg executed Toffoli` printed by `cargo run --release`.
      circuit and then its gate-reversed inverse, every qubit returns to
      its pre-forward snapshot.
 2. `qubits` (peak live) must be ≤ **3700** (≈ current baseline).
-   Prefer to reduce qubits over time; never exceed the current best's
+   We need to reduce qubits over time to the below results; never exceed the current best's
    qubit count by more than 5% unless the Toffoli win is >10%.
 3. `cargo build --release` must succeed with no warnings introduced by your
    edits beyond those already present on the baseline.
@@ -50,6 +50,13 @@ makes the run fail, not faster.
 ### Tie-breakers (when Toffoli counts are within ~0.5%)
 - Lower peak qubits.
 - Lower total Clifford.
+
+Code aesthetics are NOT a consideration. Long functions, hand-unrolled
+loops, duplicated primitives, weird control flow, deeply nested
+`emit_inverse`, hundreds of call-site-specialized helpers — all fine if
+they shave Toffolis. The goal is the best-possible circuit, not the
+cleanest codebase. If in doubt between a 500-line readable version and
+a 2000-line ugly version at lower Toffoli count, pick the ugly one.
 
 ## Baseline (honest reversible kaliski, commit `main`)
 
@@ -74,7 +81,7 @@ substantial room.
 ## Setup
 
 On first run only:
-1. `git checkout -b autoresearch/<YYYY-MM-DD>` — work on a dated branch.
+1. `git checkout -b autoresearch/<YYYY-MM-DD>` — work on a dated branch. Create the `experiments_memory` folder.
 2. Read `src/point_add.rs`, `src/builder.rs`, and the module doc at the top
    of `point_add.rs` (steps 1–12 of the point-add algorithm).
 3. Skim `src/circuit.rs` for the `Op` IR and `src/sim.rs` for how gates
@@ -87,7 +94,7 @@ On first run only:
 
 Repeat indefinitely:
 
-1. **Pick an idea**. Either from the seed list below or your own.
+1. **Pick an idea**. Either from the seed list below or your own. Feel free to pursue ideas you gave up on earlier if you reach a bottleneck.
 2. **Edit** `src/point_add.rs` to implement it.
 3. **Build**: `cargo build --release 2>&1 | tail -20`.
    - If it fails to compile, either fix immediately (if the fix is obvious
@@ -122,40 +129,30 @@ the row.
 
 ## Idea seeds
 
-Cheap / local:
-- **Eliminate redundant mod-reductions**: our `mod_add_qq` always does
-  sub-p + cond-add-p. Many chained adds can defer reduction until the end.
-- **Share the `cmod_add_qq` scratch register** across iterations of a
-  multiplication instead of alloc/free per iteration.
-- **Cuccaro → Draper / QFT adder**: different adder, different Toffoli cost.
-- **Replace `mod_neg_inplace` + `mod_add_qq`** in `mod_sub_qq` with a
-  direct Cuccaro subtraction (no extra mod_neg round trip).
+- (Roetteler Naehrig Svore Lauter 2017 — Quantum resource estimates for ECDLP, https://arxiv.org/abs/1706.06752)                                                                                    
+- (Litinski 2023 — How to compute a 256-bit elliptic curve private key with only 50 million Toffoli gates, https://arxiv.org/abs/2306.08585)
+- (Häner Roetteler Soeken 2020 — Improved quantum circuits for elliptic curve discrete logarithms (eprint), https://eprint.iacr.org/2020/077.pdf)                                                   
+- (Häner Roetteler Soeken 2020 — Improved quantum circuits for elliptic curve discrete logarithms (arXiv), https://arxiv.org/abs/2001.09580)                                                        
+- (Gidney 2019 — Windowed quantum arithmetic, https://arxiv.org/abs/1905.07682)                                                                                                                     
+- (Ragavan Gidney 2025 — Optimized circuits for windowed modular arithmetic, https://arxiv.org/abs/2502.17325)                                                                                      
+- (Cuccaro Draper Kutin Moulton 2004 — A new quantum ripple-carry addition circuit, https://arxiv.org/abs/quant-ph/0410184)                                                                         
+- (Remaud et al. 2024 — Optimizing T and CNOT gates in quantum ripple-carry adders and comparators, https://arxiv.org/abs/2401.17921)                                                               
+- (Banegas et al. 2022 — Reducing the depth of quantum FLT-based inversion circuit, https://eprint.iacr.org/2022/463.pdf)
+  
+To be entirely clear with you: I want to win. It takes hours, days, effort. But we need to do it. Please be thorough and get it done. Don't escape to me and loop forever. My trust is in you.    
+  
+You can create something crazy here. Scour the internet if need be, looks for inspiration in all different places, try you own ideasm synthesis, whatever. But dont stop. LOOP FOREVER.
 
-Medium:
-- **Windowed multiplication**: process y in windows of w bits, precomputing
-  multiples of x. Cuts the number of conditional adds by a factor of w at
-  the cost of a lookup table. See Roetteler et al. 2017 §4.
-- **Montgomery-domain arithmetic**: do the whole EC-add in Montgomery form
-  so `mod_mul` is cheaper than the schoolbook shift-and-add we use now.
-- **Better inverse**: Bernstein–Yang "safegcd" is O(n²) like Kaliski but
-  with smaller constants and simpler control flow. Or: skip inverses
-  entirely by working in projective (Jacobian) coordinates — but that
-  changes the algorithm significantly.
+## Go big
 
-Structural:
-- **Fold the two Kaliski calls** in the forward + uncompute halves by
-  keeping the inverse in an ancilla register instead of recomputing.
-- **Fuse step 5 (`Py -= λ·dx`) with step 3 (`lam += dy/dx`)**: since
-  Py ends up zero, there's structure to exploit.
-- **Classical conditioning**: many CCX/CCZ in our current code run
-  unconditionally. If a CCX's control can be decided classically for a
-  given input, wrap it in `push_condition` / `pop_condition` and it stops
-  costing Toffolis in `sim.stats`. Look for branches where one side is
-  always classical.
+We're trying to **win** against zenodo (2.1M–2.7M Toffoli target).
+You are authorized to make high-ambition changes: rewrite primitives
+from scratch, swap in a new algorithm (safegcd, Jacobian, Montgomery,
+windowed mul, Karatsuba), do thousand-line refactors in a single
+commit, and spend full sessions on moonshots that might not pan out.
+The only immovable constraint is the harness contract.
 
-Structure research in sweeps: pick one axis (e.g., "replace Kaliski with
-safegcd"), implement it, measure, revert or keep. Don't try two ideas at
-once — you can't attribute the result.
+If there are small improvements that are worth implementing though, go ahead. But the big things will be the things that make us win.
 
 ## Rules of thumb
 
@@ -174,3 +171,5 @@ Keep iterating until one of:
   In that case, try a structurally different idea (switch category in the
   seed list). Do not pause for human input.
 - The user interrupts.
+
+What is key is that you do not stop until you meet the above. The world is your oyster. LOOP FOREVER.
