@@ -704,7 +704,11 @@ fn mod_mul_add_qb(
     let tmp = b.alloc_qubits(n);
     for i in 0..n { b.cx(x[i], tmp[i]); }
     for i in 0..n {
+        // Mask the whole conditional-add body by y[i]: on shots where
+        // y[i]=0 nothing needs to happen AND nothing should be counted.
+        b.push_condition(y[i]);
         cmod_add_qq_bit(b, acc, &tmp, y[i], p);
+        b.pop_condition();
         if i < n - 1 { mod_double_inplace(b, &tmp, p); }
     }
     for _ in 0..(n - 1) { mod_halve_inplace(b, &tmp, p); }
@@ -723,7 +727,9 @@ fn mod_mul_sub_qb(
     let tmp = b.alloc_qubits(n);
     for i in 0..n { b.cx(x[i], tmp[i]); }
     for i in 0..n {
+        b.push_condition(y[i]);
         cmod_sub_qq_bit(b, acc, &tmp, y[i], p);
+        b.pop_condition();
         if i < n - 1 { mod_double_inplace(b, &tmp, p); }
     }
     for _ in 0..(n - 1) { mod_halve_inplace(b, &tmp, p); }
