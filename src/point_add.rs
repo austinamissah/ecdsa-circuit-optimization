@@ -524,11 +524,11 @@ fn cadd_nbit_const(b: &mut Builder, acc: &[QubitId], c: U256, ctrl: QubitId) {
 // uncopying. For q*b mul, y[i] is a classical bit and the copy is
 // done with CX_if gates.
 
-/// `v := 2*v mod p`. In-place via shift-left (swap cascade) + mod reduction.
-///
-/// The reduction uses a non-aliased `ge` flag to avoid the bug where
-/// `cadd_nbit_const(v_ext, p, v_ext[n])` reads its ctrl both before and
-/// after `add_nbit_qq` mutates it.
+/// `v := 2*v mod p`. In-place via shift-left (swap cascade) + Solinas-style
+/// mod reduction. For secp256k1, p = 2^n - c with c = 2^32 + 977, so
+/// `T - p = T + c - 2^n`. The reduction becomes: add c, branch on the top
+/// bit of the (n+1)-wide shifted register — if set, clear it; else undo
+/// the add. Costs two full (n+1)-wide Cuccaro adds instead of three.
 fn mod_double_inplace(b: &mut Builder, v: &[QubitId], p: U256) {
     let n = v.len();
     let ovf = b.alloc_qubit();
@@ -542,57 +542,38 @@ fn mod_double_inplace(b: &mut Builder, v: &[QubitId], p: U256) {
     let mut v_ext: Vec<QubitId> = v.to_vec();
     v_ext.push(ovf);
 
-    // Reduce: compute ge = (v_ext >= p) via non-destructive sub+flag+add.
-    let ge = b.alloc_qubit();
-    sub_nbit_const(b, &v_ext, p);
-    // After sub, v_ext[n] = 1 iff underflow = (v_ext_pre < p). ge := NOT v_ext[n].
-    b.x(ovf);
-    b.cx(ovf, ge);
-    b.x(ovf);
-    add_nbit_const(b, &v_ext, p);  // restore v_ext to 2*v
+    // c = 2^n - p (= 2^32 + 977 for secp256k1). Assumes n == 256 so that
+    // 2^n wraps cleanly in U256::MAX + 1 arithmetic.
+    debug_assert_eq!(n, 256);
+    let c = U256::MAX.wrapping_sub(p).wrapping_add(U256::from(1));
 
-    // Conditional sub p using the non-aliased ge.
-    csub_nbit_const(b, &v_ext, p, ge);
-    // Now v_ext[..n] = 2*v mod p; v_ext[n] (= ovf) = 0.
+    // S := T + c. Fits in n+1 bits.
+    add_nbit_const(b, &v_ext, c);
 
-    // Uncompute ge via post-state parity: ge == v[0].
-    // Case ge=0: no csub, v_ext = 2*v (even), v[0] = 0 = ge. ✓
-    // Case ge=1: csub'd p (odd), new v is odd, v[0] = 1 = ge. ✓
-    b.cx(v[0], ge);
-    b.assert_zero_and_free(ge);
+    // flag := (S >= 2^n) = S[n]. S[n]==1 iff we need the reduction.
+    let flag = b.alloc_qubit();
+    b.cx(ovf, flag);
 
+    // If flag=0, undo the add (we didn't need to reduce).
+    b.x(flag);
+    csub_nbit_const(b, &v_ext, c, flag);
+    b.x(flag);
+
+    // If flag=1, clear the top bit (drops the 2^n from S, giving T - p).
+    b.cx(flag, ovf);
+
+    // Uncompute flag via parity: flag == v[0] after the operation.
+    // Case flag=0: v = T = 2*v_orig (even) → v[0]=0.
+    // Case flag=1: v = T - p. T even, p odd → v is odd → v[0]=1.
+    b.cx(v[0], flag);
+    b.assert_zero_and_free(flag);
     b.assert_zero_and_free(ovf);
 }
 
 /// `v := v/2 mod p`. Gate-inverse of `mod_double_inplace`.
 fn mod_halve_inplace(b: &mut Builder, v: &[QubitId], p: U256) {
-    let n = v.len();
-    let ovf = b.alloc_qubit();
-    let ge = b.alloc_qubit();
-    let mut v_ext: Vec<QubitId> = v.to_vec();
-    v_ext.push(ovf);
-
-    // Inverse of `cx(v[0], ge)`: self-inverse.
-    b.cx(v[0], ge);
-    // Inverse of `csub_nbit_const(v_ext, p, ge)`: `cadd_nbit_const`.
-    cadd_nbit_const(b, &v_ext, p, ge);
-    // Inverse of `add_nbit_const`: `sub_nbit_const`.
-    sub_nbit_const(b, &v_ext, p);
-    // Inverse of `x; cx; x` on ovf + ge: same (palindromic).
-    b.x(ovf);
-    b.cx(ovf, ge);
-    b.x(ovf);
-    // Inverse of `sub_nbit_const`: `add_nbit_const`.
-    add_nbit_const(b, &v_ext, p);
-    // ge should now be 0.
-    b.assert_zero_and_free(ge);
-
-    // Inverse of the swap cascade.
-    for i in 0..n - 1 {
-        b.swap(v[i], v[i + 1]);
-    }
-    b.swap(v[n - 1], ovf);
-    b.assert_zero_and_free(ovf);
+    let v_copy: Vec<QubitId> = v.to_vec();
+    emit_inverse(b, move |b| mod_double_inplace(b, &v_copy, p));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
