@@ -1148,13 +1148,17 @@ fn kaliski_iteration(
     b.cx(m_i, b_f);
 
     // ─── STEP 2: with l = u > v_w: a ^= (f AND l AND ¬b); m_i ^= same.
-    // Fused via with_gt: one forward MAJ sweep over (u, v_w), body, one
-    // inverse sweep — half the comparator cost of the prior compute+uncompute.
+    // Both targets share the same (f, l_gt, ¬b_f) control. Compute the AND
+    // of f and l_gt once, apply to both targets, then uncompute.
     let l_gt = b.alloc_qubit();
     with_gt(b, u, v_w, l_gt, |b| {
         let scratch = b.alloc_qubit();
-        mcx3_polar(b, f, true, l_gt, true, b_f, false, a_f, scratch);
-        mcx3_polar(b, f, true, l_gt, true, b_f, false, m_i, scratch);
+        b.x(b_f);                          // negate polarity of b_f
+        b.ccx(f, l_gt, scratch);           // scratch = f AND l_gt
+        b.ccx(scratch, b_f, a_f);          // a_f ^= scratch AND ¬b_f_orig
+        b.ccx(scratch, b_f, m_i);          // m_i ^= same
+        b.ccx(f, l_gt, scratch);           // uncompute scratch
+        b.x(b_f);
         b.assert_zero_and_free(scratch);
     });
     b.assert_zero_and_free(l_gt);
