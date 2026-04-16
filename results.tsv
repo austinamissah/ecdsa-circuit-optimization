@@ -42,3 +42,5 @@ timestamp	commit	toffoli	clifford	qubits	ops	correct	notes
 1776257643	07b05f5	0.000	0.000	3083	61686714	FAIL	cmp_lt_into/with_lt: drop first-maj ccx since c_in=0 | REVERSIBILITY VIOLATION at op #10839496: R targets qubit QubitId(3078) but its value across 64 live shots is 0x2df61e8a9c3b566e (nonzero). A clean reversible circuit must uncompute every ancilla to |0⟩ before freeing it.
 1776273981	07b05f5	18506238.000	36093692.000	3083	61693388	OK	session start: confirming baseline
 1776275896	19741a2	18506238.000	36093692.000	3083	61693388	OK	cleanup: remove unused kaliski_inv_inplace + pow_mod_2_k
+1776301759	b9f45f6	18506238.000	36093692.000	3083	61693388	OK	pre-refactor baseline check
+1776301972	b9f45f6	18506238.000	36093692.000	3083	61693388	OK	post-refactor: builder inlined, build() returns Vec<Op>

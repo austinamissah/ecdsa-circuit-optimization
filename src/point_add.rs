@@ -58,8 +58,58 @@
 
 use alloy_primitives::U256;
 
-use crate::builder::{Builder, Layout};
-use crate::circuit::{BitId, OperationType, QubitId};
+use crate::circuit::{BitId, Op, OperationType, QubitId, RegisterId};
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Builder: thin op accumulator + qubit ID allocator with free-pool reuse.
+//  Lives inside point_add.rs so the agent owns it and can modify/replace.
+// ═══════════════════════════════════════════════════════════════════════════
+
+struct Builder {
+    ops: Vec<Op>,
+    next_qubit: u32,
+    next_bit: u32,
+    next_register: u32,
+    free_qubits: Vec<u32>,
+}
+
+impl Builder {
+    fn new() -> Self {
+        Self { ops: Vec::new(), next_qubit: 0, next_bit: 0, next_register: 0, free_qubits: Vec::new() }
+    }
+    fn alloc_qubit(&mut self) -> QubitId {
+        if let Some(q) = self.free_qubits.pop() { QubitId(q) }
+        else { let q = self.next_qubit; self.next_qubit += 1; QubitId(q) }
+    }
+    fn alloc_qubits(&mut self, n: usize) -> Vec<QubitId> { (0..n).map(|_| self.alloc_qubit()).collect() }
+    fn alloc_bit(&mut self) -> BitId { let b = self.next_bit; self.next_bit += 1; BitId(b) }
+    fn alloc_bits(&mut self, n: usize) -> Vec<BitId> { (0..n).map(|_| self.alloc_bit()).collect() }
+    fn assert_zero_and_free(&mut self, q: QubitId) { self.r(q); self.free_qubits.push(q.0); }
+    fn assert_zero_and_free_vec(&mut self, qs: &[QubitId]) { for &q in qs { self.assert_zero_and_free(q); } }
+    fn declare_qubit_register(&mut self, qs: &[QubitId]) {
+        let r = RegisterId(self.next_register); self.next_register += 1;
+        for &q in qs { let mut op = Op::empty(); op.kind = OperationType::AppendToRegister; op.q_target = q; op.r_target = r; self.ops.push(op); }
+        let mut op = Op::empty(); op.kind = OperationType::Register; op.r_target = r; self.ops.push(op);
+    }
+    fn declare_bit_register(&mut self, bs: &[BitId]) {
+        let r = RegisterId(self.next_register); self.next_register += 1;
+        for &b in bs { let mut op = Op::empty(); op.kind = OperationType::AppendToRegister; op.c_target = b; op.r_target = r; self.ops.push(op); }
+        let mut op = Op::empty(); op.kind = OperationType::Register; op.r_target = r; self.ops.push(op);
+    }
+    fn x(&mut self, q: QubitId) { let mut op = Op::empty(); op.kind = OperationType::X; op.q_target = q; self.ops.push(op); }
+    fn z(&mut self, q: QubitId) { let mut op = Op::empty(); op.kind = OperationType::Z; op.q_target = q; self.ops.push(op); }
+    fn cx(&mut self, ctrl: QubitId, tgt: QubitId) { let mut op = Op::empty(); op.kind = OperationType::CX; op.q_control1 = ctrl; op.q_target = tgt; self.ops.push(op); }
+    fn cz(&mut self, a: QubitId, b: QubitId) { let mut op = Op::empty(); op.kind = OperationType::CZ; op.q_control1 = a; op.q_target = b; self.ops.push(op); }
+    fn ccx(&mut self, c1: QubitId, c2: QubitId, tgt: QubitId) { let mut op = Op::empty(); op.kind = OperationType::CCX; op.q_control2 = c1; op.q_control1 = c2; op.q_target = tgt; self.ops.push(op); }
+    fn ccz(&mut self, c1: QubitId, c2: QubitId, tgt: QubitId) { let mut op = Op::empty(); op.kind = OperationType::CCZ; op.q_control2 = c1; op.q_control1 = c2; op.q_target = tgt; self.ops.push(op); }
+    fn swap(&mut self, a: QubitId, b: QubitId) { let mut op = Op::empty(); op.kind = OperationType::Swap; op.q_control1 = a; op.q_target = b; self.ops.push(op); }
+    fn r(&mut self, q: QubitId) { let mut op = Op::empty(); op.kind = OperationType::R; op.q_target = q; self.ops.push(op); }
+    fn x_if(&mut self, q: QubitId, cond: BitId) { let mut op = Op::empty(); op.kind = OperationType::X; op.q_target = q; op.c_condition = cond; self.ops.push(op); }
+    fn cx_if(&mut self, ctrl: QubitId, tgt: QubitId, cond: BitId) { let mut op = Op::empty(); op.kind = OperationType::CX; op.q_control1 = ctrl; op.q_target = tgt; op.c_condition = cond; self.ops.push(op); }
+    fn ccx_if(&mut self, c1: QubitId, c2: QubitId, tgt: QubitId, cond: BitId) { let mut op = Op::empty(); op.kind = OperationType::CCX; op.q_control2 = c1; op.q_control1 = c2; op.q_target = tgt; op.c_condition = cond; self.ops.push(op); }
+    fn push_condition(&mut self, cond: BitId) { let mut op = Op::empty(); op.kind = OperationType::PushCondition; op.c_condition = cond; self.ops.push(op); }
+    fn pop_condition(&mut self) { let mut op = Op::empty(); op.kind = OperationType::PopCondition; self.ops.push(op); }
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  emit_inverse: run a closure, pop the ops it emitted, and re-emit them
@@ -1495,19 +1545,20 @@ fn pow_mod_2_k(p: U256, k: usize) -> U256 {
 //  Top-level point addition
 // ═══════════════════════════════════════════════════════════════════════════
 
-pub fn build(b: &mut Builder) -> Layout {
+pub fn build() -> Vec<Op> {
+    let b = &mut Builder::new();
     // Register 0: target_x (quantum)
     let tx = b.alloc_qubits(N);
-    let target_x = b.declare_qubit_register(&tx);
+    b.declare_qubit_register(&tx);
     // Register 1: target_y (quantum)
     let ty = b.alloc_qubits(N);
-    let target_y = b.declare_qubit_register(&ty);
+    b.declare_qubit_register(&ty);
     // Register 2: offset_x (classical bits)
     let ox = b.alloc_bits(N);
-    let offset_x = b.declare_bit_register(&ox);
+    b.declare_bit_register(&ox);
     // Register 3: offset_y (classical bits)
     let oy = b.alloc_bits(N);
-    let offset_y = b.declare_bit_register(&oy);
+    b.declare_bit_register(&oy);
 
     // === Point add ===
     //
@@ -1564,7 +1615,7 @@ pub fn build(b: &mut Builder) -> Layout {
 
     b.assert_zero_and_free_vec(&lam);
 
-    Layout { target_x, target_y, offset_x, offset_y }
+    b.ops.clone()
 }
 
 

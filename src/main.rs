@@ -16,12 +16,9 @@ mod circuit;
 mod sim;
 #[allow(dead_code)]
 mod weierstrass_elliptic_curve;
-#[allow(dead_code)]
-mod builder;
 mod point_add;
 
 use alloy_primitives::U256;
-use builder::{Builder, Layout};
 use circuit::{Op, QubitOrBit, analyze_ops};
 use sha3::{digest::{ExtendableOutput, Update, XofReader}, Shake256};
 use sim::Simulator;
@@ -274,15 +271,13 @@ fn main() {
     let curve = secp256k1();
 
     println!("-- building circuit --");
-    let mut builder = Builder::new();
-    let layout = point_add::build(&mut builder);
-    let ops = builder.ops.clone();
-    let peak = builder.peak_qubits();
-    let total_alloc = builder.total_qubits();
+    let ops = point_add::build();
 
     let (total_qubits, num_bits, _num_regs, regs) = analyze_ops(ops.iter().copied());
 
     // Sanity-check layout matches zenodo's program interface.
+    // The 4 registers and their widths/types are the only contract `build`
+    // must satisfy with the harness.
     assert!(regs.len() == 4, "expected 4 registers (target_x, target_y, offset_x, offset_y); got {}", regs.len());
     for (i, r) in regs.iter().enumerate() {
         assert_eq!(r.len(), 256, "register {i} should be 256 wide, got {}", r.len());
@@ -291,10 +286,9 @@ fn main() {
     for q in &regs[1] { assert!(matches!(q, QubitOrBit::Qubit(_)), "register 1 must be qubits"); }
     for q in &regs[2] { assert!(matches!(q, QubitOrBit::Bit(_)),   "register 2 must be bits"); }
     for q in &regs[3] { assert!(matches!(q, QubitOrBit::Bit(_)),   "register 3 must be bits"); }
-    let _ = layout; // layout IDs are implicit in ordering
 
     println!("  total ops : {}", ops.len());
-    println!("  qubits    : {} (peak live {}, total alloc {})", total_qubits, peak, total_alloc);
+    println!("  qubits    : {}", total_qubits);
     println!("  bits      : {}", num_bits);
 
     println!("\n-- running correctness tests --");
