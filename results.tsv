@@ -95,3 +95,4 @@ timestamp	commit	toffoli	clifford	qubits	ops	correct	notes
 1776366589	701ff7d	9118164.000	52454268.781	3082	71574774	OK	fuse +Qx +Qx into doubled classical add
 1776368298	0bede51	8592856.000	47451466.188	3082	65751418	OK	kaliski r double/halve via fast secp256k1 path
 1776368405	1254c39	8590812.000	47451847.094	3082	65749374	OK	drop dead Kaliski r[n] add path
+1776368842	04dd705	8584680.000	47424267.609	3080	65714622	OK	shrink Kaliski coefficient width to n

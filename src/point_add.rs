@@ -1671,7 +1671,6 @@ fn kaliski_iteration(
     add_f: QubitId,
 ) {
     let n = u.len();
-    let n1 = r.len();  // n+1
 
     // ─── STEP 0: is_zero = (v_w == 0);  m[i] ^= (f AND is_zero);  f ^= m[i] ───
     // add_f is zero here (uncomputed in step 5 of the prior iter, or 0 at
@@ -1729,37 +1728,36 @@ fn kaliski_iteration(
 
     // ─── STEP 3: with control(a): swap(u, v_w); swap(r, s) ───
     for j in 0..n { cswap(b, a_f, u[j], v_w[j]); }
-    for j in 0..n1 { cswap(b, a_f, r[j], s[j]); }
+    for j in 0..n { cswap(b, a_f, r[j], s[j]); }
 
     // ─── STEP 4 ───
     //   add ^= (f=1 AND b=0)
     //   with control(add): v_w -= u; s += r
     //
     // Fused dual controlled sub+add: reuse one tmp register across both ops.
-    // Load tmp[0..n] = add_f AND u, do sub on v_w, then transform tmp to
+    // Load tmp = add_f AND u, do sub on v_w, then transform tmp to
     // add_f AND r in place (without unloading + reloading) by temporarily
-    // XOR'ing r into u and re-applying ccx(add_f, u, tmp). Then load
-    // tmp[n] = add_f AND r[n], do add on s, unload. Saves n CCX/iter.
+    // XOR'ing r into u and re-applying ccx(add_f, u, tmp), then add tmp to
+    // s and unload. Saves n CCX/iter.
     mcx2_polar(b, f, true, b_f, false, add_f);
     {
-        let tmp = b.alloc_qubits(n1);
-        // Load tmp[0..n] = add_f AND u. tmp[n] stays 0.
+        let tmp = b.alloc_qubits(n);
+        // Load tmp = add_f AND u.
         for i in 0..n { b.ccx(add_f, u[i], tmp[i]); }
         sub_nbit_qq_fast(b, &tmp[..n], v_w);
-        // Transform tmp[0..n] from "add_f AND u" to "add_f AND r".
+        // Transform tmp from "add_f AND u" to "add_f AND r".
         for i in 0..n { b.cx(r[i], u[i]); }
         for i in 0..n { b.ccx(add_f, u[i], tmp[i]); }
         for i in 0..n { b.cx(r[i], u[i]); }
-        // Cuccaro add on (n+1)-bit tmp+s with tmp[n]=0.
+        // Cuccaro add on the live coefficient width.
         add_nbit_qq_fast(b, &tmp, s);
-        // Unload tmp[0..n] via measurement-based AND uncompute (0 Toffoli).
+        // Unload tmp via measurement-based AND uncompute (0 Toffoli).
         // tmp[i] = add_f AND r[i], unchanged by Cuccaro add (addend preserved).
         for i in 0..n {
             let m = b.alloc_bit();
             b.hmr(tmp[i], m);
             b.cz_if(add_f, r[i], m);
         }
-        // tmp[n] is already 0.
         b.free_vec(&tmp);
     }
 
@@ -1781,13 +1779,12 @@ fn kaliski_iteration(
 
     // ─── STEP 7 + 8: r := 2*r mod p ───────────────────────────────────
     // This is the same secp256k1 pseudo-Mersenne doubling we already use
-    // elsewhere. The high `r[n]` bit returns to 0 after reduction, so the
-    // low n bits carry the entire state.
-    mod_double_inplace_fast(b, &r[..n], p);
+    // elsewhere.
+    mod_double_inplace_fast(b, r, p);
 
     // ─── STEP 9: with control(a): swap(u, v_w); swap(r, s) (again) ───
     for j in 0..n { cswap(b, a_f, u[j], v_w[j]); }
-    for j in 0..n1 { cswap(b, a_f, r[j], s[j]); }
+    for j in 0..n { cswap(b, a_f, r[j], s[j]); }
 
     // ─── STEP 10: uncompute a via `a ^= NOT s[0]` ───
     // After STEP 9's swap, the invariant (from qrisp) is that
@@ -1873,8 +1870,8 @@ fn mul_by_const_acc(
 struct KaliskiState {
     u: Vec<QubitId>,       // n qubits
     v_w: Vec<QubitId>,     // n qubits
-    r: Vec<QubitId>,       // n+1 qubits
-    s: Vec<QubitId>,       // n+1 qubits
+    r: Vec<QubitId>,       // n qubits
+    s: Vec<QubitId>,       // n qubits
     m_hist: Vec<QubitId>,  // 2n qubits
     f_flag: QubitId,
     a_flag: QubitId,
@@ -1886,8 +1883,8 @@ fn alloc_kaliski_state(b: &mut B, n: usize) -> KaliskiState {
     KaliskiState {
         u: b.alloc_qubits(n),
         v_w: b.alloc_qubits(n),
-        r: b.alloc_qubits(n + 1),
-        s: b.alloc_qubits(n + 1),
+        r: b.alloc_qubits(n),
+        s: b.alloc_qubits(n),
         m_hist: b.alloc_qubits(2 * n - 1),
         f_flag: b.alloc_qubit(),
         a_flag: b.alloc_qubit(),
@@ -2024,7 +2021,6 @@ fn kaliski_iteration_backward(
     add_f: QubitId,
 ) {
     let n = u.len();
-    let n1 = r.len();
 
     // ── Reverse STEP 10 ─────────────────────────────────────────────────
     b.x(s[0]);
@@ -2032,12 +2028,12 @@ fn kaliski_iteration_backward(
     b.x(s[0]);
 
     // ── Reverse STEP 9 ─────────────────────────────────────────────────
-    for j in (0..n1).rev() { cswap(b, a_f, r[j], s[j]); }
+    for j in (0..n).rev() { cswap(b, a_f, r[j], s[j]); }
     for j in (0..n).rev() { cswap(b, a_f, u[j], v_w[j]); }
 
     // ── Reverse STEP 8 + 7 ─────────────────────────────────────────────
     // Inverse of the fast secp256k1 doubling used in the forward pass.
-    mod_halve_inplace_fast(b, &r[..n], p);
+    mod_halve_inplace_fast(b, r, p);
 
     // ── Reverse STEP 6 (conditional shift-right → shift-left) ───────────
     for i in (0..(n - 1)).rev() {
@@ -2051,8 +2047,8 @@ fn kaliski_iteration_backward(
 
     // ── Reverse STEP 4 (with measurement uncompute for unload) ─────────
     {
-        let tmp = b.alloc_qubits(n1);
-        // Load tmp = AND(add_f, r[0..n]) for the reversed add
+        let tmp = b.alloc_qubits(n);
+        // Load tmp = AND(add_f, r) for the reversed add
         for i in 0..n { b.ccx(add_f, r[i], tmp[i]); }
         // Reversed (F): sub_nbit_qq_fast(tmp, s)
         sub_nbit_qq_fast(b, &tmp, s);
@@ -2080,7 +2076,7 @@ fn kaliski_iteration_backward(
     b.x(b_f);
 
     // ── Reverse STEP 3 ─────────────────────────────────────────────────
-    for j in (0..n1).rev() { cswap(b, a_f, r[j], s[j]); }
+    for j in (0..n).rev() { cswap(b, a_f, r[j], s[j]); }
     for j in (0..n).rev() { cswap(b, a_f, u[j], v_w[j]); }
 
     // ── Reverse STEP 2 (with_gt body is self-inverse) ──────────────────
