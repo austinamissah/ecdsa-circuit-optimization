@@ -512,13 +512,44 @@ fn mod_sub_qq(b: &mut B, acc: &[QubitId], a: &[QubitId], p: U256) {
     emit_inverse(b, move |b| mod_add_qq(b, acc, &a_copy, p));
 }
 
-/// Fast `acc := (acc - a) mod p` using mod_neg + mod_add_qq_fast + mod_neg.
-/// Relies on EC precondition a ≠ 0 (mod_neg_inplace is non-canonical for 0).
+/// Fast `acc := (acc - a) mod p`. Direct sub + conditional add-p + flag
+/// uncompute via neg+cmp_lt+neg. All ops use measurement-based Cuccaro.
 fn mod_sub_qq_fast(b: &mut B, acc: &[QubitId], a: &[QubitId], p: U256) {
-    // a → (p - a), acc += (p - a) = acc - a mod p, a → a_orig.
-    mod_neg_inplace_fast(b, a, p);
-    mod_add_qq_fast(b, acc, a, p);
-    mod_neg_inplace_fast(b, a, p);
+    let n = acc.len();
+    assert_eq!(n, a.len());
+    debug_assert_eq!(n, 256);
+
+    let (acc_ext, acc_ovf) = ext_reg(b, acc);
+    let (a_ext, a_ovf) = ext_reg(b, a);
+
+    // Step 1: (n+1)-bit sub.
+    sub_nbit_qq_fast(b, &a_ext, &acc_ext);
+
+    // Step 2: flag = acc_ovf (=1 iff underflow, i.e. acc < a).
+    let flag = b.alloc_qubit();
+    b.cx(acc_ovf, flag);
+
+    // Step 3: if flag=1, add p (correction). acc_ovf ends at 0 in both cases.
+    {
+        let n1 = acc_ext.len();
+        let ca = b.alloc_qubits(n1);
+        for i in 0..n1 { if bit(p, i) { b.cx(flag, ca[i]); } }
+        add_nbit_qq_fast(b, &ca, &acc_ext);
+        for i in 0..n1 { if bit(p, i) { b.cx(flag, ca[i]); } }
+        b.free_vec(&ca);
+    }
+
+    // Step 4: uncompute flag. Identity: flag = NOT(acc_final < (p - a)).
+    // Negate a in place, compare, un-negate.
+    b.x(flag);
+    mod_neg_inplace_fast(b, &a_ext[..n], p);
+    cmp_lt_into_fast(b, &acc_ext[..n], &a_ext[..n], flag);
+    mod_neg_inplace_fast(b, &a_ext[..n], p);
+    b.free(flag);
+
+    unext_reg(b, a_ovf);
+    unext_reg(b, acc_ovf);
+    let _ = (acc_ext, a_ext);
 }
 
 /// Fast mod_neg using measurement-based Cuccaro for the addition.
