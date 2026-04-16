@@ -1044,16 +1044,28 @@ fn mod_mul_add_qq(
     y: &[QubitId],
     p: U256,
 ) {
+    // acc += x * y mod p. Walk the multiplicand in place to avoid the
+    // doubled tmp register and its qubit cost. For squaring, snapshot the
+    // original control bits once before the in-place doubling walk.
     let n = acc.len();
-    let tmp = b.alloc_qubits(n);
-    for i in 0..n { b.cx(x[i], tmp[i]); }
-    for i in 0..n {
-        cmod_add_qq(b, acc, &tmp, y[i], p);
-        if i < n - 1 { mod_double_inplace_fast(b, &tmp, p); }
+    let is_squaring = x[0] == y[0];
+    if is_squaring {
+        let ctrl_copy = b.alloc_qubits(n);
+        for i in 0..n { b.cx(x[i], ctrl_copy[i]); }
+        for i in 0..n {
+            cmod_add_qq(b, acc, x, ctrl_copy[i], p);
+            if i < n - 1 { mod_double_inplace_fast(b, x, p); }
+        }
+        for _ in 0..(n - 1) { mod_halve_inplace_fast(b, x, p); }
+        for i in 0..n { b.cx(x[i], ctrl_copy[i]); }
+        b.free_vec(&ctrl_copy);
+    } else {
+        for i in 0..n {
+            cmod_add_qq(b, acc, x, y[i], p);
+            if i < n - 1 { mod_double_inplace_fast(b, x, p); }
+        }
+        for _ in 0..(n - 1) { mod_halve_inplace_fast(b, x, p); }
     }
-    for _ in 0..(n - 1) { mod_halve_inplace_fast(b, &tmp, p); }
-    for i in 0..n { b.cx(x[i], tmp[i]); }
-    b.free_vec(&tmp);
 }
 
 /// Horner-method multiplication: acc += x * y mod p.
@@ -2312,11 +2324,12 @@ pub fn build() -> Vec<Op> {
 
     let lam = b.alloc_qubits(N);
 
-    // Pair 1: with inv = -dx^{-1} (kaliski's native form, neg skipped),
-    // `mod_mul_sub` on lam gives +λ: lam -= ty*inv = dy*dx^{-1} = λ.
+    // Pair 1: keep lam in the NEGATIVE slope form lam = -λ. This lets the
+    // zeroing multiply use plain add instead of sub, avoiding two modular
+    // negations on the multiplicand.
     with_kal_inv(b, &tx, p, |b, inv| {
-        mod_mul_horner_sub_qq(b, &lam, &ty, inv, p); // lam -= dy·(-dx^{-1}) = λ (Horner: lam=0)
-        mod_mul_sub_qq(b, &ty, &lam, &tx, p);        // Py -= λ·dx = 0
+        mod_mul_horner_add_qq(b, &lam, &ty, inv, p); // lam += dy·(-dx^{-1}) = -λ (Horner: lam=0)
+        mod_mul_add_qq(b, &ty, &lam, &tx, p);        // Py += (-λ)·dx = 0
     });
 
     // Px := λ² - Px_orig - Qx. Rearranged: tx = dx - λ². Add 2Qx, then
@@ -2327,27 +2340,25 @@ pub fn build() -> Vec<Op> {
     mod_add_qb(b, &tx, &ox, p);
     mod_neg_inplace_fast(b, &tx, p);
 
-    // Py := λ·(Qx − Rx) − Qy. Fuse the two muls into one by precomputing
-    // (Qx − Rx) into a temporary; saves a full mod_mul_*.
+    // With lam = -λ, this multiply produces ty = -(Ry + Qy).
     {
         let dxr = b.alloc_qubits(N);
         for i in 0..N { b.x_if(dxr[i], ox[i]); }     // dxr = Qx
         mod_sub_qq_fast(b, &dxr, &tx, p);              // dxr = Qx − Rx
-        mod_mul_horner_add_qq(b, &ty, &lam, &dxr, p);  // ty += λ·(Qx − Rx) (Horner: ty=0)
+        mod_mul_horner_add_qq(b, &ty, &lam, &dxr, p);  // ty += (-λ)·(Qx − Rx) = -(Ry + Qy)
         mod_add_qq_fast(b, &dxr, &tx, p);              // dxr += Rx → Qx
         for i in 0..N { b.x_if(dxr[i], ox[i]); }     // dxr = 0
         b.free_vec(&dxr);
     }
-    // Defer `ty -= Qy` into pair 2 body: ty remains λ·(Qx−Rx) = Ry+Qy here,
-    // which is exactly what pair 2's mul uses. Saves one mod_sub_qb + one
-    // mod_add_qb (≈ 4k Clifford/~0 Toffoli from loads, but removes the
-    // add_nbit_qq passes they wrap).
+    // Pair 2 uses ty = -(Ry+Qy), which matches the negative lam convention.
     //
-    // Uncompute lam. Use (Rx - Qx) as kaliski input; inv = -(Rx-Qx)^{-1}.
+    // Uncompute lam. Use (Rx - Qx) as kaliski input; inv = -(Rx-Qx)^{-1}
+    // = (Qx-Rx)^{-1}, so inv·ty = -λ and the same `mod_mul_sub_qq` zeroes lam.
     mod_sub_qb(b, &tx, &ox, p);                   // tx = Rx - Qx
     with_kal_inv(b, &tx, p, |b, inv| {
-        mod_mul_sub_qq(b, &lam, inv, &ty, p);         // lam -= inv·(Ry + Qy) = 0
-        mod_sub_qb(b, &ty, &oy, p);                   // ty = Ry (external contract)
+        mod_mul_sub_qq(b, &lam, inv, &ty, p);         // lam -= inv·(-(Ry + Qy)) = 0
+        mod_add_qb(b, &ty, &oy, p);                   // ty = -Ry
+        mod_neg_inplace_fast(b, &ty, p);              // ty = Ry
     });
     mod_add_qb(b, &tx, &ox, p);                   // tx = Rx
 
@@ -2355,4 +2366,3 @@ pub fn build() -> Vec<Op> {
 
     b.ops.clone()
 }
-
