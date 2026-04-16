@@ -44,3 +44,4 @@ timestamp	commit	toffoli	clifford	qubits	ops	correct	notes
 1776275896	19741a2	18506238.000	36093692.000	3083	61693388	OK	cleanup: remove unused kaliski_inv_inplace + pow_mod_2_k
 1776301759	b9f45f6	18506238.000	36093692.000	3083	61693388	OK	pre-refactor baseline check
 1776301972	b9f45f6	18506238.000	36093692.000	3083	61693388	OK	post-refactor: builder inlined, build() returns Vec<Op>
+1776302819	e029267	18506238.000	36093692.000	3083	61693388	OK	Builder removed, struct B with pub fields

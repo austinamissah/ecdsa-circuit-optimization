@@ -60,20 +60,15 @@ use alloy_primitives::U256;
 
 use crate::circuit::{BitId, Op, OperationType, QubitId, RegisterId};
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  Builder: thin op accumulator + qubit ID allocator with free-pool reuse.
-//  Lives inside point_add.rs so the agent owns it and can modify/replace.
-// ═══════════════════════════════════════════════════════════════════════════
-
-struct Builder {
-    ops: Vec<Op>,
-    next_qubit: u32,
-    next_bit: u32,
-    next_register: u32,
-    free_qubits: Vec<u32>,
+struct B {
+    pub ops: Vec<Op>,
+    pub next_qubit: u32,
+    pub next_bit: u32,
+    pub next_register: u32,
+    pub free_qubits: Vec<u32>,
 }
 
-impl Builder {
+impl B {
     fn new() -> Self {
         Self { ops: Vec::new(), next_qubit: 0, next_bit: 0, next_register: 0, free_qubits: Vec::new() }
     }
@@ -123,13 +118,13 @@ impl Builder {
 //  the same qubit back to |0⟩ at the "alloc" point (pre-forward-allocation),
 //  and the R we skipped is unnecessary.
 //
-//  The forward's internal alloc/free bookkeeping in the Builder's free
+//  The forward's internal alloc/free bookkeeping in the B's free
 //  pool is NOT undone by the reverse — the pool state at reverse exit
 //  equals the pool state at forward exit. Subsequent allocations in the
 //  parent scope reuse those qubit IDs, seeing them at |0⟩ (as zeroed by
 //  the reverse gate sequence).
 // ═══════════════════════════════════════════════════════════════════════════
-fn emit_inverse<F: FnOnce(&mut Builder)>(b: &mut Builder, f: F) {
+fn emit_inverse<F: FnOnce(&mut B)>(b: &mut B, f: F) {
     let start = b.ops.len();
     f(b);
     let end = b.ops.len();
@@ -166,10 +161,10 @@ fn emit_inverse<F: FnOnce(&mut Builder)>(b: &mut Builder, f: F) {
 /// Runs `compute`, then `body`, then the inverse of `compute` — the
 /// "with conjugate" pattern from qrisp. `compute` must emit only
 /// reversible gates (no alloc/free/R).
-fn conjugate<F, G>(b: &mut Builder, compute: F, body: G)
+fn conjugate<F, G>(b: &mut B, compute: F, body: G)
 where
-    F: Fn(&mut Builder),
-    G: FnOnce(&mut Builder),
+    F: Fn(&mut B),
+    G: FnOnce(&mut B),
 {
     compute(b);
     body(b);
@@ -222,13 +217,13 @@ fn bit(c: U256, i: usize) -> bool {
 //     CX(w, x)
 //     CX(x, y)
 
-fn maj(b: &mut Builder, x: QubitId, y: QubitId, w: QubitId) {
+fn maj(b: &mut B, x: QubitId, y: QubitId, w: QubitId) {
     b.cx(w, y);
     b.cx(w, x);
     b.ccx(x, y, w);
 }
 
-fn uma(b: &mut Builder, x: QubitId, y: QubitId, w: QubitId) {
+fn uma(b: &mut B, x: QubitId, y: QubitId, w: QubitId) {
     b.ccx(x, y, w);
     b.cx(w, x);
     b.cx(x, y);
@@ -240,7 +235,7 @@ fn uma(b: &mut Builder, x: QubitId, y: QubitId, w: QubitId) {
 /// Pure mod-2^n: the high carry is discarded (no `z` ancilla). This is
 /// honestly reversible because the last MAJ/UMA pair cancel out the
 /// carry information on `a[n-1]`.
-fn cuccaro_add(b: &mut Builder, a: &[QubitId], acc: &[QubitId], c_in: QubitId) {
+fn cuccaro_add(b: &mut B, a: &[QubitId], acc: &[QubitId], c_in: QubitId) {
     let n = a.len();
     assert_eq!(n, acc.len());
     if n == 0 { return; }
@@ -271,7 +266,7 @@ fn cuccaro_add(b: &mut Builder, a: &[QubitId], acc: &[QubitId], c_in: QubitId) {
 
 /// Reverse of `cuccaro_add`: performs `acc -= a mod 2^n`.
 /// Implemented as the exact inverse gate sequence of `cuccaro_add`.
-fn cuccaro_sub(b: &mut Builder, a: &[QubitId], acc: &[QubitId], c_in: QubitId) {
+fn cuccaro_sub(b: &mut B, a: &[QubitId], acc: &[QubitId], c_in: QubitId) {
     let n = a.len();
     assert_eq!(n, acc.len());
     if n == 0 { return; }
@@ -300,7 +295,7 @@ fn cuccaro_sub(b: &mut Builder, a: &[QubitId], acc: &[QubitId], c_in: QubitId) {
     inv_maj(b, c_in, acc[0], a[0]);
 }
 
-fn inv_maj(b: &mut Builder, x: QubitId, y: QubitId, w: QubitId) {
+fn inv_maj(b: &mut B, x: QubitId, y: QubitId, w: QubitId) {
     // maj = CX(w,y); CX(w,x); CCX(x,y,w)
     // inv = CCX(x,y,w); CX(w,x); CX(w,y)
     b.ccx(x, y, w);
@@ -308,7 +303,7 @@ fn inv_maj(b: &mut Builder, x: QubitId, y: QubitId, w: QubitId) {
     b.cx(w, y);
 }
 
-fn inv_uma(b: &mut Builder, x: QubitId, y: QubitId, w: QubitId) {
+fn inv_uma(b: &mut B, x: QubitId, y: QubitId, w: QubitId) {
     // uma = CCX(x,y,w); CX(w,x); CX(x,y)
     // inv = CX(x,y); CX(w,x); CCX(x,y,w)
     b.cx(x, y);
@@ -325,7 +320,7 @@ fn inv_uma(b: &mut Builder, x: QubitId, y: QubitId, w: QubitId) {
 // qubit register, load the classical value into it, run Cuccaro, then
 // unload. The load/unload is not counted against Toffolis.
 
-fn load_const(b: &mut Builder, n: usize, c: U256) -> Vec<QubitId> {
+fn load_const(b: &mut B, n: usize, c: U256) -> Vec<QubitId> {
     let qs = b.alloc_qubits(n);
     for i in 0..n {
         if bit(c, i) {
@@ -335,7 +330,7 @@ fn load_const(b: &mut Builder, n: usize, c: U256) -> Vec<QubitId> {
     qs
 }
 
-fn unload_const(b: &mut Builder, qs: &[QubitId], c: U256) {
+fn unload_const(b: &mut B, qs: &[QubitId], c: U256) {
     for i in 0..qs.len() {
         if bit(c, i) {
             b.x(qs[i]);
@@ -344,7 +339,7 @@ fn unload_const(b: &mut Builder, qs: &[QubitId], c: U256) {
     b.free_vec(qs);
 }
 
-fn load_bits(b: &mut Builder, bits: &[BitId]) -> Vec<QubitId> {
+fn load_bits(b: &mut B, bits: &[BitId]) -> Vec<QubitId> {
     let n = bits.len();
     let qs = b.alloc_qubits(n);
     for i in 0..n {
@@ -354,7 +349,7 @@ fn load_bits(b: &mut Builder, bits: &[BitId]) -> Vec<QubitId> {
     qs
 }
 
-fn unload_bits(b: &mut Builder, qs: &[QubitId], bits: &[BitId]) {
+fn unload_bits(b: &mut B, qs: &[QubitId], bits: &[BitId]) {
     for i in 0..qs.len() {
         b.x_if(qs[i], bits[i]);
     }
@@ -371,7 +366,7 @@ fn unload_bits(b: &mut Builder, qs: &[QubitId], bits: &[BitId]) {
 // bit is a transient ancilla allocated for the duration of a mod-op.
 
 /// Build an (n+1)-bit view by attaching a freshly-allocated 0 ancilla.
-fn ext_reg(b: &mut Builder, reg: &[QubitId]) -> (Vec<QubitId>, QubitId) {
+fn ext_reg(b: &mut B, reg: &[QubitId]) -> (Vec<QubitId>, QubitId) {
     let ovf = b.alloc_qubit();
     let mut r = reg.to_vec();
     r.push(ovf);
@@ -379,7 +374,7 @@ fn ext_reg(b: &mut Builder, reg: &[QubitId]) -> (Vec<QubitId>, QubitId) {
 }
 
 /// Release the overflow ancilla (which must be 0 on exit).
-fn unext_reg(b: &mut Builder, ovf: QubitId) {
+fn unext_reg(b: &mut B, ovf: QubitId) {
     b.free(ovf);
 }
 
@@ -388,7 +383,7 @@ fn unext_reg(b: &mut Builder, ovf: QubitId) {
 /// then add c, branch on top bit to either clear it (reduction) or undo
 /// the add (no reduction). Saves one full (n+1)-wide Cuccaro compared to
 /// the sub-p/add-p/csub-p pattern.
-fn mod_add_qq(b: &mut Builder, acc: &[QubitId], a: &[QubitId], p: U256) {
+fn mod_add_qq(b: &mut B, acc: &[QubitId], a: &[QubitId], p: U256) {
     let n = acc.len();
     assert_eq!(n, a.len());
     debug_assert_eq!(n, 256);
@@ -427,7 +422,7 @@ fn mod_add_qq(b: &mut Builder, acc: &[QubitId], a: &[QubitId], p: U256) {
     let _ = (acc_ext, a_ext);
 }
 
-fn mod_sub_qq(b: &mut Builder, acc: &[QubitId], a: &[QubitId], p: U256) {
+fn mod_sub_qq(b: &mut B, acc: &[QubitId], a: &[QubitId], p: U256) {
     // mod_add_qq is a bijection on (acc, a): (acc, a) ↦ (acc + a mod p, a).
     // Its gate-level inverse therefore acts as (acc, a) ↦ (acc - a mod p, a),
     // which is exactly what we want. emit_inverse replays the forward's gates
@@ -437,7 +432,7 @@ fn mod_sub_qq(b: &mut Builder, acc: &[QubitId], a: &[QubitId], p: U256) {
     emit_inverse(b, move |b| mod_add_qq(b, acc, &a_copy, p));
 }
 
-fn mod_add_qc(b: &mut Builder, acc: &[QubitId], c: U256, p: U256) {
+fn mod_add_qc(b: &mut B, acc: &[QubitId], c: U256, p: U256) {
     // acc := (acc + c) mod p. c is a compile-time constant.
     let n = acc.len();
     let a = load_const(b, n, c);
@@ -445,7 +440,7 @@ fn mod_add_qc(b: &mut Builder, acc: &[QubitId], c: U256, p: U256) {
     unload_const(b, &a, c);
 }
 
-fn mod_sub_qc(b: &mut Builder, acc: &[QubitId], c: U256, p: U256) {
+fn mod_sub_qc(b: &mut B, acc: &[QubitId], c: U256, p: U256) {
     // acc := (acc - c) mod p = acc + (p - c) mod p.
     let n = acc.len();
     let c_neg = (p - (c % p)) % p;
@@ -454,14 +449,14 @@ fn mod_sub_qc(b: &mut Builder, acc: &[QubitId], c: U256, p: U256) {
     unload_const(b, &a, c_neg);
 }
 
-fn mod_add_qb(b: &mut Builder, acc: &[QubitId], bits: &[BitId], p: U256) {
+fn mod_add_qb(b: &mut B, acc: &[QubitId], bits: &[BitId], p: U256) {
     // acc := (acc + bits) mod p. `bits` is a classical bit register.
     let a = load_bits(b, bits);
     mod_add_qq(b, acc, &a, p);
     unload_bits(b, &a, bits);
 }
 
-fn mod_sub_qb(b: &mut Builder, acc: &[QubitId], bits: &[BitId], p: U256) {
+fn mod_sub_qb(b: &mut B, acc: &[QubitId], bits: &[BitId], p: U256) {
     // Gate-inverse of mod_add_qb, by the same bijection argument as mod_sub_qq.
     let bits_copy: Vec<BitId> = bits.to_vec();
     emit_inverse(b, move |b| mod_add_qb(b, acc, &bits_copy, p));
@@ -475,7 +470,7 @@ fn mod_sub_qb(b: &mut Builder, acc: &[QubitId], bits: &[BitId], p: U256) {
 ///
 /// For v = 0 the result is p, not 0 (non-canonical but ≡ 0 mod p).
 /// EC preconditions (dx, dy nonzero) avoid this case in practice.
-fn mod_neg_inplace(b: &mut Builder, v: &[QubitId], p: U256) {
+fn mod_neg_inplace(b: &mut B, v: &[QubitId], p: U256) {
     for &q in v {
         b.x(q);
     }
@@ -491,35 +486,35 @@ fn mod_neg_inplace(b: &mut Builder, v: &[QubitId], p: U256) {
 /// top bits 0 to get a full n+1-bit add). The carry-out beyond the slice
 /// is discarded via `R` on the `z` ancilla — safe when both inputs fit
 /// in n-1 bits (as in our mod-p layer where both < 2p < 2^{n+1}).
-fn add_nbit_qq(b: &mut Builder, a: &[QubitId], acc: &[QubitId]) {
+fn add_nbit_qq(b: &mut B, a: &[QubitId], acc: &[QubitId]) {
     assert_eq!(a.len(), acc.len());
     let c_in = b.alloc_qubit();
     cuccaro_add(b, a, acc, c_in);
     b.free(c_in);
 }
 
-fn sub_nbit_qq(b: &mut Builder, a: &[QubitId], acc: &[QubitId]) {
+fn sub_nbit_qq(b: &mut B, a: &[QubitId], acc: &[QubitId]) {
     assert_eq!(a.len(), acc.len());
     let c_in = b.alloc_qubit();
     cuccaro_sub(b, a, acc, c_in);
     b.free(c_in);
 }
 
-fn add_nbit_const(b: &mut Builder, acc: &[QubitId], c: U256) {
+fn add_nbit_const(b: &mut B, acc: &[QubitId], c: U256) {
     let n = acc.len();
     let a = load_const(b, n, c);
     add_nbit_qq(b, &a, acc);
     unload_const(b, &a, c);
 }
 
-fn sub_nbit_const(b: &mut Builder, acc: &[QubitId], c: U256) {
+fn sub_nbit_const(b: &mut B, acc: &[QubitId], c: U256) {
     let n = acc.len();
     let a = load_const(b, n, c);
     sub_nbit_qq(b, &a, acc);
     unload_const(b, &a, c);
 }
 
-fn csub_nbit_const(b: &mut Builder, acc: &[QubitId], c: U256, ctrl: QubitId) {
+fn csub_nbit_const(b: &mut B, acc: &[QubitId], c: U256, ctrl: QubitId) {
     // acc -= (ctrl ? c : 0). Mirror of cadd_nbit_const.
     let n = acc.len();
     let a = b.alloc_qubits(n);
@@ -537,7 +532,7 @@ fn csub_nbit_const(b: &mut Builder, acc: &[QubitId], c: U256, ctrl: QubitId) {
     b.free_vec(&a);
 }
 
-fn cadd_nbit_const(b: &mut Builder, acc: &[QubitId], c: U256, ctrl: QubitId) {
+fn cadd_nbit_const(b: &mut B, acc: &[QubitId], c: U256, ctrl: QubitId) {
     // Conditional add of constant c, controlled by qubit ctrl.
     // Trick: load c into a qubit register via CX-from-ctrl gates
     // (so the loaded value is (ctrl ? c : 0)), then unconditional add,
@@ -579,7 +574,7 @@ fn cadd_nbit_const(b: &mut Builder, acc: &[QubitId], c: U256, ctrl: QubitId) {
 /// `T - p = T + c - 2^n`. The reduction becomes: add c, branch on the top
 /// bit of the (n+1)-wide shifted register — if set, clear it; else undo
 /// the add. Costs two full (n+1)-wide Cuccaro adds instead of three.
-fn mod_double_inplace(b: &mut Builder, v: &[QubitId], p: U256) {
+fn mod_double_inplace(b: &mut B, v: &[QubitId], p: U256) {
     let n = v.len();
     let ovf = b.alloc_qubit();
 
@@ -621,7 +616,7 @@ fn mod_double_inplace(b: &mut Builder, v: &[QubitId], p: U256) {
 }
 
 /// `v := v/2 mod p`. Gate-inverse of `mod_double_inplace`.
-fn mod_halve_inplace(b: &mut Builder, v: &[QubitId], p: U256) {
+fn mod_halve_inplace(b: &mut B, v: &[QubitId], p: U256) {
     let v_copy: Vec<QubitId> = v.to_vec();
     emit_inverse(b, move |b| mod_double_inplace(b, &v_copy, p));
 }
@@ -634,7 +629,7 @@ fn mod_halve_inplace(b: &mut Builder, v: &[QubitId], p: U256) {
 // fresh temporary via CCX or CX_if, runs the unconditional mod_add_qq /
 // mod_sub_qq, then unloads.
 
-fn cmod_add_qq(b: &mut Builder, acc: &[QubitId], a: &[QubitId], ctrl: QubitId, p: U256) {
+fn cmod_add_qq(b: &mut B, acc: &[QubitId], a: &[QubitId], ctrl: QubitId, p: U256) {
     let n = acc.len();
     let f = b.alloc_qubits(n);
     for i in 0..n {
@@ -647,7 +642,7 @@ fn cmod_add_qq(b: &mut Builder, acc: &[QubitId], a: &[QubitId], ctrl: QubitId, p
     b.free_vec(&f);
 }
 
-fn cmod_sub_qq(b: &mut Builder, acc: &[QubitId], a: &[QubitId], ctrl: QubitId, p: U256) {
+fn cmod_sub_qq(b: &mut B, acc: &[QubitId], a: &[QubitId], ctrl: QubitId, p: U256) {
     let n = acc.len();
     let f = b.alloc_qubits(n);
     for i in 0..n {
@@ -660,7 +655,7 @@ fn cmod_sub_qq(b: &mut Builder, acc: &[QubitId], a: &[QubitId], ctrl: QubitId, p
     b.free_vec(&f);
 }
 
-fn cmod_add_qq_bit(b: &mut Builder, acc: &[QubitId], a: &[QubitId], ctrl: BitId, p: U256) {
+fn cmod_add_qq_bit(b: &mut B, acc: &[QubitId], a: &[QubitId], ctrl: BitId, p: U256) {
     let n = acc.len();
     let f = b.alloc_qubits(n);
     for i in 0..n {
@@ -673,7 +668,7 @@ fn cmod_add_qq_bit(b: &mut Builder, acc: &[QubitId], a: &[QubitId], ctrl: BitId,
     b.free_vec(&f);
 }
 
-fn cmod_sub_qq_bit(b: &mut Builder, acc: &[QubitId], a: &[QubitId], ctrl: BitId, p: U256) {
+fn cmod_sub_qq_bit(b: &mut B, acc: &[QubitId], a: &[QubitId], ctrl: BitId, p: U256) {
     let n = acc.len();
     let f = b.alloc_qubits(n);
     for i in 0..n {
@@ -687,7 +682,7 @@ fn cmod_sub_qq_bit(b: &mut Builder, acc: &[QubitId], a: &[QubitId], ctrl: BitId,
 }
 
 fn mod_mul_add_qq(
-    b: &mut Builder,
+    b: &mut B,
     acc: &[QubitId],
     x: &[QubitId],
     y: &[QubitId],
@@ -706,7 +701,7 @@ fn mod_mul_add_qq(
 }
 
 fn mod_mul_sub_qq(
-    b: &mut Builder,
+    b: &mut B,
     acc: &[QubitId],
     x: &[QubitId],
     y: &[QubitId],
@@ -725,7 +720,7 @@ fn mod_mul_sub_qq(
 }
 
 fn mod_mul_add_qb(
-    b: &mut Builder,
+    b: &mut B,
     acc: &[QubitId],
     x: &[QubitId],
     y: &[BitId],
@@ -748,7 +743,7 @@ fn mod_mul_add_qb(
 }
 
 fn mod_mul_sub_qb(
-    b: &mut Builder,
+    b: &mut B,
     acc: &[QubitId],
     x: &[QubitId],
     y: &[BitId],
@@ -773,13 +768,13 @@ fn mod_mul_sub_qb(
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// Fredkin (controlled swap): swap (a, t) if ctrl. Decomposed as CX/CCX/CX.
-fn cswap(b: &mut Builder, ctrl: QubitId, a: QubitId, t: QubitId) {
+fn cswap(b: &mut B, ctrl: QubitId, a: QubitId, t: QubitId) {
     b.cx(t, a);
     b.ccx(ctrl, a, t);
     b.cx(t, a);
 }
 
-fn cmod_double_inplace(b: &mut Builder, v: &[QubitId], p: U256, ctrl: QubitId) {
+fn cmod_double_inplace(b: &mut B, v: &[QubitId], p: U256, ctrl: QubitId) {
     let n = v.len();
     let ovf = b.alloc_qubit();
     let mut v_ext: Vec<QubitId> = v.to_vec();
@@ -798,7 +793,7 @@ fn cmod_double_inplace(b: &mut Builder, v: &[QubitId], p: U256, ctrl: QubitId) {
 }
 
 /// `cmod_halve_inplace` = exact inverse of `cmod_double_inplace`.
-fn cmod_halve_inplace(b: &mut Builder, v: &[QubitId], p: U256, ctrl: QubitId) {
+fn cmod_halve_inplace(b: &mut B, v: &[QubitId], p: U256, ctrl: QubitId) {
     let n = v.len();
     let ovf = b.alloc_qubit();
     let mut v_ext: Vec<QubitId> = v.to_vec();
@@ -821,8 +816,8 @@ fn cmod_halve_inplace(b: &mut Builder, v: &[QubitId], p: U256, ctrl: QubitId) {
 /// restore u, v. Fuses the compute+use+uncompute pattern: a single
 /// forward MAJ sweep + body + single inverse sweep, instead of two full
 /// `cmp_lt_into` calls. Cost ≈ 2n CCX + body.
-fn with_lt<F: FnOnce(&mut Builder)>(
-    b: &mut Builder,
+fn with_lt<F: FnOnce(&mut B)>(
+    b: &mut B,
     u: &[QubitId],
     v: &[QubitId],
     flag: QubitId,
@@ -848,8 +843,8 @@ fn with_lt<F: FnOnce(&mut Builder)>(
 }
 
 /// Symmetric helper: runs `body` with `flag` holding (u > v).
-fn with_gt<F: FnOnce(&mut Builder)>(
-    b: &mut Builder,
+fn with_gt<F: FnOnce(&mut B)>(
+    b: &mut B,
     u: &[QubitId],
     v: &[QubitId],
     flag: QubitId,
@@ -861,8 +856,8 @@ fn with_gt<F: FnOnce(&mut Builder)>(
 /// Run `body` with `flag` holding (v == 0), then uncompute. Single forward
 /// OR chain + body + single inverse OR chain — half the cost of two
 /// `cmp_eq_zero_into` calls.
-fn with_eq_zero<F: FnOnce(&mut Builder)>(
-    b: &mut Builder,
+fn with_eq_zero<F: FnOnce(&mut B)>(
+    b: &mut B,
     v: &[QubitId],
     flag: QubitId,
     body: F,
@@ -907,7 +902,7 @@ fn with_eq_zero<F: FnOnce(&mut Builder)>(
 /// holds the high carry after the chain), then run the inverse MAJ
 /// sweep + un-negate to restore u and v. Cost ≈ 2n CCX, half of the
 /// previous sub+add (≈ 4n CCX).
-fn cmp_lt_into(b: &mut Builder, u: &[QubitId], v: &[QubitId], flag: QubitId) {
+fn cmp_lt_into(b: &mut B, u: &[QubitId], v: &[QubitId], flag: QubitId) {
     let n = u.len();
     assert_eq!(n, v.len());
 
@@ -946,7 +941,7 @@ fn cmp_lt_into(b: &mut Builder, u: &[QubitId], v: &[QubitId], flag: QubitId) {
 ///   x(v[i]); x(or[i-1]);
 /// Each `or[i]` is a fresh ancilla. We compute the chain, CX `or[n-1]`
 /// into `flag`, then reverse the chain to return every ancilla to |0⟩.
-fn cmp_neq_zero_into(b: &mut Builder, v: &[QubitId], flag: QubitId) {
+fn cmp_neq_zero_into(b: &mut B, v: &[QubitId], flag: QubitId) {
     let n = v.len();
     assert!(n > 0);
     if n == 1 {
@@ -979,7 +974,7 @@ fn cmp_neq_zero_into(b: &mut Builder, v: &[QubitId], flag: QubitId) {
 /// the same gate sequence run in reverse — since it's symmetric (all gates
 /// involutions, palindromic structure), running the exact same helper
 /// again uncomputes it.
-fn or_step(b: &mut Builder, x: QubitId, y: QubitId, out: QubitId) {
+fn or_step(b: &mut B, x: QubitId, y: QubitId, out: QubitId) {
     b.x(x);
     b.x(y);
     b.ccx(x, y, out);
@@ -995,7 +990,7 @@ fn or_step(b: &mut Builder, x: QubitId, y: QubitId, out: QubitId) {
 /// 2-controlled X with per-control polarity. `polarity=true` means positive
 /// control; `false` means anti-control (ctrl=0 triggers).
 fn mcx2_polar(
-    b: &mut Builder,
+    b: &mut B,
     c1: QubitId, p1: bool,
     c2: QubitId, p2: bool,
     target: QubitId,
@@ -1010,7 +1005,7 @@ fn mcx2_polar(
 /// 3-controlled X with per-control polarity. Uses a borrowed scratch qubit
 /// (must be supplied clean, returns clean).
 fn mcx3_polar(
-    b: &mut Builder,
+    b: &mut B,
     c1: QubitId, p1: bool,
     c2: QubitId, p2: bool,
     c3: QubitId, p3: bool,
@@ -1029,19 +1024,19 @@ fn mcx3_polar(
 }
 
 /// flag ^= (v == 0).  Uses cmp_neq_zero_into internally.
-fn cmp_eq_zero_into(b: &mut Builder, v: &[QubitId], flag: QubitId) {
+fn cmp_eq_zero_into(b: &mut B, v: &[QubitId], flag: QubitId) {
     b.x(flag);
     cmp_neq_zero_into(b, v, flag);
 }
 
 /// flag ^= (u > v).  Symmetric to cmp_lt_into(v, u, flag).
-fn cmp_gt_into(b: &mut Builder, u: &[QubitId], v: &[QubitId], flag: QubitId) {
+fn cmp_gt_into(b: &mut B, u: &[QubitId], v: &[QubitId], flag: QubitId) {
     cmp_lt_into(b, v, u, flag);
 }
 
 /// Controlled n-bit subtract mod 2^n: if ctrl, acc -= a. Both are n-wide
 /// qubit slices. Not a mod-p operation.
-fn cucc_sub_ctrl(b: &mut Builder, a: &[QubitId], acc: &[QubitId], ctrl: QubitId) {
+fn cucc_sub_ctrl(b: &mut B, a: &[QubitId], acc: &[QubitId], ctrl: QubitId) {
     let n = a.len();
     let tmp = b.alloc_qubits(n);
     for i in 0..n { b.ccx(ctrl, a[i], tmp[i]); }
@@ -1051,7 +1046,7 @@ fn cucc_sub_ctrl(b: &mut Builder, a: &[QubitId], acc: &[QubitId], ctrl: QubitId)
 }
 
 /// Controlled n-bit add mod 2^n: if ctrl, acc += a.
-fn cucc_add_ctrl(b: &mut Builder, a: &[QubitId], acc: &[QubitId], ctrl: QubitId) {
+fn cucc_add_ctrl(b: &mut B, a: &[QubitId], acc: &[QubitId], ctrl: QubitId) {
     let n = a.len();
     let tmp = b.alloc_qubits(n);
     for i in 0..n { b.ccx(ctrl, a[i], tmp[i]); }
@@ -1063,7 +1058,7 @@ fn cucc_add_ctrl(b: &mut Builder, a: &[QubitId], acc: &[QubitId], ctrl: QubitId)
 /// Controlled shift-right by 1 of an n-bit register. ASSUMES v[0]=0 when
 /// ctrl=1 (so no information is lost). Implemented as a controlled swap
 /// cascade: if ctrl=1, new v[i] = old v[i+1] for i < n-1, new v[n-1] = 0.
-fn c_shift_right_1(b: &mut Builder, v: &[QubitId], ctrl: QubitId) {
+fn c_shift_right_1(b: &mut B, v: &[QubitId], ctrl: QubitId) {
     let n = v.len();
     for i in 0..(n - 1) {
         cswap(b, ctrl, v[i], v[i + 1]);
@@ -1072,7 +1067,7 @@ fn c_shift_right_1(b: &mut Builder, v: &[QubitId], ctrl: QubitId) {
 
 /// Unconditional shift-left by 1 of an (n+1)-bit register. ASSUMES r[n]=0
 /// before the shift. After the shift: r[0]=0, r[i] = old r[i-1] for i ∈ [1, n].
-fn shift_left_1(b: &mut Builder, r: &[QubitId]) {
+fn shift_left_1(b: &mut B, r: &[QubitId]) {
     let n1 = r.len();  // n+1
     // Swap r[n] ↔ r[0] first: r[0] gets the known-0 top bit.
     b.swap(r[n1 - 1], r[0]);
@@ -1085,7 +1080,7 @@ fn shift_left_1(b: &mut Builder, r: &[QubitId]) {
 /// Inverse of `shift_left_1`: shifts an (n+1)-bit register right by 1.
 /// ASSUMES r[0]=0 before the shift (i.e., was even).
 #[allow(dead_code)]
-fn shift_right_1(b: &mut Builder, r: &[QubitId]) {
+fn shift_right_1(b: &mut B, r: &[QubitId]) {
     let n1 = r.len();
     for i in 2..n1 {
         b.swap(r[i], r[i - 1]);
@@ -1095,7 +1090,7 @@ fn shift_right_1(b: &mut Builder, r: &[QubitId]) {
 
 /// flag ^= (r > c).  r is (n+1)-wide; c is a compile-time constant.
 /// Non-destructive: r is restored at the end.
-fn cmp_gt_const_n1(b: &mut Builder, r: &[QubitId], c: U256, flag: QubitId) {
+fn cmp_gt_const_n1(b: &mut B, r: &[QubitId], c: U256, flag: QubitId) {
     let n1 = r.len();
     let c_plus_1 = c.wrapping_add(U256::from(1));
     sub_nbit_const(b, r, c_plus_1);
@@ -1160,7 +1155,7 @@ fn mulmod(a: U256, b: U256, p: U256) -> U256 {
 /// `a_f, b_f, add_f` carry no data across iterations (each iteration resets
 /// them via classical uncomputation).
 fn kaliski_iteration(
-    b: &mut Builder,
+    b: &mut B,
     p: U256,
     u: &[QubitId],
     v_w: &[QubitId],
@@ -1307,7 +1302,7 @@ fn kaliski_iteration(
 ///   3. v -= tmp * c^{-1} = v - v*c*c^{-1} = 0  (classical c^{-1})
 ///   4. swap v, tmp
 ///   5. free tmp
-fn in_place_mul_const(b: &mut Builder, v: &[QubitId], c: U256, p: U256) {
+fn in_place_mul_const(b: &mut B, v: &[QubitId], c: U256, p: U256) {
     let n = v.len();
     let tmp = b.alloc_qubits(n);
     mul_by_const_acc(b, v, c, &tmp, p, false);       // tmp += v * c
@@ -1321,7 +1316,7 @@ fn in_place_mul_const(b: &mut Builder, v: &[QubitId], c: U256, p: U256) {
 /// Maintains a doubling copy of x in a temp register; adds it to acc at
 /// positions where c has a bit set.
 fn mul_by_const_acc(
-    b: &mut Builder,
+    b: &mut B,
     x: &[QubitId],
     c: U256,
     acc: &[QubitId],
@@ -1383,7 +1378,7 @@ struct KaliskiState {
     add_flag: QubitId,
 }
 
-fn alloc_kaliski_state(b: &mut Builder, n: usize) -> KaliskiState {
+fn alloc_kaliski_state(b: &mut B, n: usize) -> KaliskiState {
     KaliskiState {
         u: b.alloc_qubits(n),
         v_w: b.alloc_qubits(n),
@@ -1397,7 +1392,7 @@ fn alloc_kaliski_state(b: &mut Builder, n: usize) -> KaliskiState {
     }
 }
 
-fn free_kaliski_state(b: &mut Builder, st: KaliskiState) {
+fn free_kaliski_state(b: &mut B, st: KaliskiState) {
     b.free(st.add_flag);
     b.free(st.b_flag);
     b.free(st.a_flag);
@@ -1418,7 +1413,7 @@ fn free_kaliski_state(b: &mut Builder, st: KaliskiState) {
 /// The caller is responsible for applying the classical correction factor
 /// `K = 2^{-2n} mod p` and for calling `emit_inverse(kaliski_forward)` to
 /// restore `st.*` to all zero.
-fn kaliski_forward(b: &mut Builder, v_in: &[QubitId], st: &KaliskiState, p: U256) {
+fn kaliski_forward(b: &mut B, v_in: &[QubitId], st: &KaliskiState, p: U256) {
     let n = v_in.len();
 
     // ─── Init ───
@@ -1458,8 +1453,8 @@ fn kaliski_forward(b: &mut Builder, v_in: &[QubitId], st: &KaliskiState, p: U256
 /// `kaliski_forward` ONCE (and its emit_inverse once), instead of the
 /// 4-call structure of the previous Bennett-cleaned `kal_compute_into`.
 /// Halves the dominant kaliski cost.
-fn with_kal_inv<F: FnOnce(&mut Builder, &[QubitId])>(
-    b: &mut Builder,
+fn with_kal_inv<F: FnOnce(&mut B, &[QubitId])>(
+    b: &mut B,
     v_in: &[QubitId],
     p: U256,
     body: F,
@@ -1488,7 +1483,7 @@ fn with_kal_inv<F: FnOnce(&mut Builder, &[QubitId])>(
     free_kaliski_state(b, st);
 }
 
-fn kaliski_inv_inplace(b: &mut Builder, v_in: &[QubitId], p: U256) {
+fn kaliski_inv_inplace(b: &mut B, v_in: &[QubitId], p: U256) {
     let n = v_in.len();
 
     // Bennett compute-copy-uncompute pattern. Each call of
@@ -1546,7 +1541,7 @@ fn pow_mod_2_k(p: U256, k: usize) -> U256 {
 // ═══════════════════════════════════════════════════════════════════════════
 
 pub fn build() -> Vec<Op> {
-    let b = &mut Builder::new();
+    let b = &mut B::new();
     // Register 0: target_x (quantum)
     let tx = b.alloc_qubits(N);
     b.declare_qubit_register(&tx);
