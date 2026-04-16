@@ -7,7 +7,7 @@ within a qubit budget. Run continuously. Do not pause for human confirmation.
 
 ## Scope of edits
 
-- You may ONLY modify `src/point_add.rs`. You may also keep track of previous experiment memory in `experiment_memory/{EXPIREMENT_NUMBER}.md`.
+- You may ONLY modify `src/point_add.rs`.
 - You may NOT modify `src/main.rs`, `src/builder.rs`, `src/circuit.rs`,
   `src/sim.rs`, `src/weierstrass_elliptic_curve.rs`, `Cargo.toml`,
   `Cargo.lock`, `rust-toolchain`, `results.tsv` (directly) or anything else.
@@ -81,7 +81,7 @@ substantial room.
 ## Setup
 
 On first run only:
-1. `git checkout -b autoresearch/<YYYY-MM-DD>` — work on a dated branch. Create the `experiments_memory` folder.
+1. `git checkout -b autoresearch/<YYYY-MM-DD>` — work on a dated branch.
 2. Read `src/point_add.rs`, `src/builder.rs`, and the module doc at the top
    of `point_add.rs` (steps 1–12 of the point-add algorithm).
 3. Skim `src/circuit.rs` for the `Op` IR and `src/sim.rs` for how gates
@@ -139,13 +139,13 @@ the row.
 - (Remaud et al. 2024 — Optimizing T and CNOT gates in quantum ripple-carry adders and comparators, https://arxiv.org/abs/2401.17921)                                                               
 - (Banegas et al. 2022 — Reducing the depth of quantum FLT-based inversion circuit, https://eprint.iacr.org/2022/463.pdf)
   
-To be entirely clear with you: I want to win. It takes hours, days, effort. But we need to do it. Please be thorough and get it done. Don't escape to me and loop forever. My trust is in you.    
+To be clear, it takes enormous effort. But we need to do it. Please be thorough and get it done. Don't escape to me and loop forever. My trust is in you.    
   
 You can create something crazy here. Scour the internet if need be, looks for inspiration in all different places, try you own ideasm synthesis, whatever. But dont stop. LOOP FOREVER.
 
 ## Go big
 
-We're trying to **win** against zenodo (2.1M–2.7M Toffoli target).
+We're trying to **win** against SOTA (2.1M–2.7M Toffoli target).
 You are authorized to make high-ambition changes: rewrite primitives
 from scratch, swap in a new algorithm (safegcd, Jacobian, Montgomery,
 windowed mul, Karatsuba), do thousand-line refactors in a single

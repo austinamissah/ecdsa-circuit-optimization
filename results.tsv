@@ -27,3 +27,18 @@ timestamp	commit	toffoli	clifford	qubits	ops	correct	notes
 1776232220	fb60dee	19041786.000	35457341.000	3339	61607361	OK	session kickoff sanity
 1776232419	fb60dee	19041786.000	35456317.000	3339	61606337	OK	use b_f as scratch in kaliski step 1 mcx3
 1776232896	5929552	19041786.000	35454269.000	3339	61604289	OK	reuse add_f as scratch in kaliski step 0 and step 2
+1776235873	419a4df	0.000	0.000	3083	61534371	FAIL	kaliski iters 2n-1 instead of 2n | REVERSIBILITY VIOLATION at op #61534115: R targets qubit QubitId(512) but its value across 64 live shots is 0xd335836c5ce198e7 (nonzero). A clean reversible circuit must uncompute every ancilla to |0⟩ before freeing it.
+1776239311	419a4df	19040766.000	35583551.000	3083	61731051	OK	skip mod_neg in pair 2: use Rx-Qx as kaliski input
+1776239495	ee1743e	19038718.000	35312179.000	3083	61454627	OK	skip kaliski_forward final neg, flip pair 1/2 body sub/add
+1776240298	53a4aeb	19034622.000	35303164.000	3083	61439436	OK	defer ty-=Qy into pair 2 body, skip the paired sub/add around the mul
+1776247382	d0d95fd	19034622.000	35303164.000	3083	61439436	OK	swap operand order in pair 2 body mul
+1776247416	d0d95fd	19034622.000	35303164.000	3083	61439436	OK	swap operand order in pair 1 body muls
+1776247578	d0d95fd	19032574.000	35307260.000	3083	61433292	OK	step 1 shared-z trick: save 1 CCX per kaliski iter
+1776249196	dfa4bd0	18508286.000	36093692.000	3083	61695436	OK	kaliski step 4: fused cucc sub/add with shared tmp, transform in place
+1776249747	90775e2	18508286.000	36093948.000	3083	61695180	OK	share a register across 2 tx -= Qx subs in Rx
+1776252156	90775e2	18506238.000	36093692.000	3083	61693388	OK	step 4 fused: skip tmp[n] load, ccx(add_f, r[n], s[n]) directly
+1776253618	07b05f5	0.000	0.000	3083	61683148	FAIL	step 1 simplify: exploit u[0]=1 invariant, a_f always 0 | REVERSIBILITY VIOLATION at op #4606736: R targets qubit QubitId(2564) but its value across 64 live shots is 0x0000000000240050 (nonzero). A clean reversible circuit must uncompute every ancilla to |0⟩ before freeing it.
+1776257425	07b05f5	18506238.000	36093692.000	3083	61693388	OK	sanity check resume loop
+1776257643	07b05f5	0.000	0.000	3083	61686714	FAIL	cmp_lt_into/with_lt: drop first-maj ccx since c_in=0 | REVERSIBILITY VIOLATION at op #10839496: R targets qubit QubitId(3078) but its value across 64 live shots is 0x2df61e8a9c3b566e (nonzero). A clean reversible circuit must uncompute every ancilla to |0⟩ before freeing it.
+1776273981	07b05f5	18506238.000	36093692.000	3083	61693388	OK	session start: confirming baseline
+1776275896	19741a2	18506238.000	36093692.000	3083	61693388	OK	cleanup: remove unused kaliski_inv_inplace + pow_mod_2_k
