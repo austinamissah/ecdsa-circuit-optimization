@@ -2011,9 +2011,11 @@ fn kaliski_iteration(
     b.free(l_gt);
 
     // ─── STEP 3: with control(a): swap(u, v_w); swap(r, s) ───
-    // (r, s) truncated: at this point max(r,s) ≤ 2^iter_idx, so r[j]=s[j]=0
-    // for j >= iter_idx+1. Those cswaps are identity; skip them.
-    for j in 0..n { cswap(b, a_f, u[j], v_w[j]); }
+    // Late-iter truncation: Kaliski invariant: bitlen(u) + bitlen(v_w) ≤ 2n-iter,
+    // so u[j]=v_w[j]=0 for j >= 2n-iter_idx. Truncate (u,v_w) cswap.
+    // Small-iter truncation: max(r,s) ≤ 2^iter_idx, so r[j]=s[j]=0 for j >= iter_idx+1.
+    let uv_width = if iter_idx < n { n } else { 2 * n - iter_idx };
+    for j in 0..uv_width { cswap(b, a_f, u[j], v_w[j]); }
     let rs_width_step3 = if iter_idx + 1 < n { iter_idx + 1 } else { n };
     for j in 0..rs_width_step3 { cswap(b, a_f, r[j], s[j]); }
 
@@ -2090,9 +2092,10 @@ fn kaliski_iteration(
     }
 
     // ─── STEP 9: with control(a): swap(u, v_w); swap(r, s) (again) ───
-    // (r, s) truncated: after STEP 4 s ≤ 2^{iter_idx+1} and after STEP 7+8
-    // r ≤ 2^{iter_idx+1}, so r[j]=s[j]=0 for j >= iter_idx+2. Skip those.
-    for j in 0..n { cswap(b, a_f, u[j], v_w[j]); }
+    // Late-iter (u,v_w) truncation per Kaliski invariant (same as STEP 3).
+    // Small-iter (r,s) truncation: after STEP 4 s ≤ 2^{iter+1}, after STEP 7+8 r ≤ 2^{iter+1}.
+    let uv_width = if iter_idx < n { n } else { 2 * n - iter_idx };
+    for j in 0..uv_width { cswap(b, a_f, u[j], v_w[j]); }
     let rs_width_step9 = if iter_idx + 2 < n { iter_idx + 2 } else { n };
     for j in 0..rs_width_step9 { cswap(b, a_f, r[j], s[j]); }
 
@@ -2340,10 +2343,10 @@ fn kaliski_iteration_backward(
     b.x(s[0]);
 
     // ── Reverse STEP 9 ─────────────────────────────────────────────────
-    // Truncated (r,s) cswap matching forward STEP 9.
     let rs_width_step9 = if iter_idx + 2 < n { iter_idx + 2 } else { n };
+    let uv_width = if iter_idx < n { n } else { 2 * n - iter_idx };
     for j in (0..rs_width_step9).rev() { cswap(b, a_f, r[j], s[j]); }
-    for j in (0..n).rev() { cswap(b, a_f, u[j], v_w[j]); }
+    for j in (0..uv_width).rev() { cswap(b, a_f, u[j], v_w[j]); }
 
     // ── Reverse STEP 8 + 7 ─────────────────────────────────────────────
     // For iter_idx < R_SMALL_THRESHOLD, forward used mod_double_no_corr —
@@ -2399,10 +2402,10 @@ fn kaliski_iteration_backward(
     b.x(b_f);
 
     // ── Reverse STEP 3 ─────────────────────────────────────────────────
-    // Truncated (r,s) cswap matching forward STEP 3.
     let rs_width_step3 = if iter_idx + 1 < n { iter_idx + 1 } else { n };
+    let uv_width = if iter_idx < n { n } else { 2 * n - iter_idx };
     for j in (0..rs_width_step3).rev() { cswap(b, a_f, r[j], s[j]); }
-    for j in (0..n).rev() { cswap(b, a_f, u[j], v_w[j]); }
+    for j in (0..uv_width).rev() { cswap(b, a_f, u[j], v_w[j]); }
 
     // ── Reverse STEP 2 (with_gt body is self-inverse) ──────────────────
     let l_gt = b.alloc_qubit();
