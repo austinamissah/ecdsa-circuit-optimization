@@ -871,6 +871,20 @@ fn mod_double_inplace_fast(b: &mut B, v: &[QubitId], p: U256) {
     b.free(ovf);
 }
 
+/// `v := 2*v` assuming v[n-1] = 0 (no wrap). Just a shift-left cascade.
+/// 0 Toffoli. Used in Kaliski STEP 7+8 for small iters where r[255]=0 guaranteed.
+fn mod_double_no_corr(b: &mut B, v: &[QubitId]) {
+    let n = v.len();
+    for i in (0..n - 1).rev() { b.swap(v[i], v[i + 1]); }
+}
+
+/// `v := v/2` assuming v[0] = 0 (v was even after corresponding no-corr double).
+/// Exact inverse of `mod_double_no_corr`. 0 Toffoli.
+fn mod_halve_no_corr(b: &mut B, v: &[QubitId]) {
+    let n = v.len();
+    for i in 0..n - 1 { b.swap(v[i], v[i + 1]); }
+}
+
 /// Fast `v := v/2 mod p`. Explicit reverse of `mod_double_inplace` with
 /// measurement-based Cuccaro (not emit_inverse).
 fn mod_halve_inplace_fast(b: &mut B, v: &[QubitId], p: U256) {
@@ -1920,6 +1934,12 @@ fn mulmod(a: U256, b: U256, p: U256) -> U256 {
 /// WITHIN this function, via the conjugate pattern. The persistent flags
 /// `a_f, b_f, add_f` carry no data across iterations (each iteration resets
 /// them via classical uncomputation).
+/// Threshold: for iter_idx < R_SMALL_THRESHOLD, r's top bit is guaranteed 0
+/// (since max(r,s) doubles per iter starting from max=1, so max ≤ 2^iter_idx).
+/// In that range, mod_double(r)'s Solinas cadd is identity — replace with
+/// a plain shift (0 Toffoli) for ~255 CCX savings per iter.
+const R_SMALL_THRESHOLD: usize = 255;
+
 fn kaliski_iteration(
     b: &mut B,
     p: U256,
@@ -1932,6 +1952,7 @@ fn kaliski_iteration(
     a_f: QubitId,
     b_f: QubitId,
     add_f: QubitId,
+    iter_idx: usize,
 ) {
     let n = u.len();
 
@@ -2044,9 +2065,14 @@ fn kaliski_iteration(
     for i in 0..(n - 1) { b.swap(v_w[i], v_w[i + 1]); }
 
     // ─── STEP 7 + 8: r := 2*r mod p ───────────────────────────────────
-    // This is the same secp256k1 pseudo-Mersenne doubling we already use
-    // elsewhere.
-    mod_double_inplace_fast(b, r, p);
+    // For iter_idx < R_SMALL_THRESHOLD, r's top bit is guaranteed 0 (since
+    // max(r,s) ≤ 2^iter_idx by induction). mod_double's Solinas correction
+    // is identity; a plain shift suffices. Saves ~255 CCX per small iter.
+    if iter_idx < R_SMALL_THRESHOLD {
+        mod_double_no_corr(b, r);
+    } else {
+        mod_double_inplace_fast(b, r, p);
+    }
 
     // ─── STEP 9: with control(a): swap(u, v_w); swap(r, s) (again) ───
     for j in 0..n { cswap(b, a_f, u[j], v_w[j]); }
@@ -2199,6 +2225,7 @@ fn kaliski_forward(b: &mut B, v_in: &[QubitId], st: &KaliskiState, p: U256) {
             b, p, &st.u, &st.v_w, &st.r, &st.s,
             st.m_hist[i],
             st.f_flag, st.a_flag, st.b_flag, st.add_flag,
+            i,
         );
     }
 
@@ -2285,6 +2312,7 @@ fn kaliski_iteration_backward(
     a_f: QubitId,
     b_f: QubitId,
     add_f: QubitId,
+    iter_idx: usize,
 ) {
     let n = u.len();
 
@@ -2298,8 +2326,13 @@ fn kaliski_iteration_backward(
     for j in (0..n).rev() { cswap(b, a_f, u[j], v_w[j]); }
 
     // ── Reverse STEP 8 + 7 ─────────────────────────────────────────────
-    // Inverse of the fast secp256k1 doubling used in the forward pass.
-    mod_halve_inplace_fast(b, r, p);
+    // For iter_idx < R_SMALL_THRESHOLD, forward used mod_double_no_corr —
+    // r is guaranteed even (bit 0 = 0), so a plain shift-right inverts it.
+    if iter_idx < R_SMALL_THRESHOLD {
+        mod_halve_no_corr(b, r);
+    } else {
+        mod_halve_inplace_fast(b, r, p);
+    }
 
     // ── Reverse STEP 6 (unconditional shift-left) ───────────
     let _ = f;
@@ -2425,6 +2458,7 @@ fn kaliski_backward(b: &mut B, v_in: &[QubitId], st: &KaliskiState, p: U256) {
             b, p, &st.u, &st.v_w, &st.r, &st.s,
             st.m_hist[i],
             st.f_flag, st.a_flag, st.b_flag, st.add_flag,
+            i,
         );
     }
 
