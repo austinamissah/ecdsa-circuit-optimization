@@ -1957,10 +1957,10 @@ fn kaliski_iteration(
     let n = u.len();
 
     // ─── STEP 0: is_zero = (v_w == 0);  m[i] ^= (f AND is_zero);  f ^= m[i] ───
-    // add_f is zero here (uncomputed in step 5 of the prior iter, or 0 at
-    // init). Borrow it as the is_zero scratch instead of allocating.
-    // Uses with_eq_zero_fast: measurement-based OR chain uncompute (saves 255 CCX).
-    with_eq_zero_fast(b, v_w, add_f, |b| {
+    // Truncated OR chain for late iter: v_w's bits [2n-iter..n-1] are 0
+    // (Kaliski invariant), so OR only of low 2n-iter bits suffices.
+    let or_width = if iter_idx < n { n } else { 2 * n - iter_idx };
+    with_eq_zero_fast(b, &v_w[0..or_width], add_f, |b| {
         b.ccx(f, add_f, m_i);
     });
     b.cx(m_i, f);
@@ -2461,11 +2461,11 @@ fn kaliski_iteration_backward(
     }
 
     // ── Reverse STEP 0 (with measurement uncompute of OR chain) ────────
+    // Truncated for late iter: only low 2n-iter bits of v_w are possibly nonzero.
     b.cx(m_i, f);
     {
-        // Recompute OR chain (forward direction), run body, then
-        // measurement-uncompute the chain.
-        let nv = v_w.len();
+        let or_width = if iter_idx < n { n } else { 2 * n - iter_idx };
+        let nv = or_width;
         if nv == 1 {
             b.x(v_w[0]);
             b.cx(v_w[0], add_f);
