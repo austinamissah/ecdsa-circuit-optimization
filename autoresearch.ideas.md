@@ -57,3 +57,23 @@ Kaliski requires up to 2n-1 = 511 iters for **deterministic** correctness on any
 - `m_hist` (400 qubits): persistent, blocked by HMR randomization (no deterministic qubit→bit primitive).
 - Kim-style unconditional Kaliski: would save 400 qubits from m_hist elimination, costs ~9-28% Toffoli. Multi-session task.
 - Full Bennett pattern: saves ~650 qubits during body, costs +1.2M Toffoli (28%). Too expensive.
+
+## 2026-04-21 Toffoli-focused session recap
+Started with 2708q/4.41M. Target: reduce BOTH qubits and Toffoli.
+
+Tried:
+- Karatsuba 1-level/2-level at in-Kaliski: saves 83-118k Toffoli but costs 258-520 qubits (peak 2966-3226 > 2800 cap).
+- Shift_left/right fast Cuccaro swap: saves 17k Toffoli for 21 qubits. (KEPT)
+
+Blocked structural paths (already exhausted):
+- Montgomery batched (prior iters 123-129): measured NET WORSE — 1.7× ops, 2× qubits. Algebraic elegance doesn't translate.
+- Bernstein-Yang divstep: novel research territory, not feasible single-session.
+- Windowed classical-const-mul: needs new QROM primitive, multi-session.
+- Reduce iter count below 399: deterministic test at 9024 inputs fails at 398.
+
+**Fundamental observation**: We're ~1500 qubits and ~2M Toffoli from Google's SOTA (1175q/2.1M). Published literature (HRSL, Kim) reports 10-17M Toffoli; we're at 4.4M, which already beats published. Google's 2.1M is secret.
+
+To close the gap requires stacking multiple novel structural primitives:
+1. Windowed classical-const-mul (300-400k Toffoli savings, localized).
+2. Bernstein-Yang divstep or 2-bit-per-iter Kaliski (~200 qubit savings + 500k-1M Toffoli savings).
+3. Either is multi-session with unit-test infrastructure not available in current harness.
