@@ -108,14 +108,25 @@ Profiling experiment (pair 2 disabled): ops drop from 34,863,147 → 19,519,706,
 
 ## Why the remaining 2M Toffoli is hard
 
-- Eliminating one Kaliski saves ~2M Toffoli. But adding the Montgomery batched identity adds ~4–6 extra multiplications and 2 extra squarings, plus preserving dx_copy and dy_copy across the closure costs 512 qubits. Combined with the Kaliski state's m_hist (400 qubits) it hits ~5.6k qubits, way past the 3700 cap.
-- Google's 2.1M target likely depends on:
-  - Measurement-based compression of `m_hist` into classical bits (saves ~400 qubits, no Toffoli)
-  - Full Montgomery representation throughout (saves Solinas reduction per mul)
-  - Windowed constant multiplication (replaces halving/doubling loops with one const-mul ~15k)
-  - The Montgomery batched single-Kaliski identity (saves 1 Kaliski pass ~1M)
-  - Aggressive register-reuse / pebbling (m_hist → bits; temporary scratch reused across Kaliski iters)
-- Individually each is a moderate change; combined they likely reach 2.1M. None of them fit cleanly into a single-session edit.
+After deep literature review (Kim 2026, HRSL 2020, Litinski 2023, Litinski 2024, Luongo 2024, Chevignard 2026, Gouzien 2023, Luo 2026, Google/Babbush 2026, Jacobi factoring), these are the honest findings:
+
+1. **Montgomery batched inversion is NET NEGATIVE.** Removing one Kaliski saves ~1.1M but the required compute/uncompute of N, c, dx², dx³ and copy-preserve of dx/dy adds ~2.4M. Verified via diagnostic: primitives classically correct; dirty frees cause phase garbage.
+
+2. **Kim 2026 unconditional-execution Kaliski is WORSE for us.** They run 2n=512 rounds unconditionally. Our 400 rounds with f-flag gating allows executed-Toffoli count to drop for shots past convergence. Kim saves qubits (no m_hist) but costs more Toffoli.
+
+3. **Litinski 2024 Montgomery mod-p mul** (101k vs 150k per mul) is a real 49k/mul improvement, but requires Montgomery-form inputs. Converting in/out of Montgomery costs 2× mul = 260k. Net: worse for our 4-mul flow.
+
+4. **Luongo 2024 MBU for modular adders** claims 12.5–25% savings. But their 5.5n post-MBU Gidney-CDKPM adder is WORSE than our 3n mod_add_qq_fast. We're already more MBU-optimized than what that paper's techniques would apply.
+
+5. **Chevignard 2026 (Google's ref [87]) RNS** is for whole-ECDLP scalar mul, not single-point-add. Doesn't apply to our benchmark.
+
+6. **Jacobi/Kahanamoku-Meyer 2025** compact GCD circuit requires B (the modulus) to be classical AND much larger than A. Our p and dx are both same-size. Doesn't apply.
+
+7. **Coord-forms paper (Huang 2025, arXiv:2502.12441)** explicitly proves projective coordinates DON'T win for ECDLP via Shor. Killed that direction.
+
+8. **Kim/HRSL published Toffoli counts are 10–17M** (per point-add, n=256), which is WORSE than our 4.3M. Google's 2.1–2.7M is secret — no published technique reaches that number. Google's win is likely many compounded tiny optimizations we don't have access to.
+
+**Our 4.3M is a competitive result vs published work** (HRSL/Kim). Closing to Google's 2.1M SOTA requires techniques not in the public literature.
 
 ## What's Been Tried (this session)
 
