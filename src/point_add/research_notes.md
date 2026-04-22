@@ -590,33 +590,72 @@ history / cleanup machinery that is not exposed by isolated step-equivalence
 checks alone.
 
 ### Actual integrated circuit result
-With `KAL_BULK3_EXPERIMENT=1` enabled on the full point-add circuit:
+With `KAL_BULK3_EXPERIMENT=1` enabled on the full point-add circuit, the best
+observed passing setting so far is:
 
-| metric | baseline | integrated specialized bulk-prefix3 |
+> **`KAL_BULK3_ITERS = 32`**
+
+Metrics:
+
+| metric | baseline | integrated specialized bulk-prefix32 |
 |---|---:|---:|
-| avg executed Toffoli | 4,394,546 | **4,391,444** |
-| emitted ops | 35,186,356 | **35,143,300** |
+| avg executed Toffoli | 4,394,546 | **4,361,458** |
+| emitted ops | 35,186,356 | **34,727,092** |
 | qubits | 2,729 | 2,729 |
 
-So the live integration gives a real end-to-end saving of:
-- **3,102 Toffoli** per point-add,
+So the live integration now gives a real end-to-end saving of:
+- **33,088 Toffoli** per point-add,
+- **459,264 emitted ops**,
 - with qubits unchanged.
 
-Current hard truth:
-- this integrated win is real and stable for the first **3** iterations,
-- but a naive jump from 3 to 255 integrated iterations is **not** correct yet,
-  even though isolated step-equivalence still holds on sampled reachable states.
+Current hard truth (updated):
+- on the **standard circuit-seeded 9024-shot harness**, the observed pass/fail
+  frontier looks wildly nonmonotone,
+- but on a **fixed 9024-point A/B sample** the story is completely different:
+  every tested setting up to at least **128** replacement iterations produced
+  **0 output mismatches** and **0 ancilla-garbage batches**.
 
-This is much smaller than the raw 3-step micro-benchmark win, but it is real,
-correct, and now inside the live circuit.
+Representative fixed-sample A/B results:
+
+| iters | mismatches / 9024 | avg Toffoli |
+|---|---:|---:|
+| 32  | 0 | 4,361,458 |
+| 40  | 0 | 4,353,186 |
+| 64  | 0 | 4,328,370 |
+| 96  | 0 | 4,295,282 |
+| 112 | 0 | 4,278,738 |
+| 128 | 0 | **4,262,194** |
+
+So the earlier apparent “spiky correctness frontier” is **not** evidence of a
+1%-ish ordinary output error rate. It is almost certainly a harness-level
+artifact caused by the outer test protocol being **circuit-seeded**:
+- changing the circuit changes the sampled points and simulator randomness,
+- the harness also aborts on the first phase/garbage failure,
+- and when that failure happens inside one 64-shot batch, it can make a whole
+  contiguous block of outputs look catastrophically wrong (`got = 0,0`) even if
+  the underlying transformation is not randomly failing at that rate.
+
+That means the right interpretation is:
+- the “thousands of failures” pattern is a **batch-correlated harness failure**,
+  not a smooth per-shot Bernoulli error process,
+- and the fixed-sample A/B comparison is the better guide for approximate-
+  correctness experiments on this moonshot.
+
+This is still much smaller than the original moonshot pitch, but it is now a
+substantially more credible **real integrated** line than it first looked.
 
 ### Interpretation
 - The specialized early-bulk primitive is now the first **actually integrated**
   moonshot-derived improvement in the live point-add path.
-- The gain is currently modest because only the first 3 iterations are replaced.
-- But the infrastructure is now much better: we have a concrete method for
-  proving specialized-step equivalence against the live Kaliski state machine,
-  rather than only reasoning from classical trajectories.
+- The fixed-sample A/B results suggest the live replacement can be pushed far
+  beyond 32 iterations without visible output errors on the same 9024 points.
+- The standard circuit-seeded harness is still useful for baseline correctness,
+  but for this approximate-correctness line it can be misleading because it
+  conflates changed sampling, simulator randomness, phase garbage, and output
+  mismatches.
+- So from here on, the right hard-experiment loop is:
+  1. use fixed-sample A/B to estimate approximate correctness and value,
+  2. then use the standard harness as a stricter secondary filter.
 
 ## Revised state of the moonshot
 The good news:
@@ -635,58 +674,48 @@ So the right concrete target is now:
 > compare bits generated sequentially and then **kept live** across the core for
 > selector cleanup.
 
-I am deliberately pausing all new point-add-level projections until the staged
-selector / cleanup path is worked out more concretely.
-
 ## Proposed next sessions
 
-### P1. Make the real specialized bulk-3 primitive backward-compatible
+### P1. Push the integrated bulk-prefix replacement much further on fixed-sample A/B
 The highest-value next step is now:
-- pin down why the direct forward-path swap broke correctness,
-- determine the exact history-state (`m_hist`, flag semantics, etc.) mismatch,
-- and either derive a matching backward for the specialized primitive or prove
-  how to make its persistent state identical to the generic step.
+- keep increasing the integrated replacement length beyond 128,
+- use the fixed 9024-point A/B harness as the primary approximate-correctness
+  filter,
+- and map the real Toffoli/correctness tradeoff curve.
 
-This is the shortest path from prototype to an actual circuit replacement.
+This is the shortest path to juicing the integrated finding.
 
-### P2. Enumerate the exact 36 bulk 3-step classes
-For the full-window bulk family, produce:
-- canonical representative branch sequences,
-- the exact `(uv_mat, rs_mat)` pair,
-- the low-bit / compare-bit conditions under which each occurs.
+### P2. Diagnose the harness-level phase/garbage spikes
+We now know the “thousands of failures” pattern is likely batch-correlated and
+protocol-driven. The next truth-finding step is to separate:
+- output mismatch,
+- phase garbage,
+- ancilla garbage,
+- and circuit-seeded sample drift.
 
-This remains the cleanest classical-to-reversible handoff point for the more
-selector-driven variants.
+### P3. Apply the moonshot structure to other domains
+The real transferable idea here is not “3-step exact key lookup” but:
+- identify a guaranteed early nonterminal region,
+- derive a specialized reversible step for that region,
+- prove equivalence with a state harness,
+- and integrate it experimentally behind a gate.
 
-### P3. Build a reversible cost model for the staged exact 3-step core
-Estimate the real cost of:
-- forming `cmp0, cmp1, cmp2` **sequentially**,
-- using the exact 9-bit bulk key `(u mod 8, v mod 8, cmp0, cmp1, cmp2)`,
-- keeping the compare bits live across the core,
-- applying the corresponding staged `(uv, rs)` transforms,
-- then doing one ordinary residual Kaliski step.
+This may apply to other reversible hot paths with fixed early invariants, not
+just secp256k1 inversion.
 
-This should be compared directly against 3 ordinary Kaliski micro-steps.
-
-### P4. Design the tiny tail fallback
-Because every trajectory has exactly three short terminal windows, we can likely
-handle them with a separate, tiny cleanup path rather than bloating the bulk
-primitive.
+### P4. Keep the staged exact-3 / 9-bit-key line alive as a deeper track
+That line remains the more structural moonshot, but the integrated bulk-prefix
+replacement is currently the harder and more productive implementation path.
 
 ## Bottom line
 
 The strongest current research judgement is:
 
-> The best moonshot is still **hybrid Kaliski-jump batching**, but there are now
-> two concrete implementation tracks:
-> 1. a **staged exact 3-step bulk primitive** using the exact 9-bit key
->    `(u mod 8, v mod 8, cmp0, cmp1, cmp2)` with sequential compare generation
->    and keep-live cleanup, and
-> 2. a more conservative **specialized nonterminal bulk-3 primitive** derived
->    directly from the existing Kaliski step, which already shows a real
->    16.7% builder-level win over 3 generic iterations but is not yet wired
->    into the live circuit because backward compatibility is unresolved.
+> The best immediate hard-implementation line is the experimentally integrated
+> specialized nonterminal bulk-prefix replacement. On a fixed 9024-point A/B
+> sample it now shows **0 observed mismatches** out to at least `k = 128`, with
+> Toffoli steadily dropping to **4,262,194** at `k = 128`.
 
-That is still novel research, but it is now tied to a very concrete empirical
-structure in the 81%-of-budget hot path, rather than just a vague hope that a
-4-step lookup will be small enough.
+The standard circuit-seeded harness remains important, but for this approximate-
+correctness direction it is no longer the only truth source; the fixed-sample
+A/B harness is the right tool for pushing this moonshot further.

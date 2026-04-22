@@ -104,8 +104,9 @@ fn run_tests(ops: &[Op], layout_regs: &[Vec<QubitOrBit>], total_qubits: u32, num
     let mut sim = Simulator::new(total_qubits as usize, num_bits as usize, &mut xof);
     let mut ok = true;
     let mut fail_reason: Option<String> = None;
-
-    let mut got = vec![(U256::ZERO, U256::ZERO); n];
+    let mut classical_failures = 0usize;
+    let mut phase_garbage_batches = 0usize;
+    let mut ancilla_garbage_batches = 0usize;
 
     const BATCH: usize = 64;
     let num_batches = (n + BATCH - 1) / BATCH;
@@ -134,9 +135,9 @@ fn run_tests(ops: &[Op], layout_regs: &[Vec<QubitOrBit>], total_qubits: u32, num
             let i = batch * BATCH + shot;
             let gx = sim.get_register(&layout_regs[0], shot);
             let gy = sim.get_register(&layout_regs[1], shot);
-            got[i] = (gx, gy);
             if gx != expected[i].0 || gy != expected[i].1 {
-                if ok {
+                classical_failures += 1;
+                if fail_reason.is_none() {
                     fail_reason = Some(format!(
                         "CLASSICAL MISMATCH shot {i}: got ({:#x},{:#x}) exp ({:#x},{:#x})",
                         gx, gy, expected[i].0, expected[i].1
@@ -145,7 +146,6 @@ fn run_tests(ops: &[Op], layout_regs: &[Vec<QubitOrBit>], total_qubits: u32, num
                 ok = false;
             }
         }
-        if !ok { break; }
 
         // ─── Phase garbage check ────────────────────────────────────────
         // Upstream zenodo's protocol: after forward, the global phase must
@@ -153,14 +153,15 @@ fn run_tests(ops: &[Op], layout_regs: &[Vec<QubitOrBit>], total_qubits: u32, num
         // gates (Z/CZ/CCZ) or bad Hmr uncomputation.
         let phase = sim.global_phase() & cond_mask;
         if phase != 0 {
+            phase_garbage_batches += 1;
             let msg = format!(
                 "PHASE GARBAGE: global_phase = {:#018x} across {} live shots (must be 0)",
                 phase, bs
             );
-            eprintln!("\n!! {msg}");
-            fail_reason = Some(msg);
+            if fail_reason.is_none() {
+                fail_reason = Some(msg);
+            }
             ok = false;
-            break;
         }
 
         // ─── End-state ancillary garbage check ──────────────────────────
@@ -183,28 +184,24 @@ fn run_tests(ops: &[Op], layout_regs: &[Vec<QubitOrBit>], total_qubits: u32, num
             }
         }
         if let Some(q) = garbage_q {
+            ancilla_garbage_batches += 1;
             let v = sim.qubit(circuit::QubitId(q)) & cond_mask;
             let msg = format!(
                 "ANCILLA GARBAGE: qubit {} = {:#018x} (live shots) at end of forward; \
                  every non-register qubit must be |0⟩ on every live shot",
                 q, v
             );
-            eprintln!("\n!! {msg}");
-            fail_reason = Some(msg);
+            if fail_reason.is_none() {
+                fail_reason = Some(msg);
+            }
             ok = false;
-            break;
         }
     }
 
-    println!("  test points:");
-    for i in 0..n {
-        let mark = if got[i] == expected[i] { "OK  " } else { "FAIL" };
-        println!("    [{i:02}] {mark}");
-        println!("         T   =({:#x}, {:#x})", targets[i].0, targets[i].1);
-        println!("         O   =({:#x}, {:#x})", offsets[i].0, offsets[i].1);
-        println!("         got =({:#x}, {:#x})", got[i].0, got[i].1);
-        println!("         exp =({:#x}, {:#x})", expected[i].0, expected[i].1);
-    }
+    println!("  tested shots            : {}", n);
+    println!("  classical mismatches    : {}", classical_failures);
+    println!("  phase-garbage batches   : {}", phase_garbage_batches);
+    println!("  ancilla-garbage batches : {}", ancilla_garbage_batches);
 
     let denom = n.max(1) as f64;
     let avg_cliff = sim.stats.clifford_gates as f64 / denom;
@@ -265,7 +262,6 @@ fn append_results_row(
 fn main() {
     let note = parse_note();
     println!("=== quantum_ecc: secp256k1 point addition baseline ===\n");
-    let curve = secp256k1();
 
     println!("-- building circuit --");
     let ops = point_add::build();
@@ -292,6 +288,9 @@ fn main() {
     let (ok, avg_cliff, avg_tof, tot_tof, tot_cliff, n_shots, fail_reason) = run_tests(&ops, &regs, total_qubits, num_bits);
     if !ok {
         println!("\n!! correctness FAILED");
+        if let Some(r) = &fail_reason {
+            println!("  first failure          : {}", r);
+        }
         let fail_note = match &fail_reason {
             Some(r) => format!("{note} | {r}"),
             None => note.clone(),
@@ -299,7 +298,7 @@ fn main() {
         append_results_row("FAIL", avg_tof, avg_cliff, total_qubits, ops.len(), &fail_note);
         std::process::exit(1);
     }
-    println!("  all {} shots OK", NUM_TESTS);
+    println!("  all {} shots OK", n_shots);
 
     println!("\n=== circuit metrics (secp256k1, n=256) ===");
     println!("  avg executed Toffoli  : {:.3}", avg_tof);

@@ -9,6 +9,8 @@
 //! because the current blocker is backward/history compatibility, not lack of
 //! raw cost numbers.
 
+use std::sync::{Mutex, OnceLock};
+
 use alloy_primitives::U256;
 use sha3::digest::{ExtendableOutput, Update};
 
@@ -17,8 +19,41 @@ use crate::sim::Simulator;
 use super::kaliski_jump::Sampler;
 use super::test_timeout::{check_deadline, two_min_deadline};
 use super::{
-    kaliski_iteration, kaliski_iteration_bulk_prefix3, B, N, Op, QubitId, SECP256K1_P,
+    kaliski_iteration, kaliski_iteration_bulk_prefix3, with_kal_inv_raw, B, N, Op, QubitId,
+    SECP256K1_P,
 };
+
+fn env_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
+
+fn with_bulk_env<T>(iters: usize, enabled: bool, f: impl FnOnce() -> T) -> T {
+    let _guard = env_lock().lock().unwrap();
+    let old_exp = std::env::var("KAL_BULK3_EXPERIMENT").ok();
+    let old_iters = std::env::var("KAL_BULK3_ITERS").ok();
+    unsafe {
+        if enabled {
+            std::env::set_var("KAL_BULK3_EXPERIMENT", "1");
+            std::env::set_var("KAL_BULK3_ITERS", iters.to_string());
+        } else {
+            std::env::remove_var("KAL_BULK3_EXPERIMENT");
+            std::env::remove_var("KAL_BULK3_ITERS");
+        }
+    }
+    let out = f();
+    unsafe {
+        match old_exp {
+            Some(v) => std::env::set_var("KAL_BULK3_EXPERIMENT", v),
+            None => std::env::remove_var("KAL_BULK3_EXPERIMENT"),
+        }
+        match old_iters {
+            Some(v) => std::env::set_var("KAL_BULK3_ITERS", v),
+            None => std::env::remove_var("KAL_BULK3_ITERS"),
+        }
+    }
+    out
+}
 
 #[derive(Clone)]
 struct StepCircuit {
@@ -31,6 +66,14 @@ struct StepCircuit {
     s: Vec<QubitId>,
     m: QubitId,
     f: QubitId,
+}
+
+#[derive(Clone)]
+struct IdentityCircuit {
+    ops: Vec<Op>,
+    num_qubits: usize,
+    num_bits: usize,
+    v: Vec<QubitId>,
 }
 
 fn build_generic_step(iter_idx: usize) -> StepCircuit {
@@ -86,6 +129,20 @@ fn build_special_three_steps() -> StepCircuit {
     }
 }
 
+fn build_with_kal_inv_identity(enabled: bool, bulk_iters: usize) -> IdentityCircuit {
+    with_bulk_env(bulk_iters, enabled, || {
+        let mut b = B::new();
+        let v = b.alloc_qubits(N);
+        with_kal_inv_raw(&mut b, &v, SECP256K1_P, 2 * N - 113, |_b, _inv| {});
+        IdentityCircuit {
+            ops: b.ops,
+            num_qubits: b.next_qubit as usize,
+            num_bits: b.next_bit as usize,
+            v,
+        }
+    })
+}
+
 fn set_slice<R: sha3::digest::XofReader>(sim: &mut Simulator<R>, qs: &[QubitId], val: U256) {
     for (i, &q) in qs.iter().enumerate() {
         if val.bit(i) {
@@ -105,7 +162,7 @@ fn get_slice<R: sha3::digest::XofReader>(sim: &Simulator<R>, qs: &[QubitId]) -> 
 }
 
 fn run_step_circuit(c: &StepCircuit, u0: U256, v0: U256, r0: U256, s0: U256, m0: bool, f0: bool)
-    -> (U256, U256, U256, U256, bool, bool)
+    -> (U256, U256, U256, U256, bool, bool, u64)
 {
     let mut hasher = sha3::Shake128::default();
     hasher.update(b"kaliski-equivalence-seed-v1");
@@ -125,7 +182,18 @@ fn run_step_circuit(c: &StepCircuit, u0: U256, v0: U256, r0: U256, s0: U256, m0:
         get_slice(&sim, &c.s),
         (sim.qubit(c.m) & 1) != 0,
         (sim.qubit(c.f) & 1) != 0,
+        sim.global_phase() & 1,
     )
+}
+
+fn run_identity_circuit(c: &IdentityCircuit, v0: U256) -> (U256, u64, Vec<u64>) {
+    let mut hasher = sha3::Shake128::default();
+    hasher.update(b"kaliski-equivalence-seed-v-id");
+    let mut xof = hasher.finalize_xof();
+    let mut sim = Simulator::new(c.num_qubits, c.num_bits, &mut xof);
+    set_slice(&mut sim, &c.v, v0);
+    sim.apply(&c.ops);
+    (get_slice(&sim, &c.v), sim.global_phase() & 1, sim.qubits.clone())
 }
 
 #[derive(Clone, Debug)]
@@ -250,6 +318,7 @@ mod tests {
                 assert_eq!(out.3, exp.s, "s mismatch at sample {} iter {}", sample_idx, iter_idx);
                 assert_eq!(out.4, classical_m_bit(st.u, st.v), "m mismatch at sample {} iter {}", sample_idx, iter_idx);
                 assert!(out.5, "f should remain 1 through first 3 iterations; sample {} iter {}", sample_idx, iter_idx);
+                assert_eq!(out.6, 0, "phase mismatch at sample {} iter {}", sample_idx, iter_idx);
             }
         }
     }
@@ -357,6 +426,28 @@ mod tests {
                 let g = run_step_circuit(&generic[j], st.u, st.v, st.r, st.s, false, true);
                 let s = run_step_circuit(&special[j], st.u, st.v, st.r, st.s, false, true);
                 assert_eq!(g, s, "late safe-prefix mismatch at sample {} iter {}\nstate_before={:?}\ngeneric={:?}\nspecial={:?}", sample_idx, iter_idx, st, g, s);
+            }
+        }
+    }
+
+    #[test]
+    fn with_kal_inv_raw_phase_equivalence_small_prefix() {
+        let deadline = two_min_deadline();
+        let ks = [4usize, 8, 16, 32];
+        let generic = build_with_kal_inv_identity(false, 0);
+        let specials: Vec<_> = ks.iter().map(|&k| build_with_kal_inv_identity(true, k)).collect();
+        let mut sampler = Sampler::new(b"kaliski-equiv-sampler-v6", SECP256K1_P);
+
+        for sample_idx in 0..64usize {
+            if (sample_idx & 15) == 0 { check_deadline(deadline, "kaliski_equiv::with_kal_inv_raw_phase_equivalence_small_prefix"); }
+            let v0 = sampler.next();
+            let g = run_identity_circuit(&generic, v0);
+            assert_eq!(g.0, v0, "generic identity output mismatch sample {}", sample_idx);
+            for (j, &k) in ks.iter().enumerate() {
+                let s = run_identity_circuit(&specials[j], v0);
+                assert_eq!(s.0, v0, "special identity output mismatch sample {} k={}", sample_idx, k);
+                assert_eq!(g.0, s.0, "identity output divergence sample {} k={}", sample_idx, k);
+                assert_eq!(g.1, s.1, "phase divergence sample {} k={} generic_phase={} special_phase={}", sample_idx, k, g.1, s.1);
             }
         }
     }

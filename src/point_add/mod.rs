@@ -68,6 +68,7 @@ pub mod kaliski_window_decomp;
 pub mod kaliski_hybrid_proto;
 pub mod kaliski_prefix_key;
 pub mod kaliski_equiv;
+pub mod kaliski_phase_hypothesis;
 pub mod test_timeout;
 
 struct B {
@@ -3050,7 +3051,14 @@ const R_SMALL_THRESHOLD: usize = 255;
 /// `2^256`. Termination requires reaching `(1, 0)`, i.e. `s = 1`, so any run
 /// needs at least `ceil(log2(s0)) = 256` steps. Therefore the first 256 step
 /// entries are guaranteed bulk / nonterminal.
-const BULK_PREFIX_SAFE_ITERS: usize = 3;
+const BULK_PREFIX_SAFE_ITERS: usize = 32;
+
+fn bulk_prefix_safe_iters() -> usize {
+    std::env::var("KAL_BULK3_ITERS")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(BULK_PREFIX_SAFE_ITERS)
+}
 
 /// Specialized real forward primitive for the first few guaranteed-bulk
 /// Kaliski iterations where `f = 1` and `v_w != 0` are known a priori.
@@ -3507,8 +3515,9 @@ fn kaliski_forward(b: &mut B, v_in: &[QubitId], st: &KaliskiState, p: U256, iter
 
     // ─── Iterations ───
     let use_bulk_prefix3 = std::env::var("KAL_BULK3_EXPERIMENT").is_ok();
+    let bulk_prefix_iters = bulk_prefix_safe_iters();
     for i in 0..iters {
-        if use_bulk_prefix3 && i < BULK_PREFIX_SAFE_ITERS {
+        if use_bulk_prefix3 && i < bulk_prefix_iters {
             kaliski_iteration_bulk_prefix3(
                 b, &st.u, &st.v_w, &st.r, &st.s,
                 st.m_hist[i],
@@ -3909,9 +3918,10 @@ fn kaliski_backward(b: &mut B, v_in: &[QubitId], st: &KaliskiState, p: U256, ite
     debug_assert!(iters <= st.m_hist.len());
 
     let use_bulk_prefix3 = std::env::var("KAL_BULK3_EXPERIMENT").is_ok();
+    let bulk_prefix_iters = bulk_prefix_safe_iters();
     // ─── Reverse iterations (in reverse order) ───
     for i in (0..iters).rev() {
-        if use_bulk_prefix3 && i < BULK_PREFIX_SAFE_ITERS {
+        if use_bulk_prefix3 && i < bulk_prefix_iters {
             kaliski_iteration_bulk_prefix3_backward(
                 b, &st.u, &st.v_w, &st.r, &st.s,
                 st.m_hist[i],
