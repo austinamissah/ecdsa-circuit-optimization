@@ -211,6 +211,26 @@ mod tests {
     }
 
     #[test]
+    fn bulk_prefix3_step_matches_generic_on_deep_reachable_states() {
+        let deadline = two_min_deadline();
+        let iter_points = [3usize, 4, 5, 7, 15, 31, 63, 95, 127, 159, 191, 223, 254];
+        let generic: Vec<_> = iter_points.iter().map(|&i| build_generic_step(i)).collect();
+        let special: Vec<_> = iter_points.iter().map(|&i| build_special_step(i)).collect();
+        let mut sampler = Sampler::new(b"kaliski-equiv-sampler-v1b", SECP256K1_P);
+
+        for sample_idx in 0..128usize {
+            if (sample_idx & 31) == 0 { check_deadline(deadline, "kaliski_equiv::bulk_prefix3_step_matches_generic_on_deep_reachable_states"); }
+            let v0 = sampler.next();
+            for (j, &iter_idx) in iter_points.iter().enumerate() {
+                let st = reachable_state(v0, iter_idx);
+                let g = run_step_circuit(&generic[j], st.u, st.v, st.r, st.s, false, true);
+                let s = run_step_circuit(&special[j], st.u, st.v, st.r, st.s, false, true);
+                assert_eq!(g, s, "deep specialized step mismatch at sample {} iter {}\nstate_before={:?}\ngeneric={:?}\nspecial={:?}", sample_idx, iter_idx, st, g, s);
+            }
+        }
+    }
+
+    #[test]
     fn bulk_prefix3_step_matches_classical_transition() {
         let deadline = two_min_deadline();
         let generic = [build_generic_step(0), build_generic_step(1), build_generic_step(2)];
@@ -317,6 +337,27 @@ mod tests {
             let g = run_step_circuit(&generic_fb, SECP256K1_P, v0, U256::ZERO, U256::from(1), false, true);
             let s = run_step_circuit(&special_fb, SECP256K1_P, v0, U256::ZERO, U256::from(1), false, true);
             assert_eq!(g, s, "forward+backward mismatch at sample {}\ngeneric={:?}\nspecial={:?}", sample_idx, g, s);
+        }
+    }
+
+    #[test]
+    fn bulk_prefix3_step_matches_generic_on_late_safe_prefix_states() {
+        let deadline = two_min_deadline();
+        let iter_points = [255usize];
+        let generic: Vec<_> = iter_points.iter().map(|&i| build_generic_step(i)).collect();
+        let special: Vec<_> = iter_points.iter().map(|&i| build_special_step(i)).collect();
+        let mut sampler = Sampler::new(b"kaliski-equiv-sampler-v5", SECP256K1_P);
+
+        for sample_idx in 0..128usize {
+            if (sample_idx & 31) == 0 { check_deadline(deadline, "kaliski_equiv::bulk_prefix3_step_matches_generic_on_late_safe_prefix_states"); }
+            let v0 = sampler.next();
+            for (j, &iter_idx) in iter_points.iter().enumerate() {
+                let st = reachable_state(v0, iter_idx);
+                assert!(!st.v.is_zero(), "unexpected termination before iter {} on sample {}", iter_idx, sample_idx);
+                let g = run_step_circuit(&generic[j], st.u, st.v, st.r, st.s, false, true);
+                let s = run_step_circuit(&special[j], st.u, st.v, st.r, st.s, false, true);
+                assert_eq!(g, s, "late safe-prefix mismatch at sample {} iter {}\nstate_before={:?}\ngeneric={:?}\nspecial={:?}", sample_idx, iter_idx, st, g, s);
+            }
         }
     }
 }

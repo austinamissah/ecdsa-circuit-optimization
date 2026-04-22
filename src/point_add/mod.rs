@@ -3041,6 +3041,17 @@ fn mulmod(a: U256, b: U256, p: U256) -> U256 {
 /// a plain shift (0 Toffoli) for ~255 CCX savings per iter.
 const R_SMALL_THRESHOLD: usize = 255;
 
+/// For nonzero secp256k1 inputs, the first 256 Kaliski iterations are always
+/// nonterminal, so `f = 1` and `v_w != 0` at step entry are guaranteed.
+///
+/// Proof sketch: let `s = u + v`. Every Kaliski step satisfies `s' >= s/2`.
+/// Starting from `(u, v) = (p, v0)` with `1 <= v0 < p`, we have
+/// `s0 = p + v0 >= p + 1`, and `p + 1` is strictly between `2^255` and
+/// `2^256`. Termination requires reaching `(1, 0)`, i.e. `s = 1`, so any run
+/// needs at least `ceil(log2(s0)) = 256` steps. Therefore the first 256 step
+/// entries are guaranteed bulk / nonterminal.
+const BULK_PREFIX_SAFE_ITERS: usize = 3;
+
 /// Specialized real forward primitive for the first few guaranteed-bulk
 /// Kaliski iterations where `f = 1` and `v_w != 0` are known a priori.
 ///
@@ -3497,7 +3508,7 @@ fn kaliski_forward(b: &mut B, v_in: &[QubitId], st: &KaliskiState, p: U256, iter
     // ─── Iterations ───
     let use_bulk_prefix3 = std::env::var("KAL_BULK3_EXPERIMENT").is_ok();
     for i in 0..iters {
-        if use_bulk_prefix3 && i < 3 {
+        if use_bulk_prefix3 && i < BULK_PREFIX_SAFE_ITERS {
             kaliski_iteration_bulk_prefix3(
                 b, &st.u, &st.v_w, &st.r, &st.s,
                 st.m_hist[i],
@@ -3900,7 +3911,7 @@ fn kaliski_backward(b: &mut B, v_in: &[QubitId], st: &KaliskiState, p: U256, ite
     let use_bulk_prefix3 = std::env::var("KAL_BULK3_EXPERIMENT").is_ok();
     // ─── Reverse iterations (in reverse order) ───
     for i in (0..iters).rev() {
-        if use_bulk_prefix3 && i < 3 {
+        if use_bulk_prefix3 && i < BULK_PREFIX_SAFE_ITERS {
             kaliski_iteration_bulk_prefix3_backward(
                 b, &st.u, &st.v_w, &st.r, &st.s,
                 st.m_hist[i],

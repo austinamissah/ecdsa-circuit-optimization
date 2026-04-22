@@ -570,16 +570,29 @@ The new equivalence tests now show:
 That let me integrate something real:
 - `kaliski_forward` now has an experimental path gated by
   `KAL_BULK3_EXPERIMENT=1` that uses the specialized bulk primitive for the
-  first 3 iterations,
+  first **3** iterations,
 - `kaliski_backward` uses a matching specialized backward for those same 3
   iterations,
 - and the full point-add circuit now passes correctness again with the
   experimental path enabled.
 
+I also stress-tested whether this could be safely extended much further.
+Results:
+- the specialized step itself matches the generic step on reachable states even
+  at deep sample points such as iterations 255,
+- but enabling the live replacement beyond the first 3 iterations breaks the
+  full point-add circuit,
+- so the current truth is that **state-equivalence of a local step is not yet
+  sufficient for safe bulk extension inside the full inversion scaffold**.
+
+Most likely remaining obstruction: a longer-range interaction with the generic
+history / cleanup machinery that is not exposed by isolated step-equivalence
+checks alone.
+
 ### Actual integrated circuit result
 With `KAL_BULK3_EXPERIMENT=1` enabled on the full point-add circuit:
 
-| metric | baseline | integrated specialized bulk-3 |
+| metric | baseline | integrated specialized bulk-prefix3 |
 |---|---:|---:|
 | avg executed Toffoli | 4,394,546 | **4,391,444** |
 | emitted ops | 35,186,356 | **35,143,300** |
@@ -588,6 +601,11 @@ With `KAL_BULK3_EXPERIMENT=1` enabled on the full point-add circuit:
 So the live integration gives a real end-to-end saving of:
 - **3,102 Toffoli** per point-add,
 - with qubits unchanged.
+
+Current hard truth:
+- this integrated win is real and stable for the first **3** iterations,
+- but a naive jump from 3 to 255 integrated iterations is **not** correct yet,
+  even though isolated step-equivalence still holds on sampled reachable states.
 
 This is much smaller than the raw 3-step micro-benchmark win, but it is real,
 correct, and now inside the live circuit.
