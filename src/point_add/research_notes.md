@@ -70,13 +70,13 @@ Interpretation:
 - That restores the pessimistic reversible cost model: batching by `w` does
   not automatically beat Kaliski.
 
-#### 3b. New follow-up: matrix *histogram* / compression structure
+#### 3b. Exact matrix-family compression result
 Even if entries hit `2^w`, a quantum QROM implementation might still benefit
-if the number of **distinct** jump matrices is tiny compared to the total
+if the number of **distinct** transition matrices is tiny compared to the raw
 state space. I measured this exactly for all low-word states with
 `delta ∈ [-20, 20]`, odd `f_low`, and arbitrary `g_low`.
 
-State-space and matrix-count results:
+Results:
 
 | w | total states | distinct matrices | compression factor |
 |---|---:|---:|---:|
@@ -84,36 +84,20 @@ State-space and matrix-count results:
 | 6 | 83,968 | 2,624 | 32× |
 | 8 | 1,343,488 | 10,496 | 128× |
 
-Strong pattern:
-- distinct matrices scale as `2^(2w+1) / 2^(w-1) = 2^(w+2)`
-- equivalently, **compression factor = 2^(w−1)**
+Pattern:
+- compression factor = `2^(w−1)` exactly on the observed range.
+- equivalently, distinct matrix count appears to scale like `2^(w+2)`.
 
-Most common matrix pattern observed:
-- w=4:  `[[-4,  2], [ -2, -3]]`
-- w=6:  `[[-16, 2], [ -8, -3]]`
-- w=8:  `[[-64, 2], [-32, -3]]`
-
-This means:
-- a naive QROM over all `(delta, f_low, g_low)` states is wasteful;
-- but a compressed QROM over matrix classes is possible.
-
-However, the compressed class count is still:
-- w=8  → 10,496 entries
-- w=12 → likely ~167,936 entries
-- w=16 → likely ~2,686,976 entries
-
-This is *much* better than the raw state space, but still large enough that
-we would need a serious select-swap/QROM design to exploit it.
+This does **not** rescue full jumped B-Y by itself, but it is a strong sign
+that *compressed local transition classes* are real and exploitable.
 
 #### 3c. Updated verdict on jumped B-Y
-The moonshot is not completely dead, but it is no longer a literature-backed
-"obvious next step." The corrected state is:
-- matrix coefficients are still worst-case `w`-bit,
-- but the matrix family collapses by a factor `2^(w−1)`.
+Full jumped B-Y still looks too expensive as a drop-in replacement, because:
+- matrix entries hit the full `2^w` growth,
+- full coefficient tracking would still need to carry those `w`-bit entries,
+- cleanup is all-new machinery.
 
-So jumped B-Y is now a **QROM-compression problem**. If we can exploit the
-small number of distinct matrices *and* make matrix-apply cheap enough, it
-might still work. This is now clearly novel research territory.
+But the compression result changes the local-batching story.
 
 ### 4. Montgomery inverse (Savaş–Koç)
 - Classical ref: Savaş–Koç 2000, “The Montgomery modular inverse revisited.”
@@ -126,9 +110,9 @@ might still work. This is now clearly novel research territory.
 - Main issue: runtime matrix selection depends on quantum data, so a faithful
   reversible implementation needs a QROM keyed by top bits. No concrete,
   literature-backed reversible cost win established yet.
-- Still potentially interesting as novel research, but much less grounded than
-  a compressed jumped-BY route, because we now have actual empirical structure
-  for B-Y matrices and none for Lehmer.
+- Still potentially interesting as novel research, but now less grounded than
+  a compressed Kaliski-local batching route, because we have exact empirical
+  class-compression data for the latter.
 
 ### 6. Fermat / addition-chain inversion
 - Standard classical method; discussed in cryptographic resource estimates.
@@ -139,80 +123,123 @@ might still work. This is now clearly novel research territory.
 - Only for GF(2^n), not GF(p).
 - Not applicable to secp256k1.
 
-## Deliverable 3 — final conclusion (updated after histogram analysis)
+## Current best moonshot conclusion
 
 **Conclusion: `hybrid Kaliski-jump is the bet.`**
 
-This is a refinement of the earlier “no known path remains” conclusion.
-Here's why.
+This is now stronger than the previous statement.
 
-### Why full replacement B-Y is still not the best bet
+### Why full B-Y replacement is not the best bet
 Full BY jumpdivsteps2 still has two major problems:
 1. matrix entries hit the full `2^w` growth;
 2. coefficient tracking and cleanup are all-new machinery.
 
 So a *full* B-Y replacement remains very high-risk.
 
-### Why the histogram result changes the hybrid story
-The jump histogram shows that there are far fewer distinct local transition
-matrices than raw low-word states. This suggests a new hybrid direction:
+### Why the histogram result matters
+The exact histogram shows there are vastly fewer distinct local transition
+matrices than raw low-word states. That suggests a more focused route:
 
 > keep Kaliski's global state machine and cleanup structure,
-> but replace some local per-iteration parity/cswap/sub/halve stretches
-> with **pre-batched micro-transitions** chosen from a compressed matrix/QROM.
+> but replace short local runs of the `(u, v_w)` update path with
+> **compressed pre-batched transition classes**.
 
-This avoids the hardest part of BY (full coefficient-system replacement)
-while still exploiting the empirical low-word structure.
+This attacks the actual hot path while preserving the machinery that we already
+know is reversible and correct.
 
-### The actual research bet now
-The best remaining moonshot is:
+## New classical proposal: hybrid Kaliski-jump
 
-## **Hybrid Kaliski-jump**
+### Model
+Standard Kaliski / binary almost-inverse update on `(u, v)` has four branch
+cases:
 
-Specifically:
-- batch 4–8 Kaliski micro-iterations at a time,
-- use a compressed lookup over the small family of observed local transition
-  classes,
-- keep the existing `(r, s, m_hist)` cleanup logic as much as possible,
-- only replace the expensive `(u, v_w)` update path.
+```text
+if u even:                   (u, v) ← (u/2, v)
+elif v even:                 (u, v) ← (u, v/2)
+elif u > v:                  (u, v) ← ((u-v)/2, v)
+else:                        (u, v) ← (u, (v-u)/2)
+```
 
-### Why this beats the alternatives
-- Better grounded than full B-Y replacement.
-- Better grounded than Lehmer (which still lacks any empirical structure here).
-- Avoids Montgomery / Jacobian cleanup obstruction.
-- Targets the actual hot path: Kaliski is ~81% of total cost.
+Each step is a linear map with a shared `1/2` factor. Over `t` steps we get
+an integer 2×2 matrix `P_t` with
 
-## Proposals for future sessions
+```text
+(u_t, v_t)^T = (1 / 2^t) · P_t · (u_0, v_0)^T.
+```
 
-### Proposal P1: enumerate Kaliski 4-step local transition classes
-Take the current Kaliski update on `(u, v_w)` and enumerate the exact state
-transition induced by 4 low-bit steps, keyed by the same style of low-word
-state used in BY. Measure:
-- number of distinct transition classes,
-- coefficient growth,
-- whether a compressed QROM could represent them cheaply.
+The classical question is: along actual secp256k1 trajectories, keyed by low
+`w` bits of `(u, v)`, how many distinct `P_t` arise? If small, we can imagine
+QROM-selecting those classes instead of executing the per-step parity / compare /
+cswap / sub / halve sequence.
 
-This is the next classical moonshot task.
+### Empirical hybrid Kaliski-window survey
+I added `src/point_add/kaliski_jump.rs` and sampled actual Kaliski trajectories
+for 10,000 random secp256k1 inputs. Windows overlap (advance one step, observe
+`t`-step lookahead), because that's the runtime use-case.
 
-### Proposal P2: compressed QROM design study
-Given the jump-matrix class count, derive a reversible cost model for:
-- raw-state QROM,
-- matrix-class QROM,
+Results:
+
+| w | t | distinct global mats | max `|entry|` | mean log2 `|entry|` | classes seen | mean mats / class | max mats / class |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 6 | 4 | 125 | 16 | 3.287 | 3,072 | 4.506 | 16 |
+| 8 | 4 | 125 | 16 | 3.287 | 49,152 | 4.493 | 16 |
+| 8 | 6 | 1,133 | 64 | 4.705 | 49,152 | 9.461 | 62 |
+
+Interpretation:
+- For **t = 4**, the entire global matrix family is only **125** matrices,
+  regardless of whether we key on 6 or 8 low bits.
+- Entry growth is tiny: max `|entry| = 16`.
+- Each low-bit class sees only about 4.5 matrices on average.
+- For **t = 6**, the matrix family is still modest (1,133 matrices), and
+  coefficients only grow to 64.
+
+This is a *much* stronger compression phenomenon than in full B-Y jumpdivsteps.
+It suggests that Kaliski-local batching may be practical with a very small
+matrix alphabet.
+
+### Why this is promising
+Kaliski's profile hot spots are:
+- step 4 (cond-sub / cond-add pair),
+- step 3+9 (double cswap),
+- step 0/1/2 branch logic.
+
+A 4-step batched local update could replace **four full rounds** of this
+logic with:
+1. determine low-bit class,
+2. lookup one of only ~125 matrices,
+3. apply it to `(u, v_w)`,
+4. update `(r, s)` or equivalent coefficient state consistently,
+5. keep existing cleanup structure as much as possible.
+
+This is now the most compelling structural moonshot in the codebase.
+
+## Proposed next sessions
+
+### P1. Enumerate exact coefficient-side transforms for 4-step Kaliski windows
+Current `kaliski_jump.rs` only studies `(u, v)` transition matrices.
+Next step is to derive the corresponding transform on the coefficient-side
+state `(r, s)` for the same 4-step windows.
+
+### P2. Build a reversible cost model for a 125-matrix QROM
+Now that the matrix alphabet is only ~125 elements for `t=4`, the next work is
+not abstract algorithmics but concrete reversible cost accounting:
+- raw lookup,
+- compressed-class lookup,
 - select-swap QROM,
-- unary-encoded small-matrix QROM.
+- matrix-apply on 256-bit regs.
 
-### Proposal P3: full BY jump prototype only if P1 fails
-If Kaliski-local batching has no class compression, then fall back to the
-full jumped-BY moonshot.
+### P3. Decide whether `t=4` or `t=6` is the sweet spot
+`t=4` gives only 125 matrices with max coefficient 16.
+`t=6` gives 1,133 matrices with max coefficient 64.
+Need to compare fewer batches vs. larger matrix-apply cost.
 
 ## Bottom line
 
-After correcting the jumpdivstep survey and adding the exact histogram study,
-my best current research judgement is:
+The strongest current research judgement is:
 
-> The best moonshot is no longer “replace Kaliski with B-Y.”
-> The best moonshot is **compress and batch Kaliski using B-Y-style local
-> transition classes**.
+> The best moonshot is **not** full B-Y replacement.
+> The best moonshot is **hybrid Kaliski-jump batching** over short windows,
+> because the exact local transition family appears to be very small.
 
-That's novel research, but it is the most focused path that still directly
-attacks the 81% inversion budget.
+This is still novel research — but unlike the other moonshots, it now has
+clear empirical support directly tied to the 81%-of-budget hot path.
