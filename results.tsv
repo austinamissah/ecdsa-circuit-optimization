@@ -352,3 +352,4 @@ timestamp	commit	toffoli	clifford	qubits	ops	correct	notes
 1776852076	68185f1	4423142.000	25002784.012	3241	35340368	OK	sparse const-mul v3 carry fix
 1776852194	68185f1	1380271.262	7802284.469	3241	35340368	FAIL	sparse const-mul pair2_double only | PHASE GARBAGE: global_phase = 0x0000000001000000 across 64 live shots (must be 0)
 1776852670	2e97799	4394546.000	24903445.889	2729	35186356	OK	final baseline verification
+1776853667	8739fa8	4394546.000	24903445.889	2729	35186356	OK	final state verification

@@ -314,6 +314,119 @@ impl Sampler {
     }
 }
 
+// ═════════════════════════════════════════════════════════════════════════
+//  Jumpdivstep: classical Lehmer-style batching of divstep2
+// ═════════════════════════════════════════════════════════════════════════
+//
+// Per BY 2019/266 §9, `jumpdivsteps_N` compresses N divsteps into a 2×2
+// integer transition matrix M by running divstep2 on the TOP bits of (f, g)
+// only. Output is M, f_N, g_N such that
+//
+//     (f_N, g_N)^T = (1/2^N) · M · (f, g)^T
+//
+// with |M[i][j]| ≤ 2^N.  For reversible quantum implementation, the
+// REVERSIBLE per-jump cost is dominated by applying M (up to N-bit classical
+// entries) to full-precision (f, g, U, V, Q, R). If we empirically observe
+// that matrix entries are typically MUCH smaller than 2^N (say, most are
+// ≤ 2^{N/2}), then the reversible cost estimate (using 2^N as entry bound)
+// is pessimistic.
+
+/// Transition matrix returned by `jumpdivstep`. Entries are signed;
+/// magnitudes ≤ 2^w after w divsteps.
+#[derive(Clone, Copy, Debug)]
+pub struct TransitionMatrix {
+    pub m00: i128, pub m01: i128,
+    pub m10: i128, pub m11: i128,
+    pub delta_final: i64,
+}
+
+/// Run `w` divsteps on the low-`w`-bit representation of (f, g), producing
+/// a transition matrix. Also updates δ.
+///
+/// This is the CLASSICAL matrix computation, done at circuit build time
+/// for a reversible implementation.
+///
+/// Precondition: f_low is odd (low bit 1); g_low may be anything; only the
+/// low `w` bits of each matter.
+pub fn jumpdivstep(mut delta: i64, mut f_low: u128, mut g_low: u128, w: usize) -> TransitionMatrix {
+    assert!(w <= 64, "w must fit in i128 signed math");
+    assert!(f_low & 1 == 1, "f_low must be odd");
+    // Identity matrix in i128.
+    let (mut a00, mut a01) = (1i128, 0i128);
+    let (mut a10, mut a11) = (0i128, 1i128);
+    for _ in 0..w {
+        let g_odd = (g_low & 1) != 0;
+        if delta > 0 && g_odd {
+            // (f, g) → (g, (g - f) / 2). Matrix row swap then g row -= f row, halve.
+            // In matrix form: new_a_row = old_b_row;
+            //                 new_b_row = (old_b_row - old_a_row);
+            // (Halving happens at the end of each step implicitly on the g row.)
+            let tmp_f = f_low; f_low = g_low; g_low = tmp_f.wrapping_neg();
+            let (ta, tb) = (a00, a01); a00 = a10; a01 = a11;
+            a10 = a10.wrapping_sub(ta); a11 = a11.wrapping_sub(tb);
+            delta = -delta;
+        }
+        let g_odd = (g_low & 1) != 0;
+        delta += 1;
+        if g_odd {
+            g_low = g_low.wrapping_add(f_low);
+            a10 = a10.wrapping_add(a00);
+            a11 = a11.wrapping_add(a01);
+        }
+        // Halve g (arithmetic right-shift for signed interpretation).
+        g_low >>= 1; // lose low bit (always 0 now).
+        // Every step doubles (a00, a01) because f is unchanged and g is halved:
+        // we're tracking 2^k · f_k and 2^k · g_k. Actually for jumpdivstep the
+        // matrix M satisfies 2^N · (f_N, g_N) = M · (f, g), which means M
+        // accumulates a factor of 2^N over N steps. We do NOT scale a00, a01
+        // — they're already the correct row of the scaled matrix.
+    }
+    TransitionMatrix { m00: a00, m01: a01, m10: a10, m11: a11, delta_final: delta }
+}
+
+/// Empirical measurement of matrix-entry magnitude distribution.
+#[derive(Clone, Debug, Default)]
+pub struct JumpStats {
+    pub samples: usize,
+    pub w: usize,
+    pub max_entry_abs: i128,
+    pub sum_log2_entry_abs: f64, // mean log2 of entry magnitude
+    pub nonzero_entries: usize,
+}
+
+/// Sample M transitions with w divsteps each, using random (f_low, g_low, δ).
+pub fn jump_matrix_entry_survey(
+    seed: &[u8],
+    n_samples: usize,
+    w: usize,
+) -> JumpStats {
+    use sha3::digest::{ExtendableOutput, Update, XofReader};
+    let mut hasher = sha3::Shake128::default();
+    hasher.update(seed);
+    let mut reader = hasher.finalize_xof();
+
+    let mut stats = JumpStats { samples: 0, w, max_entry_abs: 0, sum_log2_entry_abs: 0.0, nonzero_entries: 0 };
+    let mut buf = [0u8; 24]; // 8 bytes f_low + 8 bytes g_low + 8 bytes delta
+    for _ in 0..n_samples {
+        reader.read(&mut buf);
+        let mut f_low = u64::from_le_bytes(buf[0..8].try_into().unwrap());
+        f_low |= 1; // ensure odd
+        let g_low = u64::from_le_bytes(buf[8..16].try_into().unwrap());
+        let delta = (u64::from_le_bytes(buf[16..24].try_into().unwrap()) % 41) as i64 - 20;
+        let m = jumpdivstep(delta, f_low as u128, g_low as u128, w);
+        for &e in &[m.m00, m.m01, m.m10, m.m11] {
+            let abs = e.wrapping_abs();
+            if abs > stats.max_entry_abs { stats.max_entry_abs = abs; }
+            if abs > 0 {
+                stats.sum_log2_entry_abs += (abs as f64).log2();
+                stats.nonzero_entries += 1;
+            }
+        }
+        stats.samples += 1;
+    }
+    stats
+}
+
 /// Aggregate statistics from running divsteps on N samples.
 #[derive(Debug, Default, Clone)]
 pub struct SurveyStats {
@@ -428,5 +541,26 @@ mod tests {
         assert!(stats.max_iters <= theoretical_bound,
                 "observed max iters {} exceeds theoretical bound {}",
                 stats.max_iters, theoretical_bound);
+    }
+
+    #[test]
+    fn jumpdivstep_matrix_entry_survey() {
+        // Stress-test the hidden constant in jumpdivstep: if matrix entries are
+        // typically much smaller than 2^w, earlier pessimistic cost estimates
+        // for reversible matrix-apply were too high.
+        let samples = 100_000;
+        for &w in &[4usize, 8, 12, 16] {
+            let stats = jump_matrix_entry_survey(b"jumpdivstep-matrix-seed-v1", samples, w);
+            let mean_log2 = if stats.nonzero_entries == 0 { 0.0 } else { stats.sum_log2_entry_abs / (stats.nonzero_entries as f64) };
+            eprintln!("=== jumpdivstep matrix-entry survey (w={}) ===", w);
+            eprintln!("samples                 : {}", stats.samples);
+            eprintln!("max |entry| observed    : {}", stats.max_entry_abs);
+            eprintln!("max log2 |entry|        : {:.3}", (stats.max_entry_abs as f64).log2());
+            eprintln!("mean log2 |entry|       : {:.3}", mean_log2);
+            eprintln!("theoretical max log2    : {}", w);
+            eprintln!("===========================================");
+            // Sanity: entries should never exceed 2^w in magnitude.
+            assert!(stats.max_entry_abs <= (1i128 << w), "w={} entry {} exceeded 2^w", w, stats.max_entry_abs);
+        }
     }
 }
