@@ -378,93 +378,154 @@ For `w = 8`:
 This now looks like the most actionable structural lead toward reducing the 81%
 inversion budget.
 
-## New strongest result: main-circuit prototype says the moonshot is numerically plausible
+## New strongest result: the exact bulk key shrank to 9 bits, but the branch-free 385 CCX core does **not** survive stress-testing
 
-I added `src/point_add/kaliski_hybrid_proto.rs`, which uses the **real point-add
-builder and arithmetic primitives** to profile a lower-bound hybrid prototype.
+I added `src/point_add/kaliski_prefix_key.rs` and extended
+`src/point_add/kaliski_hybrid_proto.rs` to test two hidden assumptions behind
+the optimistic exact-3 bulk-core story.
 
-This prototype does **not** implement the full selector. Instead, it asks a
-clean question inside the actual gate framework:
+## Exact bulk key width: now much smaller than expected
+For **full 4-step windows only**, the exact 3-step bulk prefix is determined by
 
-> If the exact full-window 3-step prefix were already known, how expensive is a
-> branch-free fused realization compared to ordinary Kaliski iterations?
+> **`(u mod 8, v mod 8, cmp0, cmp1, cmp2)`**
 
-### Measured builder costs
-Using the actual `B` builder and the real arithmetic primitives in
-`src/point_add/mod.rs`:
+That is only a **9-bit key**, not the earlier 19-bit `(u mod 256, v mod 256,
+cmp0, cmp1, cmp2)` key.
 
-| object | CCX | Clifford-ish | peak qubits |
-|---|---:|---:|---:|
-| baseline 3 Kaliski iterations | 4,647 | 23,199 | 1,543 |
-| baseline 4 Kaliski iterations | 6,204 | 30,962 | 1,544 |
-| baseline iteration #3 only | 1,557 | 7,763 | 1,541 |
-| weighted exact 3-step bulk core | **385.3** | **5,006.7** | ≤ 1,280 |
+Measured results:
 
-Across the 36 exact full-window 3-step prefixes, the branch-free core ranges:
-- min CCX = **0** (`UE-UE-UE` / `VE-VE-VE` style all-shift prefixes)
-- max CCX = **771**
+### secp256k1 trajectories (10,000 inputs)
+| width `w` | keys seen | mean prefixes/key | max | exact? |
+|---|---:|---:|---:|---:|
+| 1 | 20 | 3.200 | 4 | no |
+| 2 | 64 | 2.000 | 2 | no |
+| 3 | **256** | **1.000** | **1** | **yes** |
 
-### 4-step hybrid lower bound
-A concrete first hybrid design would be:
-- exact 3-step bulk core,
-- then 1 ordinary residual Kaliski step.
+### generic exhaustive full-window survey (all `1 ≤ u,v ≤ 512`)
+| width `w` | keys seen | mean prefixes/key | max | exact? |
+|---|---:|---:|---:|---:|
+| 1 | 25 | 3.120 | 4 | no |
+| 2 | 78 | 1.923 | 2 | no |
+| 3 | **312** | **1.000** | **1** | **yes** |
 
-Measured lower bound, still **without selector cost**:
+So the *selector key size* story got materially better.
+
+## Assumption A (derivability) — refuted
+Question tested:
+
+> Are `cmp1` and `cmp2` uniquely determined by `(u mod 8, v mod 8, cmp0)`
+> alone?
+
+If yes, the branch-free weighted **385.3 CCX** exact-3 core would be a real
+forward primitive.
+
+It is **not**.
+
+### secp256k1 result
+Using full windows on 10,000 trajectories, for base key
+`(u mod 8, v mod 8, cmp0)`:
+
+| metric | value |
+|---|---:|
+| base classes | 96 |
+| mean `(cmp1,cmp2)` pairs per base | **2.667** |
+| max `(cmp1,cmp2)` pairs per base | **4** |
+| ambiguous base classes | **80** |
+| singleton base classes | 16 |
+
+### generic exhaustive result
+For all full windows with `1 ≤ u,v ≤ 512`:
+
+| metric | value |
+|---|---:|
+| base classes | 128 |
+| mean `(cmp1,cmp2)` pairs per base | **2.438** |
+| max `(cmp1,cmp2)` pairs per base | **4** |
+| ambiguous base classes | **96** |
+| singleton base classes | 32 |
+
+Interpretation:
+- `cmp1` and `cmp2` are **not derivable** from the initial 6 low bits plus
+  `cmp0`.
+- Therefore the weighted **385.3 CCX** branch-free exact-3 core is a **lower
+  bound only**, not a directly implementable forward primitive.
+- In a real circuit, `cmp1` and `cmp2` must be produced by actually reaching
+  the `u1,v1` and `u2,v2` states (or by an equivalent construction of equal
+  cost/complexity).
+
+This is the most important correction in the project so far.
+
+## Assumption A fallout in the real builder
+I extended `src/point_add/kaliski_hybrid_proto.rs` to profile a more realistic
+builder-level staged exact-3 skeleton:
+
+```text
+compare -> exact step 0 -> compare -> exact step 1 -> compare -> exact step 2
+```
+
+Measured costs in the real builder:
 
 | object | CCX | Clifford-ish |
 |---|---:|---:|
-| baseline 4 iterations | 6,204 | 30,962 |
-| hybrid 3-step core + 1 ordinary step | **1,942.3** | **12,769.7** |
-| savings | **4,261.7 CCX** | |
-| savings % | **68.69%** | |
+| baseline 3 Kaliski iterations | 4,647 | 23,199 |
+| weighted exact-3 lower bound | 385.3 | 5,006.7 |
+| one 256-bit `gt` comparator | 256 | 2,308 |
+| weighted staged exact-3 (`A` false) | **1,153.3** | **11,930.7** |
 
-This is the most important number in the project so far.
+So the correct forward-bulk number is no longer 385 CCX; it is **1,153.3 CCX**
+for the staged exact-3 skeleton, still much better than 3 ordinary Kaliski
+iterations, but not magical.
 
-### Naive comparator-front-end upper estimate
-To check whether the selector budget is remotely plausible, I also profiled a
-full 256-bit `u > v` comparator in the real builder.
+## Assumption B (cleanup) — keeping compare bits live is much cheaper
+Question tested:
 
-Measured cost of one 256-bit `gt` comparator:
-- **256 CCX**
-- **2,307** Clifford-ish ops
-- peak qubits **770**
+> After selection, should the original compare bits be kept live across the
+> exact-3 bulk core, or recomputed from the output state when cleaning up the
+> selector?
 
-A deliberately naive front-end with **three full-width comparators** would cost:
-- **768 CCX**
-- **6,921** Clifford-ish ops
+I profiled the recompute strategy directly in the builder by:
+- running the known 3-step prefix **backward** from the output state,
+- re-computing the three `u > v` compares at the recovered states,
+- then restoring the output state with the forward exact-3 prefix.
 
-Adding that naive 3-comparator front-end to the hybrid lower bound gives:
+### Measured cleanup costs
+| strategy | CCX | Clifford-ish |
+|---|---:|---:|
+| keep compare bits live | **0 extra** | **0 extra** |
+| recompute cleanup overhead | **1,538.6** | **16,937.4** |
 
-| object | CCX |
-|---|---:|
-| baseline 4 iterations | 6,204 |
-| hybrid + naive 3 comparators | **2,710.3** |
-| savings | **3,493.7** |
-| savings % | **56.31%** |
+Corresponding total staged exact-3 bulk costs:
 
-So even a **very conservative** comparator-only selector estimate still leaves
-an enormous gap versus ordinary Kaliski.
-
-### Point-add scale implication
-Using the current measured point-add baseline:
-- total = **4,394,546** Toffoli
-- Kaliski share ≈ **81%**
-
-The prototype implies rough point-add projections of:
-
-| model | projected total Toffoli |
-|---|---:|
-| ideal hybrid lower bound (no selector overhead) | **~1.95M** |
-| hybrid + naive 3-full-comparator front-end | **~2.39M** |
+| strategy | CCX | Clifford-ish |
+|---|---:|---:|
+| keep-live total | **1,153.3** | **11,930.7** |
+| recompute total | **2,691.9** | **28,868.1** |
 
 Interpretation:
-- the **lower bound** already lands below Google’s lower SOTA band,
-- and even the deliberately naive comparator-front-end estimate still lands
-  comfortably inside the **2.1M–2.7M** target range.
+- The **keep-live** strategy is decisively cheaper.
+- In this framework, the compare bits are classical measurement results, so
+  keeping them live costs classical bit storage, not extra Toffoli.
+- Recomputing from output state is far too expensive to be the default plan.
 
-This is the first time the moonshot has crossed from “interesting classical
-compression phenomenon” into “numerically plausible route to the actual SOTA
-regime” using the real circuit builder.
+## Revised state of the moonshot
+The good news:
+- the exact bulk key shrank all the way to **9 bits**,
+- and the staged exact-3 skeleton is still dramatically cheaper than three
+  ordinary Kaliski iterations.
+
+The bad news:
+- the optimistic **385 CCX** branch-free forward core is not physically real as
+  stated, because `cmp1` and `cmp2` are not derivable from the initial 6 low
+  bits plus `cmp0`.
+
+So the right concrete target is now:
+
+> a **staged exact-3 bulk primitive** keyed by the 9-bit exact key, with the
+> compare bits generated sequentially and then **kept live** across the core for
+> selector cleanup.
+
+I am deliberately pausing all new point-add-level projections until the staged
+selector / cleanup path is worked out more concretely.
 
 ## Proposed next sessions
 
@@ -476,11 +537,12 @@ For the full-window bulk family, produce:
 
 This is now the cleanest classical-to-reversible handoff point.
 
-### P2. Build a reversible cost model for the exact 3-step core
+### P2. Build a reversible cost model for the staged exact 3-step core
 Estimate the real cost of:
-- forming `cmp0, cmp1, cmp2`,
-- indexing 1 of 36 bulk transforms,
-- applying the corresponding `(uv, rs)` matrix pair,
+- forming `cmp0, cmp1, cmp2` **sequentially**,
+- using the exact 9-bit bulk key `(u mod 8, v mod 8, cmp0, cmp1, cmp2)`,
+- keeping the compare bits live across the core,
+- applying the corresponding staged `(uv, rs)` transforms,
 - then doing one ordinary residual Kaliski step.
 
 This should be compared directly against 3 ordinary Kaliski micro-steps.
@@ -498,10 +560,11 @@ second-stage refinement after the 3-step bulk core is costed.
 
 The strongest current research judgement is:
 
-> The best moonshot is **hybrid Kaliski-jump batching**, but the concrete first
-> prototype should be an **exact 3-step bulk primitive** keyed by
-> `(u_low, v_low, cmp0, cmp1, cmp2)`, followed by one ordinary step and a tiny
-> tail fallback.
+> The best moonshot is still **hybrid Kaliski-jump batching**, but the concrete
+> first prototype should be a **staged exact 3-step bulk primitive** using the
+> exact 9-bit key `(u mod 8, v mod 8, cmp0, cmp1, cmp2)`, with compare bits
+> generated sequentially and kept live across the core, followed by one
+> ordinary step and a tiny tail fallback.
 
 That is still novel research, but it is now tied to a very concrete empirical
 structure in the 81%-of-budget hot path, rather than just a vague hope that a

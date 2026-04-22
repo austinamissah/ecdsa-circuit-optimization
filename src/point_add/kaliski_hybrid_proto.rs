@@ -1,22 +1,21 @@
-//! Small main-circuit prototype for the hybrid Kaliski-jump moonshot.
+//! Main-circuit profiling prototypes for the hybrid Kaliski-jump moonshot.
 //!
-//! This does **not** attempt a full hybrid selector. Instead, it answers a
-//! narrower profiling question inside the actual point-add builder framework:
+//! This file started with a lower-bound question:
 //!
-//! > If the 3-step bulk prefix were already known exactly, how much cheaper is
-//! > a branch-free fused implementation than three ordinary `kaliski_iteration`s?
+//! > If the 3-step bulk prefix were already known exactly up front, how cheap
+//! > would a branch-free fused implementation be?
 //!
-//! This is the right lower-bound prototype after the window decomposition work:
-//! - 99%+ of windows are full 4-step windows,
-//! - `(u_low, v_low, cmp0, cmp1, cmp2)` determines the full-window 3-step
-//!   prefix exactly,
-//! - and the remaining ambiguity is almost entirely just the final UG/VG bit.
+//! But the more important follow-up is to stress-test the hidden assumptions:
 //!
-//! So the leading prototype target is now:
-//!   exact 3-step bulk core + 1 ordinary residual step + tiny tail fallback.
+//! - **Assumption A (derivability)**: can `cmp1, cmp2` be known before running
+//!   the first two micro-steps?
+//! - **Assumption B (cleanup)**: once compare bits are used for selection,
+//!   should they be kept live across the core or recomputed from the output
+//!   state for selector cleanup?
 //!
-//! This file profiles the exact 3-step bulk core using the real gate builder
-//! and the real arithmetic primitives from `src/point_add/mod.rs`.
+//! The branch-free `exact3` profile is therefore just a lower bound. The more
+//! realistic staged profiles below quantify what happens once those assumptions
+//! are checked against the real builder.
 
 use std::collections::BTreeMap;
 
@@ -41,6 +40,8 @@ pub struct PrefixCostRow {
     pub prefix: [KCase; 3],
     pub windows: usize,
     pub exact3: ProtoCost,
+    pub staged_exact3: ProtoCost,
+    pub recompute_cleanup: ProtoCost,
 }
 
 #[derive(Debug, Clone)]
@@ -63,12 +64,15 @@ pub struct HybridProtoSummary {
     pub lower_bound_ccx_savings_pct_vs_baseline4: f64,
 
     pub gt_compare: ProtoCost,
-    pub naive_three_cmp_ccx: u64,
-    pub naive_three_cmp_cliff: u64,
-    pub weighted_hybrid4_naive_3cmp_ccx: f64,
-    pub weighted_hybrid4_naive_3cmp_cliff: f64,
-    pub naive_3cmp_ccx_savings_vs_baseline4: f64,
-    pub naive_3cmp_ccx_savings_pct_vs_baseline4: f64,
+
+    pub weighted_staged_exact3_ccx: f64,
+    pub weighted_staged_exact3_cliff: f64,
+    pub weighted_recompute_cleanup_ccx: f64,
+    pub weighted_recompute_cleanup_cliff: f64,
+    pub total_keep_live_ccx: f64,
+    pub total_keep_live_cliff: f64,
+    pub total_recompute_ccx: f64,
+    pub total_recompute_cliff: f64,
 
     pub top_prefix_rows: Vec<PrefixCostRow>,
 }
@@ -156,6 +160,50 @@ fn exact_known_case_step(
     }
 }
 
+fn exact_known_case_step_inverse(
+    b: &mut B,
+    u: &[super::QubitId],
+    v: &[super::QubitId],
+    r: &[super::QubitId],
+    s: &[super::QubitId],
+    iter_idx: usize,
+    kc: KCase,
+) {
+    let rs_add_width = (iter_idx + 2).min(N);
+    match kc {
+        KCase::UEven => {
+            mod_double_no_corr(b, u);
+            shift_right_known_even(b, s);
+        }
+        KCase::VEven => {
+            mod_double_no_corr(b, v);
+            shift_right_known_even(b, r);
+        }
+        KCase::UGtV => {
+            shift_right_known_even(b, s);
+            let s_slice = s[..rs_add_width].to_vec();
+            let r_slice = r[..rs_add_width].to_vec();
+            sub_nbit_qq_fast(b, &s_slice, &r_slice);
+            mod_double_no_corr(b, u);
+            add_nbit_qq_fast(b, v, u);
+        }
+        KCase::VGtU => {
+            shift_right_known_even(b, r);
+            let r_slice = r[..rs_add_width].to_vec();
+            let s_slice = s[..rs_add_width].to_vec();
+            sub_nbit_qq_fast(b, &r_slice, &s_slice);
+            mod_double_no_corr(b, v);
+            add_nbit_qq_fast(b, u, v);
+        }
+    }
+}
+
+fn emit_gt_compare(b: &mut B, u: &[super::QubitId], v: &[super::QubitId]) {
+    let flag = b.alloc_qubit();
+    with_gt(b, u, v, flag, |_b| {});
+    b.free(flag);
+}
+
 fn profile_exact_prefix(prefix: [KCase; 3]) -> ProtoCost {
     let mut b = B::new();
     let u = b.alloc_qubits(N);
@@ -197,12 +245,49 @@ fn profile_single_baseline_iter(iter_idx: usize) -> ProtoCost {
     summarize_builder(&b)
 }
 
+fn profile_staged_exact3(prefix: [KCase; 3]) -> ProtoCost {
+    let mut b = B::new();
+    let u = b.alloc_qubits(N);
+    let v = b.alloc_qubits(N);
+    let r = b.alloc_qubits(N);
+    let s = b.alloc_qubits(N);
+    for (i, kc) in prefix.into_iter().enumerate() {
+        b.set_phase("hybrid_staged_cmp");
+        emit_gt_compare(&mut b, &u, &v);
+        b.set_phase("hybrid_staged_step");
+        exact_known_case_step(&mut b, &u, &v, &r, &s, i, kc);
+    }
+    summarize_builder(&b)
+}
+
+fn profile_recompute_cleanup(prefix: [KCase; 3]) -> ProtoCost {
+    let mut b = B::new();
+    let u = b.alloc_qubits(N);
+    let v = b.alloc_qubits(N);
+    let r = b.alloc_qubits(N);
+    let s = b.alloc_qubits(N);
+
+    // Recompute compare bits from the output state of the exact 3-step core by
+    // running the known prefix backward, comparing at the recovered states, and
+    // then restoring the output state.
+    for (i, kc) in prefix.into_iter().enumerate().rev() {
+        b.set_phase("hybrid_cleanup_inv_step");
+        exact_known_case_step_inverse(&mut b, &u, &v, &r, &s, i, kc);
+        b.set_phase("hybrid_cleanup_cmp");
+        emit_gt_compare(&mut b, &u, &v);
+    }
+    for (i, kc) in prefix.into_iter().enumerate() {
+        b.set_phase("hybrid_cleanup_fwd_restore");
+        exact_known_case_step(&mut b, &u, &v, &r, &s, i, kc);
+    }
+    summarize_builder(&b)
+}
+
 fn profile_gt_compare() -> ProtoCost {
     let mut b = B::new();
     let u = b.alloc_qubits(N);
     let v = b.alloc_qubits(N);
-    let flag = b.alloc_qubit();
-    with_gt(&mut b, &u, &v, flag, |_b| {});
+    emit_gt_compare(&mut b, &u, &v);
     summarize_builder(&b)
 }
 
@@ -248,7 +333,13 @@ pub fn profile_exact3_bulk_core(seed: &[u8], n_inputs: usize, w: usize) -> Hybri
         weighted_exact3_cliff += exact3.cliff as f64 * windows as f64;
         min_exact3_ccx = min_exact3_ccx.min(exact3.ccx);
         max_exact3_ccx = max_exact3_ccx.max(exact3.ccx);
-        rows.push(PrefixCostRow { prefix, windows, exact3 });
+        rows.push(PrefixCostRow {
+            prefix,
+            windows,
+            exact3,
+            staged_exact3: ProtoCost::default(),
+            recompute_cleanup: ProtoCost::default(),
+        });
     }
     weighted_exact3_ccx /= full_windows as f64;
     weighted_exact3_cliff /= full_windows as f64;
@@ -259,12 +350,30 @@ pub fn profile_exact3_bulk_core(seed: &[u8], n_inputs: usize, w: usize) -> Hybri
     let lower_bound_ccx_savings_pct_vs_baseline4 = 100.0 * lower_bound_ccx_savings_vs_baseline4 / baseline4.ccx as f64;
 
     let gt_compare = profile_gt_compare();
-    let naive_three_cmp_ccx = 3 * gt_compare.ccx;
-    let naive_three_cmp_cliff = 3 * gt_compare.cliff;
-    let weighted_hybrid4_naive_3cmp_ccx = weighted_hybrid4_lower_bound_ccx + naive_three_cmp_ccx as f64;
-    let weighted_hybrid4_naive_3cmp_cliff = weighted_hybrid4_lower_bound_cliff + naive_three_cmp_cliff as f64;
-    let naive_3cmp_ccx_savings_vs_baseline4 = baseline4.ccx as f64 - weighted_hybrid4_naive_3cmp_ccx;
-    let naive_3cmp_ccx_savings_pct_vs_baseline4 = 100.0 * naive_3cmp_ccx_savings_vs_baseline4 / baseline4.ccx as f64;
+    let mut weighted_staged_exact3_ccx = 0.0;
+    let mut weighted_staged_exact3_cliff = 0.0;
+    let mut weighted_recompute_cleanup_ccx = 0.0;
+    let mut weighted_recompute_cleanup_cliff = 0.0;
+
+    rows.clear();
+    for (&prefix, &windows) in &prefix_counts {
+        let exact3 = profile_exact_prefix(prefix);
+        let staged_exact3 = profile_staged_exact3(prefix);
+        let recompute_cleanup = profile_recompute_cleanup(prefix);
+        weighted_staged_exact3_ccx += staged_exact3.ccx as f64 * windows as f64;
+        weighted_staged_exact3_cliff += staged_exact3.cliff as f64 * windows as f64;
+        weighted_recompute_cleanup_ccx += recompute_cleanup.ccx as f64 * windows as f64;
+        weighted_recompute_cleanup_cliff += recompute_cleanup.cliff as f64 * windows as f64;
+        rows.push(PrefixCostRow { prefix, windows, exact3, staged_exact3, recompute_cleanup });
+    }
+    weighted_staged_exact3_ccx /= full_windows as f64;
+    weighted_staged_exact3_cliff /= full_windows as f64;
+    weighted_recompute_cleanup_ccx /= full_windows as f64;
+    weighted_recompute_cleanup_cliff /= full_windows as f64;
+    let total_keep_live_ccx = weighted_staged_exact3_ccx;
+    let total_keep_live_cliff = weighted_staged_exact3_cliff;
+    let total_recompute_ccx = weighted_staged_exact3_ccx + weighted_recompute_cleanup_ccx;
+    let total_recompute_cliff = weighted_staged_exact3_cliff + weighted_recompute_cleanup_cliff;
 
     rows.sort_by(|a, b| b.windows.cmp(&a.windows).then_with(|| a.prefix.cmp(&b.prefix)));
     rows.truncate(12);
@@ -284,12 +393,14 @@ pub fn profile_exact3_bulk_core(seed: &[u8], n_inputs: usize, w: usize) -> Hybri
         lower_bound_ccx_savings_vs_baseline4,
         lower_bound_ccx_savings_pct_vs_baseline4,
         gt_compare,
-        naive_three_cmp_ccx,
-        naive_three_cmp_cliff,
-        weighted_hybrid4_naive_3cmp_ccx,
-        weighted_hybrid4_naive_3cmp_cliff,
-        naive_3cmp_ccx_savings_vs_baseline4,
-        naive_3cmp_ccx_savings_pct_vs_baseline4,
+        weighted_staged_exact3_ccx,
+        weighted_staged_exact3_cliff,
+        weighted_recompute_cleanup_ccx,
+        weighted_recompute_cleanup_cliff,
+        total_keep_live_ccx,
+        total_keep_live_cliff,
+        total_recompute_ccx,
+        total_recompute_cliff,
         top_prefix_rows: rows,
     }
 }
@@ -312,18 +423,19 @@ mod tests {
         eprintln!("hybrid 4-step lower bound (no selector): ccx={:.1} cliff={:.1}", s.weighted_hybrid4_lower_bound_ccx, s.weighted_hybrid4_lower_bound_cliff);
         eprintln!("lower-bound ccx savings vs 4 iters    : {:.1} ({:.2}%)", s.lower_bound_ccx_savings_vs_baseline4, s.lower_bound_ccx_savings_pct_vs_baseline4);
         eprintln!("one 256-bit gt comparator             : ccx={} cliff={} peak_qubits={}", s.gt_compare.ccx, s.gt_compare.cliff, s.gt_compare.peak_qubits);
-        eprintln!("naive 3-comparator frontend           : ccx={} cliff={}", s.naive_three_cmp_ccx, s.naive_three_cmp_cliff);
-        eprintln!("hybrid + naive 3cmp upper estimate    : ccx={:.1} cliff={:.1}", s.weighted_hybrid4_naive_3cmp_ccx, s.weighted_hybrid4_naive_3cmp_cliff);
-        eprintln!("naive-3cmp ccx savings vs 4 iters     : {:.1} ({:.2}%)", s.naive_3cmp_ccx_savings_vs_baseline4, s.naive_3cmp_ccx_savings_pct_vs_baseline4);
+        eprintln!("weighted staged exact-3 (A false)     : ccx={:.1} cliff={:.1}", s.weighted_staged_exact3_ccx, s.weighted_staged_exact3_cliff);
+        eprintln!("weighted cleanup recompute overhead   : ccx={:.1} cliff={:.1}", s.weighted_recompute_cleanup_ccx, s.weighted_recompute_cleanup_cliff);
+        eprintln!("keep-live strategy total              : ccx={:.1} cliff={:.1}", s.total_keep_live_ccx, s.total_keep_live_cliff);
+        eprintln!("recompute strategy total              : ccx={:.1} cliff={:.1}", s.total_recompute_ccx, s.total_recompute_cliff);
         eprintln!("top full-window prefixes:");
         for row in &s.top_prefix_rows {
             eprintln!(
-                "  {:>8} windows : {:<11}  exact3_ccx={:<6} cliff={:<7} peak_q={}",
+                "  {:>8} windows : {:<11}  exact3_ccx={:<6} staged3_ccx={:<6} cleanup_recmp_ccx={:<6}",
                 row.windows,
                 prefix_to_string(row.prefix),
                 row.exact3.ccx,
-                row.exact3.cliff,
-                row.exact3.peak_qubits,
+                row.staged_exact3.ccx,
+                row.recompute_cleanup.ccx,
             );
         }
         eprintln!("========================================================");
@@ -334,6 +446,8 @@ mod tests {
         assert!(s.max_exact3_ccx < s.baseline3.ccx);
         assert!(s.weighted_exact3_ccx < s.baseline3.ccx as f64);
         assert!(s.weighted_hybrid4_lower_bound_ccx < s.baseline4.ccx as f64);
-        assert!(s.weighted_hybrid4_naive_3cmp_ccx < s.baseline4.ccx as f64);
+        assert!(s.weighted_staged_exact3_ccx > s.weighted_exact3_ccx);
+        assert!(s.weighted_recompute_cleanup_ccx > 0.0);
+        assert!(s.total_recompute_ccx > s.total_keep_live_ccx);
     }
 }
