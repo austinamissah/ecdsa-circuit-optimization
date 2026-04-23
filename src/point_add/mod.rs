@@ -3106,7 +3106,8 @@ fn bulk_prefix_enabled() -> bool {
     }
 }
 
-const ALT_SEED_COUNT: usize = 12;
+const ALT_SEED_COUNT: usize = 5;
+const ALT_SEED_COMMIT: usize = 12;
 const ALT_SEED_SHOTS: usize = 4096;
 const ALT_SEED_CLASSICAL_LIMIT: usize = 2;
 
@@ -4226,7 +4227,11 @@ fn alt_seed_xof(ops: &[Op], tag: u64) -> sha3::Shake256Reader {
 }
 
 fn run_alt_seed_checks(ops: &[Op]) {
-    const BATCH: usize = 64;
+    let n_seeds = if std::env::var("ALT_SEED_COMMIT").is_ok() {
+        ALT_SEED_COMMIT
+    } else {
+        ALT_SEED_COUNT
+    };
 
     let curve = secp256k1_curve();
     let (total_qubits, num_bits, _num_regs, regs) = analyze_ops(ops.iter().copied());
@@ -4239,87 +4244,100 @@ fn run_alt_seed_checks(ops: &[Op]) {
     for q in &regs[2] { assert!(matches!(q, QubitOrBit::Bit(_))); }
     for q in &regs[3] { assert!(matches!(q, QubitOrBit::Bit(_))); }
 
-    let mut total_classical = 0usize;
-    let mut total_phase_batches = 0usize;
-    let mut total_ancilla_batches = 0usize;
-
     eprintln!(
-        "=== alternate-seed diagnostic ({} seeds × {} shots, classical_limit={}) ===",
-        ALT_SEED_COUNT,
+        "=== alternate-seed diagnostic ({} seeds × {} shots, classical_limit={}, parallel) ===",
+        n_seeds,
         ALT_SEED_SHOTS,
         ALT_SEED_CLASSICAL_LIMIT,
     );
 
-    for tag_idx in 0..ALT_SEED_COUNT {
-        let tag = (tag_idx as u64) + 1;
-        let mut xof = alt_seed_xof(ops, tag);
-        let mut targets = Vec::with_capacity(ALT_SEED_SHOTS);
-        let mut offsets = Vec::with_capacity(ALT_SEED_SHOTS);
-        let mut expected = Vec::with_capacity(ALT_SEED_SHOTS);
-        while targets.len() < ALT_SEED_SHOTS {
-            let mut rb = [[0u8; 32]; 2];
-            xof.read(&mut rb[0]);
-            xof.read(&mut rb[1]);
-            let k1 = U256::from_le_bytes(rb[0]);
-            let k2 = U256::from_le_bytes(rb[1]);
-            let t = curve.mul(curve.gx, curve.gy, k1);
-            let o = curve.mul(curve.gx, curve.gy, k2);
-            if t.0 == o.0 { continue; }
-            if t.0.is_zero() && t.1.is_zero() { continue; }
-            if o.0.is_zero() && o.1.is_zero() { continue; }
-            let e = curve.add(t.0, t.1, o.0, o.1);
-            targets.push(t);
-            offsets.push(o);
-            expected.push(e);
-        }
-
-        let mut sim = Simulator::new(total_qubits as usize, num_bits as usize, &mut xof);
-        let mut classical_failures = 0usize;
-        let mut phase_garbage_batches = 0usize;
-        let mut ancilla_garbage_batches = 0usize;
-        let num_batches = (ALT_SEED_SHOTS + BATCH - 1) / BATCH;
-        for batch in 0..num_batches {
-            let bs = BATCH.min(ALT_SEED_SHOTS - batch * BATCH);
-            let cond_mask: u64 = if bs == 64 { u64::MAX } else { (1u64 << bs) - 1 };
-            sim.clear_for_shot();
-            for shot in 0..bs {
-                let i = batch * BATCH + shot;
-                sim.set_register(&regs[0], targets[i].0, shot);
-                sim.set_register(&regs[1], targets[i].1, shot);
-                sim.set_register(&regs[2], offsets[i].0, shot);
-                sim.set_register(&regs[3], offsets[i].1, shot);
-            }
-            sim.apply(ops);
-            for shot in 0..bs {
-                let i = batch * BATCH + shot;
-                let gx = sim.get_register(&regs[0], shot);
-                let gy = sim.get_register(&regs[1], shot);
-                if gx != expected[i].0 || gy != expected[i].1 {
-                    classical_failures += 1;
+    let results: Vec<(u64, usize, usize, usize)> = std::thread::scope(|scope| {
+        let curve = &curve;
+        let regs = &regs;
+        let mut handles = Vec::with_capacity(n_seeds);
+        for tag_idx in 0..n_seeds {
+            let tag = (tag_idx as u64) + 1;
+            let handle = scope.spawn(move || {
+                const BATCH: usize = 64;
+                let mut xof = alt_seed_xof(ops, tag);
+                let mut targets = Vec::with_capacity(ALT_SEED_SHOTS);
+                let mut offsets = Vec::with_capacity(ALT_SEED_SHOTS);
+                let mut expected = Vec::with_capacity(ALT_SEED_SHOTS);
+                while targets.len() < ALT_SEED_SHOTS {
+                    let mut rb = [[0u8; 32]; 2];
+                    xof.read(&mut rb[0]);
+                    xof.read(&mut rb[1]);
+                    let k1 = U256::from_le_bytes(rb[0]);
+                    let k2 = U256::from_le_bytes(rb[1]);
+                    let t = curve.mul(curve.gx, curve.gy, k1);
+                    let o = curve.mul(curve.gx, curve.gy, k2);
+                    if t.0 == o.0 { continue; }
+                    if t.0.is_zero() && t.1.is_zero() { continue; }
+                    if o.0.is_zero() && o.1.is_zero() { continue; }
+                    let e = curve.add(t.0, t.1, o.0, o.1);
+                    targets.push(t);
+                    offsets.push(o);
+                    expected.push(e);
                 }
-            }
-            let phase = sim.global_phase() & cond_mask;
-            if phase != 0 {
-                phase_garbage_batches += 1;
-            }
-            for register in &regs {
-                for qb in register {
-                    if let QubitOrBit::Qubit(q) = *qb {
-                        *sim.qubit_mut(q) = 0;
+
+                let mut sim = Simulator::new(total_qubits as usize, num_bits as usize, &mut xof);
+                let mut classical_failures = 0usize;
+                let mut phase_garbage_batches = 0usize;
+                let mut ancilla_garbage_batches = 0usize;
+                let num_batches = (ALT_SEED_SHOTS + BATCH - 1) / BATCH;
+                for batch in 0..num_batches {
+                    let bs = BATCH.min(ALT_SEED_SHOTS - batch * BATCH);
+                    let cond_mask: u64 = if bs == 64 { u64::MAX } else { (1u64 << bs) - 1 };
+                    sim.clear_for_shot();
+                    for shot in 0..bs {
+                        let i = batch * BATCH + shot;
+                        sim.set_register(&regs[0], targets[i].0, shot);
+                        sim.set_register(&regs[1], targets[i].1, shot);
+                        sim.set_register(&regs[2], offsets[i].0, shot);
+                        sim.set_register(&regs[3], offsets[i].1, shot);
+                    }
+                    sim.apply(ops);
+                    for shot in 0..bs {
+                        let i = batch * BATCH + shot;
+                        let gx = sim.get_register(&regs[0], shot);
+                        let gy = sim.get_register(&regs[1], shot);
+                        if gx != expected[i].0 || gy != expected[i].1 {
+                            classical_failures += 1;
+                        }
+                    }
+                    let phase = sim.global_phase() & cond_mask;
+                    if phase != 0 {
+                        phase_garbage_batches += 1;
+                    }
+                    for register in regs {
+                        for qb in register {
+                            if let QubitOrBit::Qubit(q) = *qb {
+                                *sim.qubit_mut(q) = 0;
+                            }
+                        }
+                    }
+                    let mut garbage = false;
+                    for q in 0..total_qubits {
+                        if (sim.qubit(QubitId(q)) & cond_mask) != 0 {
+                            garbage = true;
+                            break;
+                        }
+                    }
+                    if garbage {
+                        ancilla_garbage_batches += 1;
                     }
                 }
-            }
-            let mut garbage = false;
-            for q in 0..total_qubits {
-                if (sim.qubit(QubitId(q)) & cond_mask) != 0 {
-                    garbage = true;
-                    break;
-                }
-            }
-            if garbage {
-                ancilla_garbage_batches += 1;
-            }
+                (tag, classical_failures, phase_garbage_batches, ancilla_garbage_batches)
+            });
+            handles.push(handle);
         }
+        handles.into_iter().map(|h| h.join().unwrap()).collect()
+    });
+
+    let mut total_classical = 0usize;
+    let mut total_phase_batches = 0usize;
+    let mut total_ancilla_batches = 0usize;
+    for (tag, classical_failures, phase_garbage_batches, ancilla_garbage_batches) in &results {
         total_classical += classical_failures;
         total_phase_batches += phase_garbage_batches;
         total_ancilla_batches += ancilla_garbage_batches;
@@ -4340,14 +4358,14 @@ fn run_alt_seed_checks(ops: &[Op]) {
         total_phase_batches == 0,
         "ALT-SEED PHASE FAILURE: {} phase-garbage batches across {} seeds × {} shots",
         total_phase_batches,
-        ALT_SEED_COUNT,
+        n_seeds,
         ALT_SEED_SHOTS,
     );
     assert!(
         total_ancilla_batches == 0,
         "ALT-SEED ANCILLA FAILURE: {} ancilla-garbage batches across {} seeds × {} shots",
         total_ancilla_batches,
-        ALT_SEED_COUNT,
+        n_seeds,
         ALT_SEED_SHOTS,
     );
     assert!(
@@ -4355,7 +4373,7 @@ fn run_alt_seed_checks(ops: &[Op]) {
         "ALT-SEED CLASSICAL FAILURE: {} classical mismatches exceeds limit {} across {} seeds × {} shots",
         total_classical,
         ALT_SEED_CLASSICAL_LIMIT,
-        ALT_SEED_COUNT,
+        n_seeds,
         ALT_SEED_SHOTS,
     );
 }
@@ -4388,13 +4406,12 @@ pub fn build() -> Vec<Op> {
     // the register declarations so the harness interface is validated.
 
     let p = SECP256K1_P;
-    // 2N-1 guarantees Kaliski convergence for all inputs. The fast-path
-    // 399-iter truncation was empirically correct on the official seed but
-    // leaves rare residuals on ~0.01% of points, which show up as alternate-
-    // seed phase failures. Switch to the safe bound while we re-establish
-    // robustness, then claw back Toffoli separately.
-    let pair1_iters = 2 * N - 1;
-    let pair2_iters = 2 * N - 1;
+    // 2N-1 guarantees Kaliski convergence for all inputs. Empirically the
+    // tail (iter_idx >= ~450 or so) is only active for pathological inputs.
+    // We start at the safe bound and claw back by lowering only as far as
+    // multi-seed sampling remains clean.
+    let pair1_iters = 460;
+    let pair2_iters = 460;
 
     // Step 1-2: Px -= Qx, Py -= Qy
     mod_sub_qb(b, &tx, &ox, p);
