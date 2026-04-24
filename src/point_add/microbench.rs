@@ -19,8 +19,9 @@ use super::{
     mod_mul_add_into_acc_karatsuba2, mod_mul_add_into_acc_karatsuba_lowq,
     mod_mul_add_into_acc_schoolbook, mod_mul_write_into_zero_acc_karatsuba,
     mod_mul_write_into_zero_acc_karatsuba2, mod_mul_write_into_zero_acc_schoolbook,
-    schoolbook_mul_into_addsub, schoolbook_mul_into_addsub_inverse,
-    schoolbook_mul_into_addsub_lowq, schoolbook_mul_into_addsub_lowq_inverse, B, N, SECP256K1_P,
+    mod_mul_write_into_zero_acc_schoolbook_lowq, schoolbook_mul_into_addsub,
+    schoolbook_mul_into_addsub_inverse, schoolbook_mul_into_addsub_lowq,
+    schoolbook_mul_into_addsub_lowq_inverse, B, N, SECP256K1_P,
 };
 use crate::circuit::{Op, OperationType};
 
@@ -129,6 +130,24 @@ fn bench_mul_add_schoolbook() -> Measured {
         let y = fill_x(b, N);
         let acc = fill_x(b, N);
         mod_mul_add_into_acc_schoolbook(b, &acc, &x, &y, p);
+        b.free_vec(&acc);
+        b.free_vec(&y);
+        b.free_vec(&x);
+    })
+}
+
+/// write_into_zero schoolbook low-q variant. Same semantics as
+/// `bench_mul_schoolbook_write` but using the lowq addsub internals. We
+/// observed in build() that wiring this in at pair1_mul1 produces a
+/// deterministic phase-garbage batch (1/20480 shots on ALT_SEED tag=5),
+/// so this is here purely to measure cost, NOT as a drop-in.
+fn bench_mul_schoolbook_lowq_write() -> Measured {
+    let p = SECP256K1_P;
+    measure(|b| {
+        let x = fill_x(b, N);
+        let y = fill_x(b, N);
+        let acc = fill_x(b, N);
+        mod_mul_write_into_zero_acc_schoolbook_lowq(b, &acc, &x, &y, p);
         b.free_vec(&acc);
         b.free_vec(&y);
         b.free_vec(&x);
@@ -245,13 +264,20 @@ mod tests {
             return;
         }
         let sb_w = bench_mul_schoolbook_write();
+        let sb_lw = bench_mul_schoolbook_lowq_write();
         let sb_a = bench_mul_add_schoolbook();
         let k1_w = bench_mul_karatsuba_write();
         let k1_a = bench_mul_add_karatsuba();
         let k2_w = bench_mul_karatsuba2_write();
         let k2_a = bench_mul_add_karatsuba2();
         print_row("mul_schoolbook_write_zero", &sb_w);
+        print_row("mul_schoolbook_lowq_write_zero", &sb_lw);
         print_row("mul_schoolbook_add", &sb_a);
+        println!(
+            "microbench | summary | schoolbook_fast→schoolbook_lowq (write_zero): toff {:+}, peak {:+}",
+            sb_lw.toffoli as i64 - sb_w.toffoli as i64,
+            sb_lw.peak_qubits as i64 - sb_w.peak_qubits as i64
+        );
         print_row("mul_karatsuba1_write_zero", &k1_w);
         print_row("mul_karatsuba1_add", &k1_a);
         print_row("mul_karatsuba2_write_zero", &k2_w);

@@ -174,6 +174,11 @@ Eliminates m_hist (-409q). Case computed from state each iter, not stored.
 - **HRSL cumulative swap state**: +3.2M Toffoli, dead end.
 - **Toom-3 / Fermat / Edwards-coord swap**: analyzed and rejected.
 
+## Negative results from this session (don't re-explore without new info)
+- **`mod_mul_write_into_zero_acc_schoolbook_lowq` at pair1_mul1**: deterministic phase-garbage (1 batch in 1/20480 shots, ALT_SEED tag=5, reproducible across two runs). The forward+inverse pair is in principle phase-clean (it is a gate-level inverse of a gate-level inverse), but as a drop-in replacement for the schoolbook mul inside the Kaliski body it breaks the phase contract. Microbench confirms peak is NOT reduced by the lowq substitution (both variants are 1797 at n=256) — the 2n=512 tmp_ext dominates. Kept the helper as `#[allow(dead_code)]` with a note, since the negative result is important data for the next structural move.
+- **`KAL_FREE_S`** (free `st.s` after `kaliski_forward`, reallocate before `kaliski_backward`): catastrophic phase failure (64/64 batches across all seeds). Disproves the naive assumption that `st.s = 1` post-forward in the point-add scaffold; actual value must depend on the iter-at-termination per-shot. Any freeing of `st.s` requires measuring/remembering the actual final value classically, which collapses superposition — not viable inside a Kaliski body that must be reversible around the next body step.
+- **Karatsuba-1 at `pair1_mul2`**: blocked by the 2800q cap (persistent 2205 + 772 transient = 2977). Freeing one full n-wide persistent register (u/v_w/s/m_hist) before the site is a prerequisite, and only `m_hist` has an even theoretically phase-clean compression path. See ideas below.
+
 ## Microbench findings (src/point_add/microbench.rs, `MICROBENCH=1 cargo test ...`)
 Measured local peak + Toffoli of isolated primitives at n=256 from commit 9509e82:
 
@@ -195,6 +200,39 @@ Key implications:
 
 SOTA path implication (n=256, target ~1175-1425 qubits):
 - The structural bottleneck is the 2n=512 tmp_ext bulge stacked on top of ~2200 persistent Kaliski state. Closing the SOTA gap requires eliminating one full n-wide persistent register (m_hist compression, Kim unconditional without m_hist, or folding lam into an output register) AND compressing the mul tmp_ext at the same time. Small isolated substitutions cannot cross the qubit cap.
+
+## Structural lever that would actually break the 2800q cap
+Single most-promising: **m_hist compression via measurement**. m_hist is a
+407-wide qubit register that is write-only inside `kaliski_iteration` and
+read-only inside `kaliski_iteration_backward`. If m_hist[i] becomes a
+classical (Z-basis) eigenstate after its producing forward iteration, it
+could be projected into a classical BitId via a Z-measurement + reset,
+saving up to 407 persistent qubits (more than enough to pay for one or
+two karatsuba-1 substitutions + their transients).
+
+Blockers found this session:
+- The circuit IR has no Z-basis `Measure` op. Only `Hmr` exists, and `Hmr`
+  samples in the X basis — it gives a random classical bit even when the
+  qubit is in a Z eigenstate, which breaks the phase contract.
+- The CX copy `cx(m_i_qubit → m_i_bit)` cannot be emitted because `BitId`
+  is not a valid CX target; `x_if` / `cx_if` / `bit_store1_if` all take a
+  BitId as the condition, never as the target.
+- A workaround via `BitStore1_if(m_i_qubit?)` does not exist either.
+- Kim-style unconditional Kaliski would eliminate `m_hist` entirely at a
+  +9–28% Toffoli cost, which overshoots our current 4.18M Toffoli by more
+  than we'd claw back from karatsuba swaps. Only worth doing if the qubit
+  budget is the binding constraint (e.g. when chasing the 1175q regime).
+
+Next moves worth trying (roughly in order of easiest/most-likely):
+1. Add a `Measure` op (Z-basis) to the IR + sim + inverter. Small change.
+   Then implement m_hist compression as `qubit → BitId after iter i`,
+   and update `kaliski_iteration_backward` to accept `m_i: BitId` and use
+   `cx_if` / `x_if` / `ccx_if` everywhere m_i was a read-only control.
+2. With m_hist compressed, try karatsuba-1 at pair1_mul2 and pair2_mul.
+   Microbench says each saves ~28k Toffoli at +258 peak; together that's
+   ~56k Toffoli on top of the ~40k bit-compression bonus.
+3. Karatsuba2 at pair1_mul2 after step (1) may also fit (+518 peak with
+   ~407 qubits newly free). Another ~11k Toffoli on top.
 
 ## Session-scale wins still possible (~50-200q, tens-of-k Toffoli)
 - **In-place step4 (eliminate tmp via Gidney measurement-AND)**: -256q at +~800k Toffoli. Needs careful HMR matching.

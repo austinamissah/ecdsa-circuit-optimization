@@ -1546,6 +1546,59 @@ fn mod_add_qq_fast_from_zero(b: &mut B, acc: &[QubitId], a: &[QubitId], p: U256)
     let _ = (acc_ext, a_ext);
 }
 
+/// Low-peak variant of `mod_mul_write_into_zero_acc_schoolbook`: uses
+/// `schoolbook_mul_into_addsub_lowq` + `_inverse_lowq` instead of the fast
+/// variants, saving ~n qubits at peak at the cost of ~n extra Toffolis per
+/// row.
+///
+/// NOTE: microbench (n=256) shows this DOES NOT reduce the local peak
+/// (schoolbook_fast 1797 = schoolbook_lowq 1797); the Solinas reduction +
+/// acc lifetimes already dominate, and the lowq carry saving is hidden
+/// underneath. We also observed a deterministic phase-garbage batch when
+/// wiring this in at pair1_mul1 (1/20480 shots, ALT_SEED tag=5, across
+/// two runs), so this helper is currently DEAD CODE kept only as a paper
+/// trail for the negative result. See `autoresearch.ideas.md`.
+#[allow(dead_code)]
+fn mod_mul_write_into_zero_acc_schoolbook_lowq(
+    b: &mut B,
+    acc: &[QubitId],
+    x: &[QubitId],
+    y: &[QubitId],
+    p: U256,
+) {
+    let n = acc.len();
+    debug_assert_eq!(n, 256);
+
+    let tmp_ext = b.alloc_qubits(2 * n);
+    schoolbook_mul_into_addsub_lowq(b, x, y, &tmp_ext);
+
+    let lo: Vec<QubitId> = tmp_ext[0..n].to_vec();
+    let hi: Vec<QubitId> = tmp_ext[n..2 * n].to_vec();
+    mod_add_qq_fast_from_zero(b, acc, &lo, p);
+    mod_add_qq_fast(b, acc, &hi, p);
+    for _ in 0..4 {
+        mod_double_inplace_fast(b, &hi, p);
+    }
+    mod_add_qq_fast(b, acc, &hi, p);
+    for _ in 0..2 {
+        mod_double_inplace_fast(b, &hi, p);
+    }
+    mod_sub_qq_fast(b, acc, &hi, p);
+    for _ in 0..4 {
+        mod_double_inplace_fast(b, &hi, p);
+    }
+    mod_add_qq_fast(b, acc, &hi, p);
+    let (spill, flag_inv, ovf) = mod_shift_left_by_k(b, &hi, p, 22);
+    mod_add_qq(b, acc, &hi, p);
+    mod_shift_right_by_k(b, &hi, p, 22, spill, flag_inv, ovf);
+    for _ in 0..10 {
+        mod_halve_inplace_fast(b, &hi, p);
+    }
+
+    schoolbook_mul_into_addsub_lowq_inverse(b, x, y, &tmp_ext);
+    b.free_vec(&tmp_ext);
+}
+
 /// Specialization of mod_mul_add_into_acc_schoolbook when acc = 0 on entry.
 /// Uses mod_add_qq_fast_from_zero for the first Solinas reduction step.
 /// Saves ~255 CCX per call.
