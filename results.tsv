@@ -496,3 +496,26 @@ timestamp	commit	toffoli	clifford	qubits	ops	correct	notes
 1777067222	3b7d3b2	4180502.000	24470810.289	2716	31293818	OK	schoolbook addsub correction3: cuccaro_sub_fast -> cuccaro_sub (saves 2n peak carries) 
 1777067252	3b7d3b2	4180502.000	24470810.289	2716	31293818	OK	autoresearch-checks
 1777067376	fa464b9	4180502.000	24470810.289	2716	31293818	OK	schoolbook addsub correction3: cuccaro_sub_fast -> cuccaro_sub (saves 2n peak carries) 
+1777068922	5074345	4180502.000	24470810.289	2716	31293818	OK	schoolbook addsub correction3: cuccaro_sub_fast -> cuccaro_sub (saves 2n peak carries) 
+1777068955	5074345	4180502.000	24470810.289	2716	31293818	OK	schoolbook addsub correction3: cuccaro_sub_fast -> cuccaro_sub (saves 2n peak carries) 
+1777068987	5074345	4180502.000	24470810.289	2716	31293818	OK	schoolbook addsub correction3: cuccaro_sub_fast -> cuccaro_sub (saves 2n peak carries) 
+1777069019	5074345	4180502.000	24470810.289	2716	31293818	OK	schoolbook addsub correction3: cuccaro_sub_fast -> cuccaro_sub (saves 2n peak carries) 
+1777069051	5074345	4180502.000	24470810.289	2716	31293818	OK	schoolbook addsub correction3: cuccaro_sub_fast -> cuccaro_sub (saves 2n peak carries) 
+1777069083	5074345	4180502.000	24470810.289	2716	31293818	OK	schoolbook addsub correction3: cuccaro_sub_fast -> cuccaro_sub (saves 2n peak carries) 
+1777069294	5074345	4180502.000	24470810.289	2716	31293818	OK	schoolbook addsub correction3: cuccaro_sub_fast -> cuccaro_sub (saves 2n peak carries) 
+1777072781	5074345	4180502.000	24470810.289	2716	31293818	OK	schoolbook addsub correction3: cuccaro_sub_fast -> cuccaro_sub (saves 2n peak carries) 
+1777072871	5074345	4172306.000	24426735.925	2714	31233982	OK	schoolbook addsub correction3: cuccaro_sub_fast -> cuccaro_sub (saves 2n peak carries) 
+1777072909	5074345	4155794.000	24338091.535	2712	31113430	FAIL	schoolbook addsub correction3: cuccaro_sub_fast -> cuccaro_sub (saves 2n peak carries)  | CLASSICAL MISMATCH shot 4990: got (0xb4141d3cccb0fb5902ca7964854d12b4e9c0c74353e6809c8b37dcee28aa040e,0x487d785cd88d5d205bc73abe26bde1a3877da91ff265010c7bdbd4c4565add52) exp (0x2d4408dd3df8c1b28ecc33f688945c409a2a7bb2f7c1dd59e4f5e46677bb98a9,0xa07284d2cfe420ef2379b91fa5335dce4d3fa454434eb6183ce9cb19987ea55d)
+1777072957	5074345	4180502.000	24470810.289	2716	31293818	OK	autoresearch-checks
+1777072990	5074345	4180502.000	24470810.289	2716	31293818	OK	schoolbook addsub correction3: cuccaro_sub_fast -> cuccaro_sub (saves 2n peak carries) 
+1777073024	5074345	4180502.000	24470810.289	2716	31293818	OK	schoolbook addsub correction3: cuccaro_sub_fast -> cuccaro_sub (saves 2n peak carries) 
+1777073073	5074345	4180502.000	24470810.289	2716	31293818	OK	schoolbook addsub correction3: cuccaro_sub_fast -> cuccaro_sub (saves 2n peak carries) 
+1777073708	5074345	4180502.000	24470810.289	2716	31293818	OK	schoolbook addsub correction3: cuccaro_sub_fast -> cuccaro_sub (saves 2n peak carries) 
+1777073737	5074345	4180502.000	24470810.289	2716	31293818	OK	autoresearch-checks
+1777073955	5074345	4464742.000	25111379.521	2716	35495442	OK	schoolbook addsub correction3: cuccaro_sub_fast -> cuccaro_sub (saves 2n peak carries) 
+1777074122	5074345	4180502.000	24470810.289	2716	31293818	OK	schoolbook addsub correction3: cuccaro_sub_fast -> cuccaro_sub (saves 2n peak carries) 
+1777074190	5074345	4484863.000	26851420.024	2716	34265939	OK	schoolbook addsub correction3: cuccaro_sub_fast -> cuccaro_sub (saves 2n peak carries) 
+1777074219	5074345	4180502.000	24470810.289	2716	31293818	OK	autoresearch-checks
+1777074257	5074345	4484863.000	26851420.024	2716	34265939	OK	schoolbook addsub correction3: cuccaro_sub_fast -> cuccaro_sub (saves 2n peak carries) 
+1777074336	5074345	4180502.000	24470810.289	2716	31293818	OK	schoolbook addsub correction3: cuccaro_sub_fast -> cuccaro_sub (saves 2n peak carries) 
+1777074366	5074345	4180502.000	24470810.289	2716	31293818	OK	autoresearch-checks
