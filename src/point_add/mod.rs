@@ -65,17 +65,7 @@ use crate::weierstrass_elliptic_curve::WeierstrassEllipticCurve;
 
 pub mod by;
 pub mod kaliski_jump;
-pub mod kaliski_jump_extra;
-pub mod kaliski_key_search;
-pub mod kaliski_window_decomp;
-pub mod kaliski_hybrid_proto;
-pub mod kaliski_prefix_key;
 pub mod kaliski_equiv;
-pub mod kaliski_hmr_diag;
-pub mod kaliski_hmr_diff;
-pub mod kaliski_prefix_phase_map;
-pub mod kaliski_phase_bisect;
-pub mod kaliski_phase_hypothesis;
 pub mod test_timeout;
 
 struct B {
