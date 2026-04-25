@@ -73,6 +73,8 @@ pub mod microbench;
 #[cfg(test)]
 pub mod primitive_costs;
 #[cfg(test)]
+pub mod venting;
+#[cfg(test)]
 pub mod kim_inv_circuit;
 #[cfg(test)]
 pub mod kim_proto;

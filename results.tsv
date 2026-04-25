@@ -545,3 +545,16 @@ timestamp	commit	toffoli	clifford	qubits	ops	correct	notes
 1777078190	1d639dd	4180502.000	24470810.289	2716	31293818	OK	schoolbook addsub correction3: cuccaro_sub_fast -> cuccaro_sub (saves 2n peak carries) 
 1777078340	1d639dd	4180502.000	24470810.289	2716	31293818	OK	schoolbook addsub correction3: cuccaro_sub_fast -> cuccaro_sub (saves 2n peak carries) 
 1777078369	1d639dd	4180502.000	24470810.289	2716	31293818	OK	autoresearch-checks
+1777079102	04f8958	4308502.000	24522006.955	2716	31536986	OK	schoolbook addsub correction3: cuccaro_sub_fast -> cuccaro_sub (saves 2n peak carries) 
+1777079131	04f8958	4180502.000	24470810.289	2716	31293818	OK	autoresearch-checks
+1777079178	04f8958	4308502.000	24522006.955	2716	31536986	OK	schoolbook addsub correction3: cuccaro_sub_fast -> cuccaro_sub (saves 2n peak carries) 
+1777079240	04f8958	4308502.000	24522006.955	2716	31536986	OK	schoolbook addsub correction3: cuccaro_sub_fast -> cuccaro_sub (saves 2n peak carries) 
+1777079281	04f8958	4308502.000	24522006.955	2716	31536986	OK	schoolbook addsub correction3: cuccaro_sub_fast -> cuccaro_sub (saves 2n peak carries) 
+1777079322	04f8958	4308502.000	24522006.955	2716	31536986	OK	schoolbook addsub correction3: cuccaro_sub_fast -> cuccaro_sub (saves 2n peak carries) 
+1777079516	04f8958	4308502.000	24522006.955	2716	31536986	OK	schoolbook addsub correction3: cuccaro_sub_fast -> cuccaro_sub (saves 2n peak carries) 
+1777079545	04f8958	4180502.000	24470810.289	2716	31293818	OK	autoresearch-checks
+1777079585	04f8958	4308502.000	24522006.955	2716	31536986	OK	schoolbook addsub correction3: cuccaro_sub_fast -> cuccaro_sub (saves 2n peak carries) 
+1777079651	04f8958	4180502.000	24470810.289	2716	31293818	OK	schoolbook addsub correction3: cuccaro_sub_fast -> cuccaro_sub (saves 2n peak carries) 
+1777079804	04f8958	4180502.000	24470810.289	2716	31293818	OK	schoolbook addsub correction3: cuccaro_sub_fast -> cuccaro_sub (saves 2n peak carries) 
+1777079973	04f8958	4180502.000	24470810.289	2716	31293818	OK	schoolbook addsub correction3: cuccaro_sub_fast -> cuccaro_sub (saves 2n peak carries) 
+1777080003	04f8958	4180502.000	24470810.289	2716	31293818	OK	autoresearch-checks
