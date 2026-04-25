@@ -4746,11 +4746,7 @@ fn kaliski_iteration_bulk_prefix3_backward(
         let sub_width = if iter_idx + 2 < n { iter_idx + 2 } else { n };
         let tmp_sub_slice: Vec<QubitId> = tmp[0..sub_width].to_vec();
         let s_slice: Vec<QubitId> = s[0..sub_width].to_vec();
-        if std::env::var("KAL_VENT_MODADD").ok().as_deref() == Some("1") {
-            sub_nbit_qq(b, &tmp_sub_slice, &s_slice);
-        } else {
-            sub_nbit_qq_fast(b, &tmp_sub_slice, &s_slice);
-        }
+        sub_nbit_qq_fast(b, &tmp_sub_slice, &s_slice);
         let transform_width = n;
         for i in 0..transform_width {
             b.cx(r[i], u[i]);
@@ -4763,11 +4759,7 @@ fn kaliski_iteration_bulk_prefix3_backward(
         }
         let tmp_add_slice: Vec<QubitId> = tmp[0..n].to_vec();
         let v_w_slice: Vec<QubitId> = v_w[0..n].to_vec();
-        if std::env::var("KAL_VENT_MODADD").ok().as_deref() == Some("1") {
-            add_nbit_qq(b, &tmp_add_slice, &v_w_slice);
-        } else {
-            add_nbit_qq_fast(b, &tmp_add_slice, &v_w_slice);
-        }
+        add_nbit_qq_fast(b, &tmp_add_slice, &v_w_slice);
         for i in 0..n {
             let m = b.alloc_bit();
             b.hmr(tmp[i], m);
@@ -4896,11 +4888,7 @@ fn kaliski_iteration_backward(
         let sub_width = if iter_idx + 2 < n { iter_idx + 2 } else { n };
         let tmp_sub_slice: Vec<QubitId> = tmp[0..sub_width].to_vec();
         let s_slice: Vec<QubitId> = s[0..sub_width].to_vec();
-        if std::env::var("KAL_VENT_MODADD").ok().as_deref() == Some("1") {
-            sub_nbit_qq(b, &tmp_sub_slice, &s_slice);
-        } else {
-            sub_nbit_qq_fast(b, &tmp_sub_slice, &s_slice);
-        }
+        sub_nbit_qq_fast(b, &tmp_sub_slice, &s_slice);
         // Reversed (E): transform tmp from AND(add_f,r) → AND(add_f,u).
         // Late-iter: u high bits 0, so transform at those bits: cx(r,u=0)→u=r,
         //   ccx(add_f, u=r, tmp) flips tmp. tmp goes 0 → add_f AND r. Not what we
@@ -4919,11 +4907,7 @@ fn kaliski_iteration_backward(
         let add_width = transform_width;
         let tmp_add_slice: Vec<QubitId> = tmp[0..add_width].to_vec();
         let v_w_slice: Vec<QubitId> = v_w[0..add_width].to_vec();
-        if std::env::var("KAL_VENT_MODADD").ok().as_deref() == Some("1") {
-            add_nbit_qq(b, &tmp_add_slice, &v_w_slice);
-        } else {
-            add_nbit_qq_fast(b, &tmp_add_slice, &v_w_slice);
-        }
+        add_nbit_qq_fast(b, &tmp_add_slice, &v_w_slice);
         // Unload: bits < min(load_width, transform_width) both apply (tmp = add_f AND u after transform).
         // For bits where transform was applied, tmp = add_f AND u. For bits where transform skipped
         // (i >= transform_width), tmp stays at whatever load left it (either add_f AND r or 0).
