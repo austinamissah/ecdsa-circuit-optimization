@@ -48,6 +48,21 @@ cargo test coset_proto -- --nocapture
   - coset proto: `14720 CCX`, peak `1802`
   - delta: `-1664 CCX`, `+517q`
 
+- `reps=32, cpad=6`
+  - direct: `32768 CCX`, peak `1285`
+  - coset proto: `24384 CCX`, peak `1803`
+  - delta: `-8384 CCX`, `+518q`
+
+- `reps=64, cpad=7`
+  - direct: `65536 CCX`, peak `1285`
+  - coset proto: `42496 CCX`, peak `1804`
+  - delta: `-23040 CCX`, `+519q`
+
+- `reps=256, cpad=9`
+  - direct: `262144 CCX`, peak `1285`
+  - coset proto: `146688 CCX`, peak `1806`
+  - delta: `-115456 CCX`, `+521q`
+
 ### Quantum-register add chain (`mod_add_qq_fast` style)
 
 - `reps=3, cpad=2`
@@ -70,6 +85,21 @@ cargo test coset_proto -- --nocapture
   - coset proto: `14720 CCX`, peak `2058`
   - delta: `-1664 CCX`, `+773q`
 
+- `reps=32, cpad=6`
+  - direct: `32768 CCX`, peak `1285`
+  - coset proto: `24384 CCX`, peak `2059`
+  - delta: `-8384 CCX`, `+774q`
+
+- `reps=64, cpad=7`
+  - direct: `65536 CCX`, peak `1285`
+  - coset proto: `42496 CCX`, peak `2060`
+  - delta: `-23040 CCX`, `+775q`
+
+- `reps=256, cpad=9`
+  - direct: `262144 CCX`, peak `1285`
+  - coset proto: `146688 CCX`, peak `2062`
+  - delta: `-115456 CCX`, `+777q`
+
 ## Interpretation
 
 The key observation is a **crossover**:
@@ -87,9 +117,14 @@ So:
   coset/padded arithmetic.**
 - The first plausible landing zone is a **long arithmetic region** with at
   least a dozen adds/subs sharing one cleanup.
+- Once the region is long enough, the Toffoli win becomes substantial:
+  by 32 adds the prototype saves ~8.4k CCX, by 64 adds ~23k CCX, and by
+  256 adds ~115k CCX.
 - Even there, we must solve the qubit tax by reusing an already-live wide
   workspace instead of allocating the padded accumulator on top of the current
   live set.
+- This points away from affine fixups and toward regions like repeated
+  schoolbook/Kaliski accumulation or future QROM-windowed batches.
 
 ## Current verdict
 
