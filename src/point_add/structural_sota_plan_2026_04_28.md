@@ -411,10 +411,10 @@ Positive forward-row progress:
   signed scaled rows, computes `m`, computes signed `q=s adj(P)m/2^16`, zeros
   the old rows, clears `m` via `Pq=m`, clears `q` from residual high bits, and
   uncomputes residuals. It passes 32 random basis states at `13110 CCX`, peak
-  `2256q`.
+  `2224q` after freeing unused q sign-extension bits.
 - `fixed_matrix_replacement_sample_cost_distribution` generalizes the circuit
   generator to arbitrary signed sampled BY matrices. On 32 sampled `w=16`
-  matrices: mean `20991 CCX`, p90 `24234`, max `28099`, peak `2256q` for the
+  matrices: mean `20991 CCX`, p90 `24234`, max `28099`, peak `2224q` for the
   full pair replacement.
 
 `actual_matrix_sequence_entropy_supports_sub600_history_target` shows the raw
@@ -434,7 +434,7 @@ mean/window ≈ 28,607 CCX
 p90/window  ≈ 35,087 CCX
 max/window  ≈ 37,609 CCX
 35 windows  ≈ 1,001,258 CCX
-scheduled peak model ≈ 2804q
+scheduled peak model ≈ 2772q
 selector history ≈ 770 bits (35 × 22-bit delta,h key)
 ```
 

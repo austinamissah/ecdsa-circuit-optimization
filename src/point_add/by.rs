@@ -2089,7 +2089,15 @@ mod tests {
         add_coeff_times_for_cost(b, sgn * mtx.m00, m1, &q1);
         arith_shift_right_inplace_for_cost(b, &q0, 16);
         arith_shift_right_inplace_for_cost(b, &q1, 16);
-        (q0, q1)
+        for i in 18..34 {
+            b.cx(q0[17], q0[i]);
+            b.cx(q1[17], q1[i]);
+        }
+        let q0_live = q0[..18].to_vec();
+        let q1_live = q1[..18].to_vec();
+        b.free_vec(&q0[18..]);
+        b.free_vec(&q1[18..]);
+        (q0_live, q1_live)
     }
 
     fn subtract_signed_q_times_solinas_c_for_cost(
