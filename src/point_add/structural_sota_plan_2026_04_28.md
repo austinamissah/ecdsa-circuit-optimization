@@ -292,6 +292,44 @@ This is not yet a full inversion circuit, but it is a better Toffoli-structural
 lead than Kaliski low-bit windows: no full comparator sequence, moderate matrix
 row intensity, and approximate iteration count is plausible.
 
+#### BY correction after deeper circuit modeling
+
+The next round made the BY picture more precise:
+
+- `fixed_by_coeff_channel_is_tagged_div_when_converged` proves the same
+  `y+x` tagged-DIV algebra works for fixed-cap BY. After `K` divsteps, if
+  `f=±1,g=0`, then `V*x = sign(f) 2^K` and `R=0 mod p`, so carrying
+  `y+x` gives `sign(f)*V*(y+x)*2^-K - 1 = y/x`. At `K=550`, sampled failure
+  was `29/5000 = 0.0058`, within the user's 1% allowance.
+- `jump_matrix_depends_on_delta_and_g_over_f_ratio` shows the selected matrix
+  is determined by `(delta, h=g/f mod 2^w)`, not by both low words. Exact
+  enumeration gives `41*2^w` keys for `w=4,6,8`, matching the histogram law.
+  For `w=16` this is a 22-bit key (`~2.7M` matrices), not a 33-bit key.
+- `scaled_pair_update_cleanup_cost_probe` measures the integer denominator
+  jumped replacement with scaled-adjugate cleanup: `≈7744 CCX/window/pair`,
+  peak `≈1402q`.
+- But the modular coefficient/tag channel is harder than the integer
+  denominator. `modular_jump_inverse_cleanup_is_dense_dead_end` shows that
+  unscaled modular inverse cleanup uses `2^-w adj(P) mod p`, whose four
+  constants have mean popcount `≈814`; this kills naive sparse cleanup.
+- `naive_variable_coefficient_jump_apply_is_too_expensive` shows synthesizing
+  quantum coefficient bits and applying all possible bits would cost
+  `≈5.2M` Toffoli for the 2-pair 35-window tagged DIV alone.
+- `by_microstep_inplace_cost_model_is_not_the_jump_win` measures raw coherent
+  BY microsteps at `≈5989 CCX/step`, i.e. `≈3.29M` for 550 steps.
+- `hybrid_jump_denominator_with_microstep_tag_channel_still_too_costly` tries
+  the valid hybrid (jumped integer denominator + raw modular tag channel) and
+  gets `≈2.66M` for one tagged DIV.
+- `scaled_modular_jump_sparse_cleanup_is_too_expensive_with_current_primitives`
+  tries the scaled coefficient convention (`2^-w P` forward + sparse adjugate
+  cleanup) with a shared-doubling small-constant modular row former. It still
+  costs `≈58.4k CCX/window`, or `≈2.05M` for 35 windows for the modular pair.
+
+So BY is algebraically promising but not yet a SOTA circuit with current
+primitives. The live narrow target is now very specific: a substantially better
+small-constant modular row former / batched `2^-w` shift for the scaled
+coefficient channel. Without that, jumped BY cannot replace Kaliski.
+
 ### Program B — triangular one-inversion schedule (highest payoff, highest risk)
 
 Goal: use Strategy C or B2 but avoid Bennett-clean fresh outputs. A successful

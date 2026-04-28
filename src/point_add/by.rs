@@ -295,6 +295,86 @@ pub fn run_divsteps(g0: U256, p: U256, max_iters: usize) -> DivstepsRun {
     }
 }
 
+/// Run exactly `iters` divsteps, continuing after convergence with the
+/// `g = 0` even branch. Constant-time BY recip does this: once `g` is zero,
+/// later steps only double the top coefficient row, preserving the fixed
+/// invariant `2^iters f = U p + V g0`.
+///
+/// This is the right model for an approximate fixed-cap circuit: convergence
+/// before the cap yields a valid inverse scaled by the public `2^-iters`; lack
+/// of convergence is the permitted failure event.
+pub fn run_divsteps_fixed(g0: U256, p: U256, iters: usize) -> DivstepsRun {
+    assert!(p.bit(0), "p must be odd");
+    assert!(g0 < p && !g0.is_zero(), "g0 must lie in [1, p)");
+
+    let mut delta: i64 = 1;
+    let mut f = SInt::from_u(p);
+    let mut g = SInt::from_u(g0);
+    let mut coeffs = Coeffs::initial();
+    let mut max_abs_delta = 1i64;
+
+    for _ in 0..iters {
+        let g_odd = g.bit0();
+        if delta > 0 && g_odd {
+            let nf = g;
+            let ng = SInt::sub(g, f).shr1_even();
+            let nu = addm(coeffs.qq, coeffs.qq, p);
+            let nv = addm(coeffs.rr, coeffs.rr, p);
+            let nq = subm(coeffs.qq, coeffs.uu, p);
+            let nr = subm(coeffs.rr, coeffs.vv, p);
+            delta = 1 - delta;
+            f = nf;
+            g = ng;
+            coeffs = Coeffs {
+                uu: nu,
+                vv: nv,
+                qq: nq,
+                rr: nr,
+            };
+        } else if g_odd {
+            let ng = SInt::add(g, f).shr1_even();
+            let nu = addm(coeffs.uu, coeffs.uu, p);
+            let nv = addm(coeffs.vv, coeffs.vv, p);
+            let nq = addm(coeffs.qq, coeffs.uu, p);
+            let nr = addm(coeffs.rr, coeffs.vv, p);
+            delta = 1 + delta;
+            g = ng;
+            coeffs = Coeffs {
+                uu: nu,
+                vv: nv,
+                qq: nq,
+                rr: nr,
+            };
+        } else {
+            let ng = g.shr1_even();
+            let nu = addm(coeffs.uu, coeffs.uu, p);
+            let nv = addm(coeffs.vv, coeffs.vv, p);
+            delta = 1 + delta;
+            g = ng;
+            coeffs = Coeffs {
+                uu: nu,
+                vv: nv,
+                qq: coeffs.qq,
+                rr: coeffs.rr,
+            };
+        }
+
+        let abs_delta = delta.unsigned_abs() as i64;
+        if abs_delta > max_abs_delta {
+            max_abs_delta = abs_delta;
+        }
+    }
+
+    DivstepsRun {
+        converged: g.is_zero(),
+        iters_done: iters,
+        max_abs_delta,
+        final_f: f,
+        final_g: g,
+        final_coeffs: coeffs,
+    }
+}
+
 /// Recover `g0^{-1} mod p` from a converged divsteps run.
 ///
 /// From the invariant `2^k f_k = U p + V g0`, with final `f_k = ±1`:
@@ -871,6 +951,65 @@ mod tests {
         assert!(fail_550 as f64 / samples as f64 <= 0.01, "550-step approximate cutoff exceeded 1% on sample");
     }
 
+    fn two_inv_pow(p: U256, iters: usize) -> U256 {
+        let two_inv = (p.wrapping_add(U256::from(1))) >> 1;
+        let mut acc = U256::from(1);
+        let mut base = two_inv;
+        let mut e = iters as u64;
+        while e > 0 {
+            if (e & 1) != 0 {
+                acc = mulm(acc, base, p);
+            }
+            e >>= 1;
+            if e != 0 {
+                base = mulm(base, base, p);
+            }
+        }
+        acc
+    }
+
+    #[test]
+    fn fixed_by_coeff_channel_is_tagged_div_when_converged() {
+        // Structural algebra for replacing Kaliski tagged-DIV with BY:
+        // after fixed K divsteps, if f=±1 and g=0, the top coefficient V obeys
+        //     V*x = sign(f)*2^K  (mod p),
+        // and the bottom coefficient R obeys
+        //     R*x = 0            (mod p)  -> R=0 for nonzero x.
+        // Therefore carrying a tagged numerator y+x through the same
+        // coefficient channel gives V*(y+x); multiplying by sign(f)*2^-K and
+        // subtracting 1 recovers y/x, while the bottom channel is zero. This is
+        // the BY analogue of the Kaliski y+x tagged DIV transform.
+        let p = SECP256K1_P;
+        let k = 550usize;
+        let two_inv_k = two_inv_pow(p, k);
+        let samples = 5_000usize;
+        let mut sx = Sampler::new(b"by-fixed-tagged-div-x-v1", p);
+        let mut sy = Sampler::new(b"by-fixed-tagged-div-y-v1", p);
+        let mut failures = 0usize;
+        for _ in 0..samples {
+            let x = sx.next();
+            let y = sy.next();
+            let run = run_divsteps_fixed(x, p, k);
+            if !run.converged || !(run.final_f.is_one_pos() || run.final_f.is_one_neg()) {
+                failures += 1;
+                continue;
+            }
+            let tag = addm(y, x, p);
+            assert_eq!(mulm(run.final_coeffs.rr, tag, p), U256::ZERO, "bottom BY tagged channel did not self-zero");
+            let raw = mulm(run.final_coeffs.vv, tag, p);
+            let scaled = mulm(raw, two_inv_k, p);
+            let plus_one = if run.final_f.is_one_pos() { scaled } else { negm(scaled, p) };
+            let quotient = subm(plus_one, U256::from(1), p);
+            let expected = mulm(y, fermat_modinv(x, p), p);
+            assert_eq!(quotient, expected, "BY tagged quotient mismatch");
+        }
+        let fail_rate = failures as f64 / samples as f64;
+        eprintln!(
+            "fixed BY tagged-DIV algebra at K={k}: failures={failures}/{samples} ({fail_rate:.4})"
+        );
+        assert!(fail_rate <= 0.01, "550-step fixed BY tagged DIV exceeded 1% failure tolerance");
+    }
+
     #[test]
     fn jumpdivstep_matrix_arithmetic_intensity_model() {
         // BY/jumpdivsteps is attractive because branch selection is local to
@@ -1007,6 +1146,57 @@ mod tests {
         let _ = (f, g, out0, out1);
     }
 
+    fn det_sign_pow2(m: TransitionMatrix, w: usize) -> i128 {
+        let det = m.m00 * m.m11 - m.m01 * m.m10;
+        let scale = 1i128 << w;
+        assert!(det == scale || det == -scale, "unexpected jump determinant {det}, expected ±{scale}");
+        det / scale
+    }
+
+    fn scaled_inverse_matrix(m: TransitionMatrix, w: usize) -> TransitionMatrix {
+        // For new = P old / 2^w and det(P)=s·2^w, old = s·adj(P) new.
+        let s = det_sign_pow2(m, w);
+        TransitionMatrix {
+            m00: s * m.m11,
+            m01: -s * m.m01,
+            m10: -s * m.m10,
+            m11: s * m.m00,
+            delta_final: m.delta_final,
+        }
+    }
+
+    fn emit_scaled_pair_update_with_cleanup_for_cost(
+        b: &mut super::super::B,
+        m: TransitionMatrix,
+        width: usize,
+        w: usize,
+    ) {
+        // More faithful BY jump pair update cost:
+        //   temp = P·old is accumulated at width+w bits;
+        //   temp low w bits are mathematically zero;
+        //   new is the high `width` bits, i.e. P·old / 2^w;
+        //   old is cleaned using old = (2^w/det(P)) adj(P) new.
+        let f = b.alloc_qubits(width);
+        let g = b.alloc_qubits(width);
+        let tmp0 = b.alloc_qubits(width + w);
+        let tmp1 = b.alloc_qubits(width + w);
+
+        add_coeff_times_for_cost(b, m.m00, &f, &tmp0);
+        add_coeff_times_for_cost(b, m.m01, &g, &tmp0);
+        add_coeff_times_for_cost(b, m.m10, &f, &tmp1);
+        add_coeff_times_for_cost(b, m.m11, &g, &tmp1);
+
+        let new0 = tmp0[w..w + width].to_vec();
+        let new1 = tmp1[w..w + width].to_vec();
+        let inv = scaled_inverse_matrix(m, w);
+        add_coeff_times_for_cost(b, -inv.m00, &new0, &f);
+        add_coeff_times_for_cost(b, -inv.m01, &new1, &f);
+        add_coeff_times_for_cost(b, -inv.m10, &new0, &g);
+        add_coeff_times_for_cost(b, -inv.m11, &new1, &g);
+
+        let _ = (f, g, tmp0, tmp1);
+    }
+
     #[test]
     fn constant_jump_matrix_apply_cost_probe() {
         // Build actual circuits for constant selected BY matrices to calibrate
@@ -1043,6 +1233,532 @@ mod tests {
             mean_ccx / mean_terms
         );
         assert!(mean_ccx < 10_000.0, "constant matrix row formation too costly to prototype");
+    }
+
+    #[test]
+    fn scaled_pair_update_cleanup_cost_probe() {
+        // Circuit-level calibration for the reversible replacement step, not
+        // just row formation. It forms P·old in width+w bits, interprets the
+        // high bits as (P·old)/2^w, then cleans old with the scaled adjugate.
+        // This is the core operation a jumped-BY inversion would repeat.
+        const WIDTH: usize = 256 + 16 + 2;
+        const W: usize = 16;
+        let mut hasher = sha3::Shake128::default();
+        hasher.update(b"by-scaled-pair-update-cleanup-v1");
+        let mut reader = hasher.finalize_xof();
+        let mut buf = [0u8; 24];
+        let samples = 24usize;
+        let mut total_ccx = 0usize;
+        let mut max_peak = 0u32;
+        for _ in 0..samples {
+            reader.read(&mut buf);
+            let f_low = (u64::from_le_bytes(buf[0..8].try_into().unwrap()) as i128) | 1;
+            let g_low = u64::from_le_bytes(buf[8..16].try_into().unwrap()) as i128;
+            let delta = (u64::from_le_bytes(buf[16..24].try_into().unwrap()) % 41) as i64 - 20;
+            let (_, _, _, m) = jump_matrix_direct_lowword(W, W, delta, f_low, g_low);
+            let mut b = super::super::B::new();
+            emit_scaled_pair_update_with_cleanup_for_cost(&mut b, m, WIDTH, W);
+            total_ccx += count_ccx(&b.ops);
+            max_peak = max_peak.max(b.peak_qubits);
+        }
+        let mean_ccx = total_ccx as f64 / samples as f64;
+        eprintln!(
+            "scaled BY w=16 pair update+cleanup probe: mean_ccx={mean_ccx:.1}, max_peak={max_peak}"
+        );
+        assert!(mean_ccx < 9_000.0, "scaled pair replacement too expensive");
+        assert!(max_peak < 1_600, "single-pair replacement peak unexpectedly high");
+    }
+
+    fn cadd_qq_fast_for_cost(
+        b: &mut super::super::B,
+        acc: &[super::super::QubitId],
+        a: &[super::super::QubitId],
+        ctrl: super::super::QubitId,
+    ) {
+        let n = acc.len();
+        let f = b.alloc_qubits(n);
+        for i in 0..n {
+            b.ccx(ctrl, a[i], f[i]);
+        }
+        super::super::add_nbit_qq_fast(b, &f, acc);
+        for i in 0..n {
+            let m = b.alloc_bit();
+            b.hmr(f[i], m);
+            b.cz_if(ctrl, a[i], m);
+        }
+        b.free_vec(&f);
+    }
+
+    fn csub_qq_fast_for_cost(
+        b: &mut super::super::B,
+        acc: &[super::super::QubitId],
+        a: &[super::super::QubitId],
+        ctrl: super::super::QubitId,
+    ) {
+        let n = acc.len();
+        let f = b.alloc_qubits(n);
+        for i in 0..n {
+            b.ccx(ctrl, a[i], f[i]);
+        }
+        super::super::sub_nbit_qq_fast(b, &f, acc);
+        for i in 0..n {
+            let m = b.alloc_bit();
+            b.hmr(f[i], m);
+            b.cz_if(ctrl, a[i], m);
+        }
+        b.free_vec(&f);
+    }
+
+    fn inv_odd_mod_pow2_u64(a: u64, w: usize) -> u64 {
+        assert!(w > 0 && w <= 63 && (a & 1) == 1);
+        let mask = (1u64 << w) - 1;
+        let mut x = 1u64;
+        // Hensel/Newton doubling; enough rounds for w<=63.
+        for _ in 0..6 {
+            x = x.wrapping_mul(2u64.wrapping_sub(a.wrapping_mul(x))) & mask;
+        }
+        x & mask
+    }
+
+    #[test]
+    fn jump_matrix_depends_on_delta_and_g_over_f_ratio() {
+        // BY low-word jumps do not really depend on both low f and low g.
+        // Since f is always odd, normalizing by f shows the transition matrix
+        // is a function of (delta, h=g/f mod 2^w). Exact enumeration for
+        // w<=8 matches the earlier histogram law: distinct matrices = 41*2^w.
+        use std::collections::BTreeMap;
+        for &w in &[4usize, 6, 8] {
+            let mask = (1u64 << w) - 1;
+            let mut by_key: BTreeMap<(i64, u64), TransitionMatrix> = BTreeMap::new();
+            for delta in -20i64..=20i64 {
+                for f_odd in 0..(1usize << (w - 1)) {
+                    let f_low = ((f_odd << 1) | 1) as u64;
+                    let inv_f = inv_odd_mod_pow2_u64(f_low, w);
+                    for g_raw in 0..(1usize << w) {
+                        let h = (g_raw as u64).wrapping_mul(inv_f) & mask;
+                        let (_, _, _, m) = jump_matrix_direct_lowword(
+                            w,
+                            w,
+                            delta,
+                            f_low as i128,
+                            g_raw as i128,
+                        );
+                        match by_key.insert((delta, h), m) {
+                            Some(prev) => assert_eq!(prev, m, "matrix not determined by delta,h for w={w}"),
+                            None => {}
+                        }
+                    }
+                }
+            }
+            eprintln!(
+                "BY normalized jump keys w={w}: keys={}, expected={}",
+                by_key.len(),
+                41usize * (1usize << w)
+            );
+            assert_eq!(by_key.len(), 41usize * (1usize << w));
+        }
+    }
+
+    #[test]
+    fn naive_variable_coefficient_jump_apply_is_too_expensive() {
+        // If we synthesize the w-bit matrix entries into quantum coefficient
+        // registers and then multiply each full-width row by every possible
+        // coefficient bit, cost scales with bit-width rather than popcount.
+        // This quantifies that dead end: selected matrices must be applied via
+        // a better decomposition/control scheme than generic variable small ×
+        // wide multiplication.
+        const WIDTH: usize = 274;
+        const W: usize = 16;
+        let mut b = super::super::B::new();
+        let src = b.alloc_qubits(WIDTH);
+        let dst = b.alloc_qubits(WIDTH + W);
+        let coeff_bits = b.alloc_qubits(W + 1);
+        let start = b.ops.len();
+        for shift in 0..=W {
+            let len = src.len().min(dst.len() - shift);
+            let src_slice = src[..len].to_vec();
+            let dst_slice = dst[shift..shift + len].to_vec();
+            cadd_qq_fast_for_cost(&mut b, &dst_slice, &src_slice, coeff_bits[shift]);
+        }
+        let one_coeff_ccx = count_ccx(&b.ops[start..]);
+        let pair_update_cleanup_ccx = one_coeff_ccx * 8; // 4 P entries + 4 scaled-adjugate entries.
+        let approx_two_pair_35 = pair_update_cleanup_ccx as f64 * 2.0 * 35.0;
+        eprintln!(
+            "naive variable BY coefficient apply: one_coeff_ccx={one_coeff_ccx}, pair_update_cleanup_ccx≈{pair_update_cleanup_ccx}, two_pair_35_windows≈{approx_two_pair_35:.0}"
+        );
+        assert!(approx_two_pair_35 > 3_000_000.0, "naive variable coefficient apply unexpectedly viable");
+    }
+
+    #[test]
+    fn by_microstep_inplace_cost_model_is_not_the_jump_win() {
+        // Low-scratch in-place BY microsteps are algebraically clean but they
+        // pay controlled full-width additions every bit. This test keeps us
+        // honest: the SOTA-shaped path needs jumped/selected matrices, not 550
+        // raw coherent microsteps, unless the controlled-add implementation is
+        // radically improved.
+        const N: usize = 256;
+        const WIDTH: usize = 274;
+        let p = SECP256K1_P;
+        let mut b = super::super::B::new();
+        let a_ctrl = b.alloc_qubit(); // A branch: delta>0 && odd
+        let b_ctrl = b.alloc_qubit(); // B branch: odd && !A
+        let f = b.alloc_qubits(WIDTH);
+        let g = b.alloc_qubits(WIDTH);
+        let r = b.alloc_qubits(N);
+        let s = b.alloc_qubits(N);
+
+        let start = b.ops.len();
+        // Denominator pair: g +=/-= f on odd, then f += g on A.
+        cadd_qq_fast_for_cost(&mut b, &g, &f, b_ctrl);
+        csub_qq_fast_for_cost(&mut b, &g, &f, a_ctrl);
+        cadd_qq_fast_for_cost(&mut b, &f, &g, a_ctrl);
+        // Tagged modular channel mirrors the same shears, then doubles top.
+        super::super::cmod_add_qq(&mut b, &s, &r, b_ctrl, p);
+        super::super::cmod_sub_qq(&mut b, &s, &r, a_ctrl, p);
+        super::super::cmod_add_qq(&mut b, &r, &s, a_ctrl, p);
+        super::super::mod_double_inplace_fast(&mut b, &r, p);
+        let ccx = count_ccx(&b.ops[start..]);
+        let approx_total = ccx as f64 * 550.0;
+        eprintln!(
+            "BY raw microstep in-place cost model: ccx_per_step={ccx}, approx_550≈{approx_total:.0}, peak={}q",
+            b.peak_qubits
+        );
+        assert!(approx_total > 1_500_000.0, "raw microsteps unexpectedly competitive; revisit jump need");
+    }
+
+    fn signed_i128_mod_p(x: i128, p: U256) -> U256 {
+        if x >= 0 {
+            U256::from(x as u128) % p
+        } else {
+            let mag = U256::from(x.unsigned_abs());
+            if mag.is_zero() { U256::ZERO } else { p.wrapping_sub(mag % p) }
+        }
+    }
+
+    fn popcount_u256(x: U256) -> usize {
+        (0..256).filter(|&i| x.bit(i)).count()
+    }
+
+    fn mod_mul_small_coeff_acc_for_cost(
+        b: &mut super::super::B,
+        coeff: i128,
+        src: &[super::super::QubitId],
+        acc: &[super::super::QubitId],
+        p: U256,
+    ) {
+        if coeff == 0 {
+            return;
+        }
+        let subtract = coeff < 0;
+        let c = U256::from(coeff.unsigned_abs());
+        super::super::mul_by_const_acc(b, src, c, acc, p, subtract);
+    }
+
+    fn mod_mul_two_small_coeffs_acc_for_cost(
+        b: &mut super::super::B,
+        src: &[super::super::QubitId],
+        c0: i128,
+        acc0: &[super::super::QubitId],
+        c1: i128,
+        acc1: &[super::super::QubitId],
+        p: U256,
+    ) {
+        if c0 == 0 && c1 == 0 {
+            return;
+        }
+        let n = src.len();
+        let tmp = b.alloc_qubits(n);
+        for i in 0..n {
+            b.cx(src[i], tmp[i]);
+        }
+        let mag0 = c0.unsigned_abs();
+        let mag1 = c1.unsigned_abs();
+        let top0 = if mag0 == 0 { 0 } else { 127 - mag0.leading_zeros() as usize };
+        let top1 = if mag1 == 0 { 0 } else { 127 - mag1.leading_zeros() as usize };
+        let top = top0.max(top1);
+        for i in 0..=top {
+            if ((mag0 >> i) & 1) != 0 {
+                if c0 < 0 {
+                    super::super::mod_sub_qq_fast(b, acc0, &tmp, p);
+                } else {
+                    super::super::mod_add_qq_fast(b, acc0, &tmp, p);
+                }
+            }
+            if ((mag1 >> i) & 1) != 0 {
+                if c1 < 0 {
+                    super::super::mod_sub_qq_fast(b, acc1, &tmp, p);
+                } else {
+                    super::super::mod_add_qq_fast(b, acc1, &tmp, p);
+                }
+            }
+            if i < top {
+                super::super::mod_double_inplace_fast(b, &tmp, p);
+            }
+        }
+        for _ in 0..top {
+            super::super::mod_halve_inplace_fast(b, &tmp, p);
+        }
+        for i in 0..n {
+            b.cx(src[i], tmp[i]);
+        }
+        b.free_vec(&tmp);
+    }
+
+    fn emit_scaled_modular_pair_update_with_sparse_cleanup_for_cost(
+        b: &mut super::super::B,
+        m: TransitionMatrix,
+        w: usize,
+        p: U256,
+    ) {
+        // Coefficient convention: C' = 2^-w · P · C (mod p). Forward rows use
+        // sparse P followed by w modular halvings; cleanup uses sparse adj(P),
+        // avoiding the dense 2^-w inverse constants. The row former shares one
+        // doubling walk of each source across both destination rows.
+        let x0 = b.alloc_qubits(256);
+        let x1 = b.alloc_qubits(256);
+        let y0 = b.alloc_qubits(256);
+        let y1 = b.alloc_qubits(256);
+
+        mod_mul_two_small_coeffs_acc_for_cost(b, &x0, m.m00, &y0, m.m10, &y1, p);
+        mod_mul_two_small_coeffs_acc_for_cost(b, &x1, m.m01, &y0, m.m11, &y1, p);
+        for _ in 0..w {
+            super::super::mod_halve_inplace_fast(b, &y0, p);
+            super::super::mod_halve_inplace_fast(b, &y1, p);
+        }
+
+        let inv = scaled_inverse_matrix(m, w); // sparse adjugate with det sign.
+        mod_mul_two_small_coeffs_acc_for_cost(b, &y0, -inv.m00, &x0, -inv.m10, &x1, p);
+        mod_mul_two_small_coeffs_acc_for_cost(b, &y1, -inv.m01, &x0, -inv.m11, &x1, p);
+        let _ = (x0, x1, y0, y1);
+    }
+
+    #[test]
+    fn scaled_modular_jump_sparse_cleanup_is_too_expensive_with_current_primitives() {
+        // Tried repair after discovering dense unscaled inverses: keep the
+        // coefficient/tagged channel in the scaled BY convention. A window then
+        // costs sparse forward P rows, public halvings by w, and sparse
+        // adjugate cleanup. With the current constant-multiply/halve primitives
+        // this is still too expensive; keep the result as an invalidation and
+        // as a target for a better small-constant modular row former.
+        const W: usize = 16;
+        let p = SECP256K1_P;
+        let mut hasher = sha3::Shake128::default();
+        hasher.update(b"by-scaled-modular-sparse-cleanup-v1");
+        let mut reader = hasher.finalize_xof();
+        let mut buf = [0u8; 24];
+        let samples = 12usize;
+        let mut total_ccx = 0usize;
+        let mut max_peak = 0u32;
+        for _ in 0..samples {
+            reader.read(&mut buf);
+            let f_low = (u64::from_le_bytes(buf[0..8].try_into().unwrap()) as i128) | 1;
+            let g_low = u64::from_le_bytes(buf[8..16].try_into().unwrap()) as i128;
+            let delta = (u64::from_le_bytes(buf[16..24].try_into().unwrap()) % 41) as i64 - 20;
+            let (_, _, _, m) = jump_matrix_direct_lowword(W, W, delta, f_low, g_low);
+            let mut b = super::super::B::new();
+            emit_scaled_modular_pair_update_with_sparse_cleanup_for_cost(&mut b, m, W, p);
+            total_ccx += count_ccx(&b.ops);
+            max_peak = max_peak.max(b.peak_qubits);
+        }
+        let mean_ccx = total_ccx as f64 / samples as f64;
+        let approx_35 = mean_ccx * 35.0;
+        eprintln!(
+            "scaled modular BY pair update sparse-cleanup: mean_ccx/window={mean_ccx:.1}, approx_35≈{approx_35:.0}, max_peak={max_peak}q"
+        );
+        assert!(approx_35 > 2_000_000.0, "scaled modular sparse cleanup unexpectedly competitive; revisit BY path");
+    }
+
+    fn emit_tagged_modular_microstep_for_cost(
+        b: &mut super::super::B,
+        r: &[super::super::QubitId],
+        s: &[super::super::QubitId],
+        a_ctrl: super::super::QubitId,
+        b_ctrl: super::super::QubitId,
+        p: U256,
+    ) {
+        // A: s -= r; r += s; r *= 2.  B: s += r; r *= 2.  C: r *= 2.
+        super::super::cmod_add_qq(b, s, r, b_ctrl, p);
+        super::super::cmod_sub_qq(b, s, r, a_ctrl, p);
+        super::super::cmod_add_qq(b, r, s, a_ctrl, p);
+        super::super::mod_double_inplace_fast(b, r, p);
+    }
+
+    #[test]
+    fn hybrid_jump_denominator_with_microstep_tag_channel_still_too_costly() {
+        // Valid hybrid after the dense-inverse correction: use jumped sparse
+        // scaled updates only for the integer denominator pair, but update the
+        // modular tagged channel by raw in-place BY microsteps to avoid dense
+        // 2^-w inverse matrices. This is coherent and low-scratch, but the
+        // modular microsteps dominate.
+        const N: usize = 256;
+        const W: usize = 16;
+        const WIDTH: usize = N + W + 2;
+        let p = SECP256K1_P;
+        let approx_windows = 550usize.div_ceil(W);
+
+        let mut hasher = sha3::Shake128::default();
+        hasher.update(b"by-hybrid-den-jump-mod-micro-v1");
+        let mut reader = hasher.finalize_xof();
+        let mut buf = [0u8; 24];
+        let samples = 24usize;
+        let mut total_den_pair_ccx = 0usize;
+        for _ in 0..samples {
+            reader.read(&mut buf);
+            let f_low = (u64::from_le_bytes(buf[0..8].try_into().unwrap()) as i128) | 1;
+            let g_low = u64::from_le_bytes(buf[8..16].try_into().unwrap()) as i128;
+            let delta = (u64::from_le_bytes(buf[16..24].try_into().unwrap()) % 41) as i64 - 20;
+            let (_, _, _, m) = jump_matrix_direct_lowword(W, W, delta, f_low, g_low);
+            let mut b = super::super::B::new();
+            emit_scaled_pair_update_with_cleanup_for_cost(&mut b, m, WIDTH, W);
+            total_den_pair_ccx += count_ccx(&b.ops);
+        }
+        let mean_den_pair_ccx = total_den_pair_ccx as f64 / samples as f64;
+
+        let mut b = super::super::B::new();
+        let a_ctrl = b.alloc_qubit();
+        let b_ctrl = b.alloc_qubit();
+        let r = b.alloc_qubits(N);
+        let s = b.alloc_qubits(N);
+        let start = b.ops.len();
+        emit_tagged_modular_microstep_for_cost(&mut b, &r, &s, a_ctrl, b_ctrl, p);
+        let mod_micro_ccx = count_ccx(&b.ops[start..]);
+
+        let approx_total = mean_den_pair_ccx * approx_windows as f64 + mod_micro_ccx as f64 * 550.0;
+        eprintln!(
+            "BY hybrid denom-jump + tagged-micro budget: den_pair/window≈{mean_den_pair_ccx:.1}, mod_micro/step={mod_micro_ccx}, approx_total≈{approx_total:.0}"
+        );
+        assert!(approx_total > 1_800_000.0, "hybrid unexpectedly beats Kaliski; revisit implementation path");
+    }
+
+    #[test]
+    fn modular_jump_inverse_cleanup_is_dense_dead_end() {
+        // Correct an important over-optimism: scaled adjugate cleanup is sparse
+        // for the INTEGER denominator pair because the update is P/2^w. The
+        // modular coefficient/tagged channel is updated by P, whose inverse is
+        // 2^-w * adj(P) mod p. The 2^-w factor makes the constants dense.
+        // Therefore per-window modular row replacement cannot use sparse
+        // adjugate cleanup; it needs either raw microsteps or a new structural
+        // trick.
+        const W: usize = 16;
+        let p = SECP256K1_P;
+        let inv_scale = two_inv_pow(p, W);
+        let mut hasher = sha3::Shake128::default();
+        hasher.update(b"by-modular-inverse-density-v1");
+        let mut reader = hasher.finalize_xof();
+        let mut buf = [0u8; 24];
+        let samples = 2_000usize;
+        let mut total_pop = 0usize;
+        let mut min_pop = usize::MAX;
+        for _ in 0..samples {
+            reader.read(&mut buf);
+            let f_low = (u64::from_le_bytes(buf[0..8].try_into().unwrap()) as i128) | 1;
+            let g_low = u64::from_le_bytes(buf[8..16].try_into().unwrap()) as i128;
+            let delta = (u64::from_le_bytes(buf[16..24].try_into().unwrap()) % 41) as i64 - 20;
+            let (_, _, _, m) = jump_matrix_direct_lowword(W, W, delta, f_low, g_low);
+            let s = if det_sign_pow2(m, W) >= 0 { 1i128 } else { -1i128 };
+            let inv_entries = [s * m.m11, -s * m.m01, -s * m.m10, s * m.m00];
+            let pop: usize = inv_entries
+                .iter()
+                .map(|&e| popcount_u256(mulm(signed_i128_mod_p(e, p), inv_scale, p)))
+                .sum();
+            total_pop += pop;
+            min_pop = min_pop.min(pop);
+        }
+        let mean_pop = total_pop as f64 / samples as f64;
+        eprintln!(
+            "BY modular inverse cleanup density: mean_popcount_4entries={mean_pop:.1}, min_popcount_4entries={min_pop}"
+        );
+        assert!(mean_pop > 450.0, "modular inverse cleanup unexpectedly sparse");
+    }
+
+    #[test]
+    fn optimistic_two_pair_integer_cleanup_lower_bound() {
+        // Optimistic lower bound for the tagged-DIV shape if BOTH pairs could
+        // use the sparse integer scaled-adjugate cleanup. Later tests show the
+        // modular coefficient/tag pair cannot use this directly (unscaled
+        // inverse is dense; scaled modular row formation is currently costly),
+        // so this is a floor, not an implementation forecast.
+        const N: usize = 256;
+        const W: usize = 16;
+        const WIDTH: usize = N + W + 2;
+        const PAIRS: usize = 2;
+        let exact_windows = safegcd_iters(N).div_ceil(W);
+        let approx_windows = 550usize.div_ceil(W);
+
+        let mut hasher = sha3::Shake128::default();
+        hasher.update(b"by-tagged-div-two-pair-budget-v1");
+        let mut reader = hasher.finalize_xof();
+        let mut buf = [0u8; 24];
+        let samples = 24usize;
+        let mut total_pair_ccx = 0usize;
+        let mut single_pair_peak = 0u32;
+        for _ in 0..samples {
+            reader.read(&mut buf);
+            let f_low = (u64::from_le_bytes(buf[0..8].try_into().unwrap()) as i128) | 1;
+            let g_low = u64::from_le_bytes(buf[8..16].try_into().unwrap()) as i128;
+            let delta = (u64::from_le_bytes(buf[16..24].try_into().unwrap()) % 41) as i64 - 20;
+            let (_, _, _, m) = jump_matrix_direct_lowword(W, W, delta, f_low, g_low);
+            let mut b = super::super::B::new();
+            emit_scaled_pair_update_with_cleanup_for_cost(&mut b, m, WIDTH, W);
+            total_pair_ccx += count_ccx(&b.ops);
+            single_pair_peak = single_pair_peak.max(b.peak_qubits);
+        }
+        let mean_pair_ccx = total_pair_ccx as f64 / samples as f64;
+        let exact_ccx = mean_pair_ccx * PAIRS as f64 * exact_windows as f64;
+        let approx_ccx = mean_pair_ccx * PAIRS as f64 * approx_windows as f64;
+        let other_persistent_pair = 2 * WIDTH;
+        let lowword_control = 2 * W + 16;
+        let scheduled_peak = single_pair_peak as usize + other_persistent_pair + lowword_control;
+        let scratch_beyond_two_field_regs = scheduled_peak.saturating_sub(2 * N);
+        eprintln!(
+            "BY optimistic 2-pair integer-cleanup lower bound: width={WIDTH}, mean_pair_ccx={mean_pair_ccx:.1}, exact≈{exact_ccx:.0}, approx≈{approx_ccx:.0}, scheduled_peak≈{scheduled_peak}q, scratch_beyond_2n≈{scratch_beyond_two_field_regs}q"
+        );
+        assert!(approx_ccx < 600_000.0, "approx tagged-DIV BY budget not SOTA-shaped");
+        assert!(scheduled_peak < 2_100, "two-pair BY tagged-DIV model peak too high");
+    }
+
+    #[test]
+    fn jumpdivstep_full_state_cleanup_budget_model() {
+        // Stronger model than row-only: use the measured replacement+cleanup
+        // pair cost and schedule the three BY pairs sequentially. This is the
+        // best current proxy for a real jumped-BY inversion before low-word
+        // matrix synthesis is included.
+        const N: usize = 256;
+        const W: usize = 16;
+        const WIDTH: usize = N + W + 2;
+        const PAIRS: usize = 3;
+        let exact_windows = safegcd_iters(N).div_ceil(W);
+        let approx_windows = 550usize.div_ceil(W);
+
+        let mut hasher = sha3::Shake128::default();
+        hasher.update(b"by-full-state-cleanup-budget-v1");
+        let mut reader = hasher.finalize_xof();
+        let mut buf = [0u8; 24];
+        let samples = 24usize;
+        let mut total_pair_ccx = 0usize;
+        let mut single_pair_peak = 0u32;
+        for _ in 0..samples {
+            reader.read(&mut buf);
+            let f_low = (u64::from_le_bytes(buf[0..8].try_into().unwrap()) as i128) | 1;
+            let g_low = u64::from_le_bytes(buf[8..16].try_into().unwrap()) as i128;
+            let delta = (u64::from_le_bytes(buf[16..24].try_into().unwrap()) % 41) as i64 - 20;
+            let (_, _, _, m) = jump_matrix_direct_lowword(W, W, delta, f_low, g_low);
+            let mut b = super::super::B::new();
+            emit_scaled_pair_update_with_cleanup_for_cost(&mut b, m, WIDTH, W);
+            total_pair_ccx += count_ccx(&b.ops);
+            single_pair_peak = single_pair_peak.max(b.peak_qubits);
+        }
+        let mean_pair_ccx = total_pair_ccx as f64 / samples as f64;
+        let exact_ccx = mean_pair_ccx * PAIRS as f64 * exact_windows as f64;
+        let approx_ccx = mean_pair_ccx * PAIRS as f64 * approx_windows as f64;
+        let other_persistent_pairs = (PAIRS - 1) * 2 * WIDTH;
+        let lowword_control = 2 * W + 16;
+        let scheduled_peak = single_pair_peak as usize + other_persistent_pairs + lowword_control;
+        eprintln!(
+            "BY full-state cleanup budget: width={WIDTH}, mean_pair_ccx={mean_pair_ccx:.1}, exact≈{exact_ccx:.0}, approx≈{approx_ccx:.0}, scheduled_peak≈{scheduled_peak}q"
+        );
+        assert!(exact_ccx < 1_250_000.0, "exact BY cleanup budget no longer competitive");
+        assert!(scheduled_peak < 2_800, "scheduled BY cleanup model exceeds cap");
     }
 
     #[test]
