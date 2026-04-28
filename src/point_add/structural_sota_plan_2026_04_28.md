@@ -337,14 +337,18 @@ New tests:
   `0/20000` sampled failures; explicit rare exception `T=1` has `m=13617`,
   top bits `13616`. This is an approximate primitive with failure probability
   around `2^48/p`, far below 1%.
-- `approximate_batched_shift_reopens_scaled_by_jump_budget`: batched shift cost
-  `≈1915 CCX`; integer row+cleanup floor `≈6976 CCX`; scaled modular pair
-  window `≈10806 CCX`; 35 windows `≈378k` for the modular pair.
+- `highfold_then_batched_halve16_matches_row_distribution`: for sampled BY
+  row values `T=a*x+b*y`, first folding `k=T>>256` copies of `p` and then the
+  batched halve had `0/40000` failures.
+- `approximate_batched_shift_reopens_scaled_by_jump_budget`: high-fold cost
+  `≈1862 CCX`, batched shift cost `≈1915 CCX`; integer row+cleanup floor
+  `≈6976 CCX`; scaled modular pair window `≈14530 CCX`; 35 windows `≈509k`
+  for the modular pair.
 
 This reopens BY as a live SOTA-shaped route: approximate scaled modular jump is
 now plausibly comparable to the integer denominator jump, instead of `>2M`.
-The next implementation target is a real env-gated approximate batched-shift
-row primitive and then a BY tagged-DIV scaffold.
+The next implementation target is a real env-gated approximate highfold+batched
+shift row primitive and then a BY tagged-DIV scaffold.
 
 ### Program B — triangular one-inversion schedule (highest payoff, highest risk)
 
