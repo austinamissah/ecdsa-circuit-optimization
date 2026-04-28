@@ -696,6 +696,21 @@ So the obvious exact/phase-safe replay would restore window-local control
 clearing but lose the SOTA Toffoli shape. A production replay therefore needs
 either (a) keep A controls live until the end, or (b) a more surgical phase-fix
 for early A clearing, ideally inside the self-cleaning denominator/window design.
+`clean_two_replay_by_budget_requires_replay_or_phase_breakthrough` updates the
+whole-point economics with the clean decoder:
+
+```text
+non-BY scaffold after deleting old phases ≈   285,766 CCX
+2× forward decoded replay                ≈ 2,701,606 CCX
+2× clean decoded replay                  ≈ 2,825,926 CCX
+2× fixed-control replay + 300k branch    ≈ 2,187,566 CCX
+```
+
+So merely plumbing denominator generation into the current clean decoded replay
+is not enough; it is already slightly over 2.7M before branch generation. The
+moonshot target is now sharper: get the selected replay closer to the fixed-
+control ~0.8M/replay band, or solve early A clearing without paying exact-
+arithmetic costs.
 
 `compressed_pattern_history_scratch_model_is_600q_if_add_workspace_is_removed`
 spells out the remaining scratch equation:

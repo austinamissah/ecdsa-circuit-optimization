@@ -2680,6 +2680,37 @@ mod tests {
     }
 
     #[test]
+    fn clean_two_replay_by_budget_requires_replay_or_phase_breakthrough() {
+        // Updated after the clean pattern-decoder scaffold: if both BY replays
+        // use the current all-A-history clean schedule (decode, replay, reverse
+        // decoder), the point-add budget is slightly above 2.7M before any
+        // denominator branch generation. This keeps the moonshot target honest:
+        // we need a cheaper replay (fused average / fixed-control window) or a
+        // phase-safe way to clear A locally, not just denominator plumbing.
+        let current_total = 4_111_918.0;
+        let non_inv_scaffold = 942_750.0;
+        let deleted_pair1_muls = 149_889.0 + 150_145.0;
+        let two_replay_scaffold = non_inv_scaffold
+            - deleted_pair1_muls
+            - 407.0 * 255.0
+            - 404.0 * 255.0
+            - 150_145.0;
+        let fast_raw_replay = 1_145_760.0;
+        let decoded_forward_replay = 1_207_920.0;
+        let clean_decoded_replay = 1_270_080.0;
+        let clean_two_replay_total = two_replay_scaffold + 2.0 * clean_decoded_replay;
+        let forward_only_two_replay_total = two_replay_scaffold + 2.0 * decoded_forward_replay;
+        let fixed_control_replay = 800_900.0; // measured fixed branch-numerator lower target.
+        let fixed_control_two_replay_with_300k_branch = two_replay_scaffold + 2.0 * fixed_control_replay + 300_000.0;
+        eprintln!(
+            "clean BY two-replay budget: scaffold≈{two_replay_scaffold:.0}, forward_only≈{forward_only_two_replay_total:.0}, clean≈{clean_two_replay_total:.0}, fixed_control_plus300k_branch≈{fixed_control_two_replay_with_300k_branch:.0}"
+        );
+        assert!(forward_only_two_replay_total > 2_690_000.0, "current forward-only decoded replay has large hidden margin; update model");
+        assert!(clean_two_replay_total > 2_700_000.0, "current clean decoded replay already beats 2.7M; denominator generation is the only blocker");
+        assert!(fixed_control_two_replay_with_300k_branch < 2_200_000.0, "fixed-control replay target no longer has low-gate margin");
+    }
+
+    #[test]
     fn low_scratch_scaled_by_budget_still_beats_27m_after_pair1_mul_deletion() {
         // Important refinement: a true tagged DIV does not merely replace the
         // two Kaliski bodies. It also deletes pair1's two schoolbook
