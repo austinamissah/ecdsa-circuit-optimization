@@ -642,10 +642,12 @@ This fits comfortably inside the 150k branch/decode margin used in the whole
 point-add budget.
 
 This is the first coherent selected BY replay model in the right Toffoli band.
-It is not yet a complete DIV: branch-history compression/cleanup and the
-controlled-neg zero representative need production handling. But algebraically
-it closes the previous 2.72M selected-replay blocker without QROM or block
-SELECT.
+It is not yet a complete DIV: branch-history compression/cleanup still need
+production handling. The controlled-neg zero representative was explicitly
+exercised in the one-step test with `(r,s)=(0,0),(0,s),(r,0)` for all valid
+A/B/C controls; the following controlled add canonicalizes the temporary `p`
+representative in valid A cases. Algebraically this closes the previous 2.72M
+selected-replay blocker without QROM or block SELECT.
 
 `branch_pattern_entropy_supports_compressed_history_target` then checks the
 history format needed by this scaled microprogram directly. Instead of storing

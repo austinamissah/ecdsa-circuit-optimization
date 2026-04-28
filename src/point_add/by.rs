@@ -3543,9 +3543,11 @@ mod tests {
         let mut sx = Sampler::new(b"by-scaled-step-r-v1", p);
         let mut sy = Sampler::new(b"by-scaled-step-s-v1", p);
         for &(odd_v, a_v, name) in &cases {
+            let mut samples = vec![(U256::ZERO, U256::ZERO), (U256::ZERO, sy.next()), (sx.next(), U256::ZERO)];
             for _ in 0..16 {
-                let rv = sx.next();
-                let sv = sy.next();
+                samples.push((sx.next(), sy.next()));
+            }
+            for (rv, sv) in samples {
                 let (exp_r, exp_s) = match name {
                     "A" => (sv, mulm(subm(sv, rv, p), inv2, p)),
                     "B" => (rv, mulm(addm(sv, rv, p), inv2, p)),
