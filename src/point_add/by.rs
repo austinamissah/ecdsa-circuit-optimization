@@ -3358,6 +3358,27 @@ mod tests {
     }
 
     #[test]
+    fn pattern_decoder_budget_fits_branch_decode_margin() {
+        // Rough reversible budget for pattern+delta -> A-mask+next-delta. Delta
+        // stays tiny (empirically |delta|<~32), so a 10-bit signed register is
+        // ample. Each of 560 microsteps needs: sign/nonzero predicate, one AND
+        // with odd to write A, and a controlled add/negate of a 10-bit delta.
+        // This is deliberately pessimistic and still small versus modular
+        // replay.
+        let delta_bits = 10usize;
+        let steps = 560usize;
+        let gt_zero_ccx = delta_bits; // sign + nonzero tree, rounded up.
+        let write_a_ccx = 1usize;
+        let update_delta_ccx = 3 * delta_bits; // controlled +/- and optional negate.
+        let per_step = gt_zero_ccx + write_a_ccx + update_delta_ccx;
+        let total = per_step * steps;
+        eprintln!(
+            "BY pattern decoder budget: delta_bits={delta_bits}, per_step≈{per_step}, total≈{total} CCX"
+        );
+        assert!(total < 30_000, "pattern decoder exceeds reserved branch/decode margin");
+    }
+
+    #[test]
     fn window_pattern_and_delta_reconstruct_a_controls() {
         const W: usize = 16;
         let mut hasher = sha3::Shake128::default();

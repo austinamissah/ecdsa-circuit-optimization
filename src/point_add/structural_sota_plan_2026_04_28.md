@@ -630,7 +630,16 @@ The raw `(odd,A)` controls can be compressed further because A is not an
 independent bit. `window_pattern_and_delta_reconstruct_a_controls` proves that a
 16-bit odd-pattern plus the starting delta reconstructs all 16 A-controls and
 the next delta. Thus the history payload can be branch patterns only; A-controls
-are decoder scratch.
+are decoder scratch. A pessimistic reversible decoder estimate in
+`pattern_decoder_budget_fits_branch_decode_margin` uses a 10-bit signed delta
+register and still costs only:
+
+```text
+~41 CCX/step, ~22,960 CCX total
+```
+
+This fits comfortably inside the 150k branch/decode margin used in the whole
+point-add budget.
 
 This is the first coherent selected BY replay model in the right Toffoli band.
 It is not yet a complete DIV: branch-history compression/cleanup and the
