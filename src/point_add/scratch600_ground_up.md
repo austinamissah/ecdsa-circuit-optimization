@@ -201,20 +201,79 @@ These are structural, not micro. Any one of them could delete the second
 inversion and land near 2.5M Toffoli. If all fail, two-inversion SOTA must come
 from jumped/windowed Kaliski instead.
 
-## 7. Fast invalidation tasks
+## 7. The real primitive we need: in-place modular division
 
-1. **Shifted-Y search**: algebraically test targets `Ry`, `Ry+Qy`, `Ry-Qy`,
-   `Ry+Py`, etc. Find whether `k*(target - seed)` can be expressed using only
-   `L=k*dy`, `dx`, `Rx`, and classical constants without raw `k`.
+The low-qubit point-add can be phrased around one primitive:
 
-2. **Two-channel coefficient search**: allow initial `(r0,s0)` to be affine
+```text
+DIV:  (x, y) -> (x, y/x mod p)
+```
+
+with all scratch cleaned and `x` preserved. If `DIV` costs roughly one current
+Kaliski invocation and fits in ~600 scratch, then point-add becomes:
+
+```text
+tx = Px-Qx = dx
+ty = Py-Qy = dy
+DIV(tx, ty)                    // ty = λ
+// tx = λ² - dx - 2Qx = Rx
+// ty = λ(Qx-Rx) - Qy = Ry, as an in-place multiply-by-(Qx-Rx)
+```
+
+This is conceptually **one inversion**, but it avoids the slope-copy cleanup
+obstruction by never materializing `x^-1` as an independent output. It is the
+clean abstraction that matches the 600-scratch target.
+
+Current code does **not** have this primitive. `with_kal_inv_raw` computes a
+raw inverse into an ancilla and then has to Bennett-clean the inverse state.
+The coefficient-transform probe above is a first attempt to derive `DIV` from
+Kaliski by seeding the coefficient register with `y`.
+
+## 8. Shifted-Y algebra: first fast invalidation
+
+Try to save the coefficient-transform path by changing the y-coordinate
+convention. Let the seed be `S0 = Py + a·Qy = dy + (a+1)Qy`, and the desired
+backward output be `S1 = Ry + b·Qy`. The required Kaliski-coefficient update is
+
+```text
+k*(S1-S0)
+```
+
+where `k = raw_scale/dx` and `L = k*dy = raw_scale*λ` is available.
+
+Compute:
+
+```text
+Ry - dy = λ(3Qx - λ²) - Qy
+S1 - S0 = λ(3Qx - λ²) + (b-a-2)Qy
+```
+
+Choosing `b=a+2` removes the raw `k*Qy` term, but leaves
+
+```text
+k * λ * (3Qx - λ²)
+  = L * (3Qx - λ²) / dx
+  = L * (Qx - Rx - dx) / dx
+```
+
+which still requires division by `dx`, i.e. raw `k` or a second inverse. Thus
+**affine shifts of Y do not solve the coefficient-transform obstruction**.
+They move the missing term from `k*Qy` to `k*λ*(...)`.
+
+## 9. Fast invalidation tasks still open
+
+1. **Two-channel coefficient search**: allow initial `(r0,s0)` to be affine
    functions of `{dy, Qy, 1}` and final `(r1,s1)` to be affine functions of
    `{Ry, Qy, 1}` with `r1` freeable. Symbolically determine if the required
    final pair can be computed from the forward pair using <=2 q×q muls and no
    new inverse.
 
+2. **Direct DIV synthesis**: ignore current Kaliski structure and design a
+   reversible Euclidean map for `(x,y)->(x,y/x)` where `y` is the coefficient
+   register throughout. This is probably what a 600-scratch solution needs.
+
 3. **Cost if successful**:
-   - one Kaliski invocation: ~1.60M
+   - one DIV/Kaliski-like invocation: target ~1.6M or less
    - delete `pair1_mul1`, `pair1_mul2`, second Kaliski: save ~1.7M
    - add coefficient modularity overhead in step4: likely +200-400k
    - add final coefficient rewrite: target <=300k
