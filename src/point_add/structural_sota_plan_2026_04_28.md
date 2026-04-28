@@ -585,6 +585,31 @@ but a full selected replay with this mux and static A still costs `≈2.15M`.
 Thus the primitive is useful but not sufficient; the A-only update still needs a
 non-static treatment or a deeper algebraic refactor.
 
+That refactor now exists at the microstep level. Instead of numerator replay
+plus a final `2^-16` scaling, use the scaled BY step directly:
+
+```text
+C: (r,s) -> (r, s/2)
+B: (r,s) -> (r, (s+r)/2)
+A: (r,s) -> (s, (s-r)/2)
+```
+
+For A, controlled-swap `(r,s)` first, then compute `s <- -s + r`, then halve
+`s`. This removes the A-only `r += s` correction entirely. The implemented
+coherent primitive `scaled_by_controlled_microstep_matches_all_cases_and_hits_target_cost`
+uses controls `(odd, A)` and matches all three cases on random basis states:
+
+```text
+one scaled controlled microstep = 2046 CCX, peak 1287q
+560 steps                       ≈ 1,145,760 CCX
+```
+
+This is the first coherent selected BY replay model in the right Toffoli band.
+It is not yet a complete DIV: branch-history compression/cleanup and the
+controlled-neg zero representative need production handling. But algebraically
+it closes the previous 2.72M selected-replay blocker without QROM or block
+SELECT.
+
 This reopens BY as a live SOTA-shaped route but with precise remaining
 obstacles: branch/matrix history compression, selected Hermite-factor
 application, and integration into a 35-window BY tagged-DIV scaffold. The

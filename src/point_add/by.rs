@@ -3221,6 +3221,101 @@ mod tests {
         assert!(approx35 > 2_500_000.0, "naive controlled branch replay unexpectedly SOTA-shaped");
     }
 
+    fn emit_cmod_neg_for_test(
+        b: &mut super::super::B,
+        v: &[super::super::QubitId],
+        ctrl: super::super::QubitId,
+        p: U256,
+    ) {
+        // ctrl ? (p-v) : v. Like mod_neg_inplace_fast, this maps v=0 to the
+        // noncanonical representative p; good enough for this structural probe
+        // and the same exceptional shape as existing fast negation.
+        for &q in v {
+            b.cx(ctrl, q);
+        }
+        super::super::cadd_nbit_const_fast(b, v, p.wrapping_add(U256::from(1u64)), ctrl);
+    }
+
+    fn emit_scaled_by_controlled_microstep_for_test(
+        b: &mut super::super::B,
+        r: &[super::super::QubitId],
+        s: &[super::super::QubitId],
+        odd_ctrl: super::super::QubitId,
+        a_ctrl: super::super::QubitId,
+        p: U256,
+    ) {
+        // Direct scaled BY microstep for the modular tagged pair:
+        //   C: (r,s) -> (r, s/2)
+        //   B: (r,s) -> (r, (s+r)/2)
+        //   A: (r,s) -> (s, (s-r)/2)
+        // Implement A by a controlled physical swap, then row1 <- -row1 + row0.
+        // This removes the branch-numerator A-only r+=s correction and replaces
+        // the per-step double+final-scale convention by one immediate halve.
+        for i in 0..r.len() {
+            super::super::cswap(b, a_ctrl, r[i], s[i]);
+        }
+        emit_cmod_neg_for_test(b, s, a_ctrl, p);
+        super::super::cmod_add_qq(b, s, r, odd_ctrl, p);
+        super::super::mod_halve_inplace_fast(b, s, p);
+    }
+
+    #[test]
+    fn scaled_by_controlled_microstep_matches_all_cases_and_hits_target_cost() {
+        let p = SECP256K1_P;
+        let mut b = super::super::B::new();
+        let odd = b.alloc_qubit();
+        let a_ctrl = b.alloc_qubit();
+        let r = b.alloc_qubits(256);
+        let s = b.alloc_qubits(256);
+        emit_scaled_by_controlled_microstep_for_test(&mut b, &r, &s, odd, a_ctrl, p);
+        let ccx = count_ccx(&b.ops);
+        let peak = b.peak_qubits;
+        let num_qubits = b.next_qubit as usize;
+        let num_bits = b.next_bit as usize;
+        let ops = b.ops;
+        let inv2 = (p.wrapping_add(U256::from(1u64))) >> 1usize;
+        let cases = [
+            (false, false, "C"),
+            (true, false, "B"),
+            (true, true, "A"),
+        ];
+        let mut sx = Sampler::new(b"by-scaled-step-r-v1", p);
+        let mut sy = Sampler::new(b"by-scaled-step-s-v1", p);
+        for &(odd_v, a_v, name) in &cases {
+            for _ in 0..16 {
+                let rv = sx.next();
+                let sv = sy.next();
+                let (exp_r, exp_s) = match name {
+                    "A" => (sv, mulm(subm(sv, rv, p), inv2, p)),
+                    "B" => (rv, mulm(addm(sv, rv, p), inv2, p)),
+                    "C" => (rv, mulm(sv, inv2, p)),
+                    _ => unreachable!(),
+                };
+                let mut hasher = sha3::Shake128::default();
+                hasher.update(b"by-scaled-step-sim-v1");
+                let mut xof = hasher.finalize_xof();
+                let mut sim = crate::sim::Simulator::new(num_qubits, num_bits, &mut xof);
+                if odd_v {
+                    *sim.qubit_mut(odd) |= 1;
+                }
+                if a_v {
+                    *sim.qubit_mut(a_ctrl) |= 1;
+                }
+                set_slice_u512_by(&mut sim, &r, u256_to_u512_for_by_tests(rv));
+                set_slice_u512_by(&mut sim, &s, u256_to_u512_for_by_tests(sv));
+                sim.apply(&ops);
+                assert_eq!(get_slice_u512_by(&sim, &r), u256_to_u512_for_by_tests(exp_r), "r mismatch case {name}");
+                assert_eq!(get_slice_u512_by(&sim, &s), u256_to_u512_for_by_tests(exp_s), "s mismatch case {name}");
+            }
+        }
+        let total_560 = ccx as f64 * 560.0;
+        eprintln!(
+            "BY scaled controlled microstep: ccx={ccx}, total560≈{total_560:.0}, peak={peak}q"
+        );
+        assert!(total_560 < 1_250_000.0, "scaled controlled microsteps no longer SOTA-shaped");
+        assert!(peak < 1_350, "scaled controlled microstep peak drifted too high");
+    }
+
     fn emit_cmod_signed_mux_add_for_test(
         b: &mut super::super::B,
         acc: &[super::super::QubitId],
