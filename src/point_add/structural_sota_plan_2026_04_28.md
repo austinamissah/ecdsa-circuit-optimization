@@ -613,6 +613,19 @@ microsteps for the sample window and verifies the circuit equals
 matrix = [[-8192,24576],[-3,1]]
 ```
 
+`scaled_by_controlled_560_scaffold_cost_model_fits_current_cap` then instantiates
+all 560 controlled microsteps with raw `(odd,A)` controls:
+
+```text
+560-step scaffold = 1,145,760 CCX, peak 2,405q
+raw controls      = 1120 qubits
+```
+
+So the full arithmetic scaffold fits the current 2800q cap even before history
+compression. It is not yet the user's 600-scratch design, but it is now an
+actual costed 560-step circuit skeleton, not only an extrapolated one-step
+number.
+
 This is the first coherent selected BY replay model in the right Toffoli band.
 It is not yet a complete DIV: branch-history compression/cleanup and the
 controlled-neg zero representative need production handling. But algebraically

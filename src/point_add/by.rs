@@ -3375,6 +3375,26 @@ mod tests {
     }
 
     #[test]
+    fn scaled_by_controlled_560_scaffold_cost_model_fits_current_cap() {
+        let p = SECP256K1_P;
+        let mut b = super::super::B::new();
+        let odd = b.alloc_qubits(560);
+        let a_ctrl = b.alloc_qubits(560);
+        let r = b.alloc_qubits(256);
+        let s = b.alloc_qubits(256);
+        for i in 0..560 {
+            emit_scaled_by_controlled_microstep_for_test(&mut b, &r, &s, odd[i], a_ctrl[i], p);
+        }
+        let ccx = count_ccx(&b.ops);
+        let peak = b.peak_qubits;
+        eprintln!(
+            "BY scaled controlled 560-step scaffold: ccx={ccx}, peak={peak}q, raw_control_bits=1120"
+        );
+        assert!(ccx < 1_160_000, "scaled 560-step scaffold cost drifted");
+        assert!(peak < 2_500, "raw-control scaled scaffold exceeds current cap too much");
+    }
+
+    #[test]
     fn scaled_by_controlled_window_matches_jump_matrix() {
         const W: usize = 16;
         let p = SECP256K1_P;
