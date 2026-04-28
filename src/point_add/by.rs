@@ -26,7 +26,7 @@
 
 use std::time::Instant;
 
-use alloy_primitives::U256;
+use alloy_primitives::{U256, U512};
 use sha3::digest::{ExtendableOutput, Update, XofReader};
 
 use super::test_timeout::{check_deadline, two_min_deadline};
@@ -1439,19 +1439,17 @@ mod tests {
         (0..256).filter(|&i| x.bit(i)).count()
     }
 
-    fn mod_mul_small_coeff_acc_for_cost(
-        b: &mut super::super::B,
-        coeff: i128,
-        src: &[super::super::QubitId],
-        acc: &[super::super::QubitId],
-        p: U256,
-    ) {
-        if coeff == 0 {
-            return;
-        }
-        let subtract = coeff < 0;
-        let c = U256::from(coeff.unsigned_abs());
-        super::super::mul_by_const_acc(b, src, c, acc, p, subtract);
+    fn u256_to_u512_for_by_tests(x: U256) -> U512 {
+        U512::from_limbs([
+            x.as_limbs()[0],
+            x.as_limbs()[1],
+            x.as_limbs()[2],
+            x.as_limbs()[3],
+            0,
+            0,
+            0,
+            0,
+        ])
     }
 
     fn mod_mul_two_small_coeffs_acc_for_cost(
@@ -1530,6 +1528,166 @@ mod tests {
         mod_mul_two_small_coeffs_acc_for_cost(b, &y0, -inv.m00, &x0, -inv.m10, &x1, p);
         mod_mul_two_small_coeffs_acc_for_cost(b, &y1, -inv.m01, &x0, -inv.m11, &x1, p);
         let _ = (x0, x1, y0, y1);
+    }
+
+    #[test]
+    fn modular_primitive_cost_breakdown_for_by_rows() {
+        let p = SECP256K1_P;
+        let mut b = super::super::B::new();
+        let a = b.alloc_qubits(256);
+        let acc = b.alloc_qubits(256);
+        let start_add = b.ops.len();
+        super::super::mod_add_qq_fast(&mut b, &acc, &a, p);
+        let add_ccx = count_ccx(&b.ops[start_add..]);
+        let start_sub = b.ops.len();
+        super::super::mod_sub_qq_fast(&mut b, &acc, &a, p);
+        let sub_ccx = count_ccx(&b.ops[start_sub..]);
+        let start_double = b.ops.len();
+        super::super::mod_double_inplace_fast(&mut b, &acc, p);
+        let double_ccx = count_ccx(&b.ops[start_double..]);
+        let start_halve = b.ops.len();
+        super::super::mod_halve_inplace_fast(&mut b, &acc, p);
+        let halve_ccx = count_ccx(&b.ops[start_halve..]);
+        eprintln!(
+            "mod primitive costs for BY rows: add={add_ccx}, sub={sub_ccx}, double={double_ccx}, halve={halve_ccx}, peak={}q",
+            b.peak_qubits
+        );
+        assert!(add_ccx > 0 && halve_ccx > 0);
+    }
+
+    fn add_shifted_small_reg_for_cost(
+        b: &mut super::super::B,
+        small: &[super::super::QubitId],
+        acc: &[super::super::QubitId],
+        shift: usize,
+        subtract: bool,
+    ) {
+        if shift >= acc.len() {
+            return;
+        }
+        let len = acc.len() - shift;
+        let tmp = b.alloc_qubits(len);
+        let copy_len = small.len().min(len);
+        for i in 0..copy_len {
+            b.cx(small[i], tmp[i]);
+        }
+        let acc_slice = acc[shift..].to_vec();
+        if subtract {
+            super::super::sub_nbit_qq_fast(b, &tmp, &acc_slice);
+        } else {
+            super::super::add_nbit_qq_fast(b, &tmp, &acc_slice);
+        }
+        for i in 0..copy_len {
+            b.cx(small[i], tmp[i]);
+        }
+        b.free_vec(&tmp);
+    }
+
+    fn emit_approx_batched_halve16_for_cost(b: &mut super::super::B, v: &[super::super::QubitId]) {
+        // Approximate canonical modular division by 2^16 for secp256k1:
+        //   m = -v_low * p^{-1} mod 2^16;
+        //   v <- (v + m*p) >> 16.
+        // Since p=2^256-c, adding m*p is adding m at bit 256 and subtracting
+        // m*c with c=2^32+977 (bits 0,4,6,7,8,9,32). For almost all inputs,
+        // m is recovered from the top 16 output bits; rare small-input borrow
+        // cases are a negligible approximate-DIV exception.
+        assert!(v.len() >= 274);
+        const W: usize = 16;
+        let m = b.alloc_qubits(W);
+        let pinv = 51_919u64; // p^{-1} mod 2^16 for secp256k1.
+        let neg_pinv = ((!pinv).wrapping_add(1)) & ((1u64 << W) - 1);
+        for bit_i in 0..W {
+            if ((neg_pinv >> bit_i) & 1) != 0 {
+                let len = W - bit_i;
+                let src = v[..len].to_vec();
+                let dst = m[bit_i..W].to_vec();
+                super::super::add_nbit_qq_fast(b, &src, &dst);
+            }
+        }
+        for &sh in &[0usize, 4, 6, 7, 8, 9, 32] {
+            add_shifted_small_reg_for_cost(b, &m, v, sh, true);
+        }
+        add_shifted_small_reg_for_cost(b, &m, v, 256, false);
+        // Right shift by 16 is a wire/swap layer. For this cost probe we only
+        // model Toffoli, so no gates are needed. Approx-uncompute m from the
+        // top output bits (v[256..272] before the conceptual reindexing).
+        for i in 0..W {
+            b.cx(v[256 + i], m[i]);
+        }
+        b.free_vec(&m);
+    }
+
+    #[test]
+    fn batched_halve16_top_bits_recover_correction_with_negligible_exception() {
+        // Classical validation of the approximate uncompute used by the cost
+        // model above. For canonical T, m = -T*p^{-1} mod 2^16. After
+        // q=(T+m*p)/2^16, the top 16 bits of q equal m except when T < m*c,
+        // a tiny O(2^48/p) set. That is far below the user's 1% allowance.
+        let p_u = u256_to_u512_for_by_tests(SECP256K1_P);
+        let modulus = 1u64 << 16;
+        let pinv = 51_919u64;
+        let mut failures = 0usize;
+        let samples = 20_000usize;
+        let mut sampler = Sampler::new(b"by-batched-halve16-topbits-v1", SECP256K1_P);
+        for _ in 0..samples {
+            let t = sampler.next();
+            let low = t.as_limbs()[0] & (modulus - 1);
+            let m = low.wrapping_mul((!pinv).wrapping_add(1)) & (modulus - 1);
+            let t_u = u256_to_u512_for_by_tests(t);
+            let q: U512 = (t_u + U512::from(m) * p_u) >> 16usize;
+            let q_top: U512 = q >> 240usize;
+            let top = q_top.to::<u64>() & (modulus - 1);
+            if top != m {
+                failures += 1;
+            }
+        }
+        // Exhibit the known rare exception shape.
+        let t_one = U512::from(1u64);
+        let m_one = (1u64.wrapping_mul((!pinv).wrapping_add(1))) & (modulus - 1);
+        let q_one: U512 = (t_one + U512::from(m_one) * p_u) >> 16usize;
+        let q_one_top: U512 = q_one >> 240usize;
+        let top_one = q_one_top.to::<u64>() & (modulus - 1);
+        eprintln!(
+            "batched halve16 top-bit correction: sample_failures={failures}/{samples}, T=1 has m={m_one}, top={top_one}"
+        );
+        assert_eq!(failures, 0);
+        assert_ne!(top_one, m_one, "expected rare small-T exception disappeared; revisit proof");
+    }
+
+    #[test]
+    fn approximate_batched_shift_reopens_scaled_by_jump_budget() {
+        const WIDTH: usize = 274;
+        const W: usize = 16;
+        let mut b = super::super::B::new();
+        let v = b.alloc_qubits(WIDTH);
+        let start = b.ops.len();
+        emit_approx_batched_halve16_for_cost(&mut b, &v);
+        let shift_ccx = count_ccx(&b.ops[start..]);
+
+        let mut hasher = sha3::Shake128::default();
+        hasher.update(b"by-approx-batched-shift-budget-v1");
+        let mut reader = hasher.finalize_xof();
+        let mut buf = [0u8; 24];
+        let samples = 24usize;
+        let mut total_pair_ccx = 0usize;
+        for _ in 0..samples {
+            reader.read(&mut buf);
+            let f_low = (u64::from_le_bytes(buf[0..8].try_into().unwrap()) as i128) | 1;
+            let g_low = u64::from_le_bytes(buf[8..16].try_into().unwrap()) as i128;
+            let delta = (u64::from_le_bytes(buf[16..24].try_into().unwrap()) % 41) as i64 - 20;
+            let (_, _, _, m) = jump_matrix_direct_lowword(W, W, delta, f_low, g_low);
+            let mut b2 = super::super::B::new();
+            emit_scaled_pair_update_with_cleanup_for_cost(&mut b2, m, WIDTH, W);
+            total_pair_ccx += count_ccx(&b2.ops);
+        }
+        let mean_integer_pair = total_pair_ccx as f64 / samples as f64;
+        let modular_pair_window = mean_integer_pair + 2.0 * shift_ccx as f64;
+        let approx35 = modular_pair_window * 35.0;
+        eprintln!(
+            "approx batched-shift BY scaled modular budget: shift16_ccx={shift_ccx}, integer_pair≈{mean_integer_pair:.1}, modular_pair/window≈{modular_pair_window:.1}, approx35≈{approx35:.0}, shift_peak={}q",
+            b.peak_qubits
+        );
+        assert!(approx35 < 650_000.0, "batched shift no longer gives a SOTA-shaped BY modular pair");
     }
 
     #[test]

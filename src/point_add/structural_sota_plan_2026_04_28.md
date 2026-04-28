@@ -325,10 +325,26 @@ The next round made the BY picture more precise:
   cleanup) with a shared-doubling small-constant modular row former. It still
   costs `≈58.4k CCX/window`, or `≈2.05M` for 35 windows for the modular pair.
 
-So BY is algebraically promising but not yet a SOTA circuit with current
-primitives. The live narrow target is now very specific: a substantially better
-small-constant modular row former / batched `2^-w` shift for the scaled
-coefficient channel. Without that, jumped BY cannot replace Kaliski.
+The very next lead is the batched `2^-16` shift. For a canonical row value
+`T`, choose `m=-T*p^{-1} mod 2^16`, add `m*p`, and shift right by 16. Because
+`p=2^256-(2^32+977)`, adding `m*p` is sparse: add `m` at bit 256 and subtract
+`m*(2^32+977)` at bits `{0,4,6,7,8,9,32}`. The correction `m` is recovered
+from the top 16 output bits except for the negligible set `T < m*(2^32+977)`.
+
+New tests:
+
+- `batched_halve16_top_bits_recover_correction_with_negligible_exception`:
+  `0/20000` sampled failures; explicit rare exception `T=1` has `m=13617`,
+  top bits `13616`. This is an approximate primitive with failure probability
+  around `2^48/p`, far below 1%.
+- `approximate_batched_shift_reopens_scaled_by_jump_budget`: batched shift cost
+  `≈1915 CCX`; integer row+cleanup floor `≈6976 CCX`; scaled modular pair
+  window `≈10806 CCX`; 35 windows `≈378k` for the modular pair.
+
+This reopens BY as a live SOTA-shaped route: approximate scaled modular jump is
+now plausibly comparable to the integer denominator jump, instead of `>2M`.
+The next implementation target is a real env-gated approximate batched-shift
+row primitive and then a BY tagged-DIV scaffold.
 
 ### Program B — triangular one-inversion schedule (highest payoff, highest risk)
 
