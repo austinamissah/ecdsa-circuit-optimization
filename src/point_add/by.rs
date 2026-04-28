@@ -2505,6 +2505,64 @@ mod tests {
     }
 
     #[test]
+    fn by_tagged_div_stored_matrix_upper_bound_model() {
+        // Upper-bound architecture with per-window matrix history already known:
+        // update the integer denominator pair with sparse scaled rows, and the
+        // modular tagged pair with the fixed-matrix replacement developed above.
+        // This separates arithmetic viability from the remaining matrix-selection
+        // / history-compression problem.
+        const WIDTH: usize = 274;
+        let mut hasher = sha3::Shake128::default();
+        hasher.update(b"by-tagged-div-stored-matrix-upper-bound-v1");
+        let mut reader = hasher.finalize_xof();
+        let mut buf = [0u8; 24];
+        let samples = 32usize;
+        let mut window_costs = Vec::with_capacity(samples);
+        let mut mod_peaks = Vec::with_capacity(samples);
+        let mut den_peaks = Vec::with_capacity(samples);
+        for _ in 0..samples {
+            reader.read(&mut buf);
+            let f_low = (u64::from_le_bytes(buf[0..8].try_into().unwrap()) as i128) | 1;
+            let g_low = u64::from_le_bytes(buf[8..16].try_into().unwrap()) as i128;
+            let delta = (u64::from_le_bytes(buf[16..24].try_into().unwrap()) % 41) as i64 - 20;
+            let (_, _, _, mtx) = jump_matrix_direct_lowword(16, 16, delta, f_low, g_low);
+
+            let mut b_den = super::super::B::new();
+            emit_scaled_pair_update_with_cleanup_for_cost(&mut b_den, mtx, WIDTH, 16);
+            let den_ccx = count_ccx(&b_den.ops);
+            den_peaks.push(b_den.peak_qubits as usize);
+
+            let mut b_mod = super::super::B::new();
+            let x0 = b_mod.alloc_qubits(256);
+            let x1 = b_mod.alloc_qubits(256);
+            let y0 = b_mod.alloc_qubits(WIDTH);
+            let y1 = b_mod.alloc_qubits(WIDTH);
+            emit_signed_row_scaled_from_sources_for_test(&mut b_mod, mtx.m00, &x0, mtx.m01, &x1, &y0);
+            emit_signed_row_scaled_from_sources_for_test(&mut b_mod, mtx.m10, &x0, mtx.m11, &x1, &y1);
+            let _regs = emit_fixed_matrix_old_cleanup_for_test(&mut b_mod, mtx, &x0, &x1, &y0, &y1);
+            let mod_ccx = count_ccx(&b_mod.ops);
+            mod_peaks.push(b_mod.peak_qubits as usize);
+            window_costs.push(den_ccx + mod_ccx);
+        }
+        window_costs.sort_unstable();
+        mod_peaks.sort_unstable();
+        den_peaks.sort_unstable();
+        let mean_window = window_costs.iter().sum::<usize>() as f64 / samples as f64;
+        let p90_window = window_costs[(samples * 90) / 100];
+        let max_window = window_costs[samples - 1];
+        let approx_total = mean_window * 35.0;
+        let stored_key_bits = 35 * 22; // delta plus h=g/f mod 2^16 upper-bound selector.
+        let scheduled_peak_model = mod_peaks[samples - 1] + 2 * WIDTH;
+        eprintln!(
+            "BY tagged-DIV stored-matrix upper bound: mean_window_ccx={mean_window:.1}, p90={p90_window}, max={max_window}, approx35≈{approx_total:.0}, den_peak={}q, mod_peak={}q, scheduled_peak≈{scheduled_peak_model}q, selector_bits={stored_key_bits}",
+            den_peaks[samples - 1],
+            mod_peaks[samples - 1]
+        );
+        assert!(approx_total < 1_200_000.0, "stored-matrix BY arithmetic no longer cheaper than Kaliski");
+        assert!(scheduled_peak_model < 2_900, "stored-matrix BY upper-bound peak drifted too high");
+    }
+
+    #[test]
     fn qcorr_roundtrip_recovers_m_for_sampled_by_matrices() {
         // If q = s*adj(P)*m / 2^w, then P*q = m. This is the missing
         // reversibility hook for general old-row cleanup: after q has been used

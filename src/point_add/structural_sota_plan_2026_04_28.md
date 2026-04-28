@@ -417,11 +417,26 @@ Positive forward-row progress:
   matrices: mean `20991 CCX`, p90 `24234`, max `28099`, peak `2256q` for the
   full pair replacement.
 
+`by_tagged_div_stored_matrix_upper_bound_model` separates arithmetic from
+selection/history. With per-window matrices already known, one tagged-DIV
+window costs an integer denominator replacement plus one modular fixed-matrix
+replacement. On 32 sampled windows:
+
+```text
+mean/window ≈ 28,607 CCX
+p90/window  ≈ 35,087 CCX
+max/window  ≈ 37,609 CCX
+35 windows  ≈ 1,001,258 CCX
+scheduled peak model ≈ 2804q
+selector history ≈ 770 bits (35 × 22-bit delta,h key)
+```
+
 This reopens BY as a live SOTA-shaped route but with precise remaining
 obstacles: branch/matrix history compression and integration into a 35-window
 BY tagged-DIV scaffold. The fixed-matrix replacement itself is now no longer a
-one-off; sampled costs are in the right range for a sub-MToffoli inversion
-component if matrix selection/history can be solved.
+one-off; sampled arithmetic is around 1.0M Toffoli for a tagged DIV before
+selection/history overhead, plausibly cheaper than Kaliski but not yet a
+600-scratch primitive.
 
 ### Program B — triangular one-inversion schedule (highest payoff, highest risk)
 
