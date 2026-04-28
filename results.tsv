@@ -815,3 +815,7 @@ timestamp	commit	toffoli	clifford	qubits	ops	correct	notes
 1777407732	ca5b2dc	4672021.000	26906122.685	2977	34600006	OK	pair1_coeff_channel
 1777407853	ca5b2dc	5278510.000	33529499.056	2716	42250936	OK	by_replay_bench_scaffold
 1777407886	ca5b2dc	4132750.000	24414411.956	2716	31193208	OK	schoolbook addsub correction3: cuccaro_sub_fast -> cuccaro_sub (saves 2n peak carries) 
+1777408564	2473a14	5957442.000	33053314.732	3147	45059348	OK	pair2_branch_inv
+1777408597	2473a14	4132750.000	24414411.956	2716	31193208	OK	phases
+1777408737	2473a14	4132750.000	24414411.956	2716	31193208	OK	schoolbook addsub correction3: cuccaro_sub_fast -> cuccaro_sub (saves 2n peak carries) 
+1777408766	2473a14	4132750.000	24414411.956	2716	31193208	OK	autoresearch-checks

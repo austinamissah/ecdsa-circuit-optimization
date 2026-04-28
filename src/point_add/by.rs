@@ -2658,6 +2658,42 @@ mod tests {
     }
 
     #[test]
+    fn naive_quantum_branch_generator_would_erase_scaled_by_savings() {
+        // The benchmark-path blocker is not the modular replay any more; it is
+        // generating the 560 data-dependent branch bits reversibly from the
+        // quantum denominator.  A direct 2-adic f/g generator keeps enough
+        // precision to emit all branch bits, but per step it still performs a
+        // full-width controlled swap, controlled negation, and controlled add.
+        // This executable budget is the guardrail: wiring this naive generator
+        // would be a real circuit, but not a SOTA circuit.
+        let steps = 560.0;
+        let width = 560.0; // 2-adic precision needed to stream 560 branch bits.
+        let cswap_fg = width; // one Fredkin per bit.
+        let cneg_g = width; // controlled bit flips plus one controlled increment (Toffoli-scale).
+        let cadd_fg = 3.0 * width; // load ctrl&f, ripple add, unload (optimistic fast-adder count).
+        let delta_logic = 80.0; // signed-delta positivity/update, deliberately small.
+        let branch_gen_step = cswap_fg + cneg_g + cadd_fg + delta_logic;
+        let one_generator_compute_uncompute = 2.0 * steps * branch_gen_step;
+        let two_generators = 2.0 * one_generator_compute_uncompute;
+        let two_replays = 2.0 * 2_046.0 * steps;
+        let current_total = 4_132_750.0;
+        let current_two_kaliski = 3_190_000.0;
+        let deleted_pair1_muls = 149_889.0 + 150_145.0;
+        let two_replay_scaffold = current_total
+            - current_two_kaliski
+            - deleted_pair1_muls
+            - 407.0 * 255.0
+            - 404.0 * 255.0
+            - 150_145.0;
+        let projected_with_naive_generators = two_replay_scaffold + two_replays + two_generators;
+        eprintln!(
+            "naive BY 2-adic branch generator: step≈{branch_gen_step:.0}, one_compute_uncompute≈{one_generator_compute_uncompute:.0}, two_generators≈{two_generators:.0}, projected≈{projected_with_naive_generators:.0}"
+        );
+        assert!(one_generator_compute_uncompute > 2_000_000.0, "naive generator unexpectedly cheap; revisit integration");
+        assert!(projected_with_naive_generators > current_total, "naive branch generation would already be a saving; model is stale");
+    }
+
+    #[test]
     fn scaled_by_div_point_add_budget_has_sota_margin_if_history_workspace_solved() {
         // The structural point of the scaled controlled microstep is that it
         // replaces both Kaliski invocations by one in-place tagged DIV. This is
@@ -3504,6 +3540,66 @@ mod tests {
         }
     }
 
+    fn emit_twos_complement_cneg_for_test(
+        b: &mut super::super::B,
+        v: &[super::super::QubitId],
+        ctrl: super::super::QubitId,
+    ) {
+        for &q in v {
+            b.cx(ctrl, q);
+        }
+        super::super::cadd_nbit_const_fast(b, v, U256::from(1u64), ctrl);
+    }
+
+    fn emit_logical_shift_right_even_for_test(b: &mut super::super::B, v: &[super::super::QubitId]) {
+        // Reversible rotation that equals logical `/2` on the promised even
+        // subspace because the old low bit is zero and rotates into the top.
+        for i in 0..v.len() - 1 {
+            b.swap(v[i], v[i + 1]);
+        }
+    }
+
+    fn emit_delta_positive_into_for_test(
+        b: &mut super::super::B,
+        delta: &[super::super::QubitId],
+        flag: super::super::QubitId,
+    ) {
+        let nz = b.alloc_qubit();
+        super::super::cmp_neq_zero_into(b, delta, nz);
+        let sign = delta[delta.len() - 1];
+        b.x(sign);
+        b.ccx(nz, sign, flag);
+        b.x(sign);
+        super::super::cmp_neq_zero_into(b, delta, nz);
+        b.free(nz);
+    }
+
+    fn emit_2adic_by_branch_step_for_test(
+        b: &mut super::super::B,
+        f: &[super::super::QubitId],
+        g: &[super::super::QubitId],
+        delta: &[super::super::QubitId],
+        odd_out: super::super::QubitId,
+        a_out: super::super::QubitId,
+    ) {
+        b.cx(g[0], odd_out);
+        let positive = b.alloc_qubit();
+        emit_delta_positive_into_for_test(b, delta, positive);
+        b.ccx(odd_out, positive, a_out);
+        emit_delta_positive_into_for_test(b, delta, positive);
+        b.free(positive);
+
+        for i in 0..f.len() {
+            super::super::cswap(b, a_out, f[i], g[i]);
+        }
+        emit_twos_complement_cneg_for_test(b, g, a_out);
+        super::super::cucc_add_ctrl(b, f, g, odd_out);
+        emit_logical_shift_right_even_for_test(b, g);
+
+        emit_twos_complement_cneg_for_test(b, delta, a_out);
+        super::super::add_nbit_const_fast(b, delta, U256::from(1u64));
+    }
+
     fn emit_scaled_by_controlled_microstep_for_test(
         b: &mut super::super::B,
         r: &[super::super::QubitId],
@@ -3623,6 +3719,61 @@ mod tests {
             g = truncate_i128(g, t - 1);
         }
         out
+    }
+
+    #[test]
+    fn two_adic_branch_generator_matches_classical_prefix_on_small_width() {
+        // A real denominator-control generator can be built 2-adically: keep
+        // f,g modulo 2^W, use the same swap/neg/add/halve skeleton as the
+        // scaled numerator replay, and update the small delta register. This
+        // test proves the branch bits are the BY branch bits on a small exact
+        // instance. The following budget test explains why this direct version
+        // is not the final SOTA implementation.
+        const W: usize = 96;
+        const STEPS: usize = 64;
+        const DBITS: usize = 12;
+        let p = U256::from((1u128 << 61) - 1); // odd, tiny relative to 2^W.
+        let x = U256::from(0x1234_5678_9abc_defu64) % p;
+        let mut delta_c = 1i64;
+        let mut f_c = SInt::from_u(p);
+        let mut g_c = SInt::from_u(x);
+        let mut expected = Vec::with_capacity(STEPS);
+        for _ in 0..STEPS {
+            let odd = g_c.bit0();
+            let a = delta_c > 0 && odd;
+            expected.push((odd, a));
+            divstep_sint_state(&mut delta_c, &mut f_c, &mut g_c);
+        }
+
+        let mut b = super::super::B::new();
+        let f = b.alloc_qubits(W);
+        let g = b.alloc_qubits(W);
+        let delta = b.alloc_qubits(DBITS);
+        let odd = b.alloc_qubits(STEPS);
+        let a = b.alloc_qubits(STEPS);
+        for i in 0..STEPS {
+            emit_2adic_by_branch_step_for_test(&mut b, &f, &g, &delta, odd[i], a[i]);
+        }
+        let ccx = count_ccx(&b.ops);
+        let num_qubits = b.next_qubit as usize;
+        let num_bits = b.next_bit as usize;
+        let ops = b.ops;
+        let mut hasher = sha3::Shake128::default();
+        hasher.update(b"by-2adic-branch-generator-small-v1");
+        let mut xof = hasher.finalize_xof();
+        let mut sim = crate::sim::Simulator::new(num_qubits, num_bits, &mut xof);
+        set_slice_u512_by(&mut sim, &f, U512::from(p));
+        set_slice_u512_by(&mut sim, &g, U512::from(x));
+        set_slice_u512_by(&mut sim, &delta, U512::from(1u64));
+        sim.apply(&ops);
+        for (i, &(odd_e, a_e)) in expected.iter().enumerate() {
+            assert_eq!((sim.qubit(odd[i]) & 1) != 0, odd_e, "odd mismatch at step {i}");
+            assert_eq!((sim.qubit(a[i]) & 1) != 0, a_e, "A mismatch at step {i}");
+        }
+        eprintln!(
+            "2-adic BY branch generator small prefix: steps={STEPS}, width={W}, ccx={ccx}, peak={}q",
+            b.peak_qubits
+        );
     }
 
     #[test]

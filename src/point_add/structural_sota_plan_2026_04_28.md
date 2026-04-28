@@ -795,6 +795,33 @@ is around 1.0M Toffoli for stored-matrix tagged DIV or ~0.67M for the h-only
 compressed-history model, plausibly cheaper than Kaliski but not yet a complete
 600-scratch primitive.
 
+A direct quantum branch generator is now explicitly ruled out as the first
+integration. `two_adic_branch_generator_matches_classical_prefix_on_small_width`
+proves the natural 2-adic generator is algebraically correct: keep `f,g` modulo
+`2^W`, emit `odd=g0`, compute `A=(delta>0)&odd`, and update the denominator with
+the same swap/neg/add/halve skeleton as the scaled numerator replay. But
+`naive_quantum_branch_generator_would_erase_scaled_by_savings` shows why this
+must not be wired into the real point-add path:
+
+```text
+W=560 direct branch generator step      ≈ 2,880 CCX (optimistic)
+one generator compute+uncompute         ≈ 3,225,600 CCX
+two generators                           ≈ 6,451,200 CCX
+projected point-add with naive generator ≈ 9,028,486 CCX
+```
+
+So the immediate integration target is not "BY replay plus naive reversible
+branch generation". That would validate correctness but not savings. The first
+savings-capable implementation must either:
+
+1. window the denominator/control generator so branch patterns are produced by a
+   cheap selected matrix/low-ratio update, or
+2. use a triangular point-add schedule where the denominator state is consumed
+   and later cleaned from the output, avoiding a full compute-copy-uncompute
+   branch generator.
+
+This is the line between a benchmark smoke scaffold and a real SOTA candidate.
+
 ### Program B — triangular one-inversion schedule (highest payoff, highest risk)
 
 Goal: use Strategy C or B2 but avoid Bennett-clean fresh outputs. A successful
