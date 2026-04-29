@@ -780,6 +780,53 @@ fn tagged_full_poststate_branch_ambiguity_is_not_a_rare_exception() {
     }
 }
 
+fn toy_tagged_poststate_ambiguous_fraction(n: usize, p: u64, beta: u64) -> f64 {
+    use std::collections::BTreeMap;
+    let mut seen: BTreeMap<ToyLinKey, [usize; 4]> = BTreeMap::new();
+    let mut total = 0usize;
+    for x in 1..p {
+        for y in 0..p {
+            let tag = (y + beta * x) % p;
+            if tag == 0 { continue; }
+            let mut st = ToyLinState { u: p, v: x, r: 0, s: tag, f: 1 };
+            for iter in 0..(2 * n - 1) {
+                let br = toy_step_linear_canonical(&mut st, p);
+                let key = ToyLinKey { iter, u: st.u, v: st.v, r: st.r, s: st.s, f: st.f };
+                let idx = (br.a_swap as usize) * 2 + (br.add as usize);
+                seen.entry(key).or_insert([0; 4])[idx] += 1;
+                total += 1;
+            }
+        }
+    }
+    let ambiguous_occurrences: usize = seen
+        .values()
+        .filter(|counts| counts.iter().filter(|&&c| c != 0).count() > 1)
+        .map(|counts| counts.iter().sum::<usize>())
+        .sum();
+    ambiguous_occurrences as f64 / total as f64
+}
+
+#[test]
+fn changing_linear_x_tag_does_not_fix_poststate_branch_ambiguity() {
+    // Tagged DIV can seed s0 = y + beta*x for any known nonzero beta; the
+    // output is still k*y plus a known constant because k*x is the fixed scale.
+    // If poststate cleanup were only failing for the beta=1 tag, another beta
+    // might rescue the idea.  Exhaustive toy fields show the ambiguity fraction
+    // is invariant under nonzero beta: scaling/translating the coefficient
+    // scalar does not add branch information.
+    for &(n, p) in &[(4usize, 13u64), (6, 61), (8, 251)] {
+        let base = toy_tagged_poststate_ambiguous_fraction(n, p, 1);
+        for &beta in &[2u64, 7, 17] {
+            if beta >= p { continue; }
+            let got = toy_tagged_poststate_ambiguous_fraction(n, p, beta);
+            eprintln!(
+                "linear-x tag ambiguity: n={n}, p={p}, beta={beta}, frac={got:.6} (base={base:.6})"
+            );
+            assert!((got - base).abs() < 1e-12);
+        }
+    }
+}
+
 #[test]
 fn bilinear_invariant_does_not_recover_inverse_branch() {
     // The obvious algebraic invariant of the coefficient transform is

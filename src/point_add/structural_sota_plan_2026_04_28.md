@@ -1633,7 +1633,9 @@ are known (`n=4,5,6` conflicts `108,1200,5760`).  The approximate exception
 version is not viable either: `tagged_full_poststate_branch_ambiguity_is_not_a_rare_exception`
 finds ambiguous full-poststate occurrences at about 19%, 22%, 23%, 23%, and 24%
 for toy `n=4..8` with nonzero tag `s0=x+y`, so the ambiguity is not a tiny
-patchable tail.  Direct regeneration from the preserved initial `x` is not cheap either:
+patchable tail.  `changing_linear_x_tag_does_not_fix_poststate_branch_ambiguity`
+checks `s0=y+beta*x` and finds identical ambiguity fractions for nonzero beta,
+so retagging does not add branch information.  Direct regeneration from the preserved initial `x` is not cheap either:
 `initial_x_to_branch_history_oracle_is_dense_on_toy_kaliski` sees branch-history
 parity as full-degree/near-half-density in `x` (`n=8: degree 8, density 116/256;
 `n=12: degree 11, density 1976/4096`).  `exact_branch_history_has_field_entropy_lower_bound`

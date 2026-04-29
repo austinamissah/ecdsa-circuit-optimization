@@ -443,8 +443,12 @@ n=7 p=127  ambiguous_occurrences=47628/206388 frac=0.230769
 n=8 p=251  ambiguous_occurrences=228000/937500 frac=0.243200
 ```
 
-This is not a negligible exceptional tail.  A self-cleaning Kaliski needs
-explicit history or a genuinely different state invariant.
+This is not a negligible exceptional tail.  Changing the linear tag does not
+help: `changing_linear_x_tag_does_not_fix_poststate_branch_ambiguity` checks
+`s0 = y + beta*x` for several nonzero `beta` and gets exactly the same ambiguity
+fractions on exhaustive toys.  The tag avoids the zero-scalar exception but does
+not encode branch history.  A self-cleaning Kaliski needs explicit history or a
+genuinely different state invariant.
 
 Recomputing branch history directly from the preserved initial `x` is also not
 a tiny oracle.  `initial_x_to_branch_history_oracle_is_dense_on_toy_kaliski`
