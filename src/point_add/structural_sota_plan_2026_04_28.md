@@ -1086,6 +1086,28 @@ consume pattern+q inside a reversible fixed-matrix window update with an
 explicit local inverse. This invalidates the tempting “no history, recover from
 consumed denominator” route before more point-add wiring.
 
+The remaining constructive fixed-matrix/q window route was then costed as a
+single-window object in `last_shot_fixed_matrix_window_consumption_misses_sota_budget`.
+It uses the actual reversible fixed-matrix circuit we know how to build: form the
+scaled rows, clean the old rows, and clear `m/q/z` locally. This is the object
+that would replace 16 full-width denominator microsteps if it were cheap enough.
+The measured distribution is:
+
+```text
+mean window = 20,323.5 CCX
+p90 window  = 24,382 CCX
+max window  = 27,641 CCX
+max peak    = 2,224q
+two 576-step denominators ≈ 1,463,292 CCX
+SOTA-shaped target/window ≈ 10,000 CCX
+```
+
+This misses the required per-window target by about 2× before replay/scaffold
+costs. Therefore the fixed-matrix/q window implementation with current arithmetic
+primitives is also not SOTA-shaped. A BY SOTA path would now require a genuinely
+new arithmetic primitive for selected window updates, not just better scheduling
+of the existing fixed-matrix circuit.
+
 Again, this is not a performance result. It proves both Kaliski inverse-sized
 objects in the real affine point-add can be replaced by BY tagged-DIV/product
 objects and still satisfy the full exact checker.

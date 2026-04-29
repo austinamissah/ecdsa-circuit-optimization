@@ -2646,6 +2646,54 @@ mod tests {
     }
 
     #[test]
+    fn last_shot_fixed_matrix_window_consumption_misses_sota_budget() {
+        // Final BY SOTA gate: after product-clean replay, the only credible
+        // remaining denominator path is a 16-step selected fixed-matrix/q
+        // consumption update.  Measure the actual reversible one-window object
+        // we currently know how to synthesize (form scaled rows, clean old rows,
+        // clear m/q/z).  A SOTA-shaped two-denominator plan needs roughly
+        // <10k CCX/window; this existing arithmetic is about 2× too expensive,
+        // so wiring it into point-add would be predictably late/dead.
+        const WIDTH: usize = 274;
+        const SAMPLES: usize = 24;
+        const WINDOWS: usize = 36; // 576-step exact setting used by the harness
+        let mut hasher = sha3::Shake128::default();
+        hasher.update(b"by-last-shot-fixed-window-budget-v1");
+        let mut reader = hasher.finalize_xof();
+        let mut buf = [0u8; 24];
+        let mut costs = Vec::with_capacity(SAMPLES);
+        let mut max_peak = 0u32;
+        for _ in 0..SAMPLES {
+            reader.read(&mut buf);
+            let f_low = (u64::from_le_bytes(buf[0..8].try_into().unwrap()) as i128) | 1;
+            let g_low = u64::from_le_bytes(buf[8..16].try_into().unwrap()) as i128;
+            let delta = (u64::from_le_bytes(buf[16..24].try_into().unwrap()) % 41) as i64 - 20;
+            let (_, _, _, mtx) = jump_matrix_direct_lowword(16, 16, delta, f_low, g_low);
+            let mut b = super::super::B::new();
+            let x0 = b.alloc_qubits(256);
+            let x1 = b.alloc_qubits(256);
+            let y0 = b.alloc_qubits(WIDTH);
+            let y1 = b.alloc_qubits(WIDTH);
+            emit_signed_row_scaled_from_sources_for_test(&mut b, mtx.m00, &x0, mtx.m01, &x1, &y0);
+            emit_signed_row_scaled_from_sources_for_test(&mut b, mtx.m10, &x0, mtx.m11, &x1, &y1);
+            let _regs = emit_fixed_matrix_old_cleanup_for_test(&mut b, mtx, &x0, &x1, &y0, &y1);
+            costs.push(count_ccx(&b.ops));
+            max_peak = max_peak.max(b.peak_qubits);
+        }
+        costs.sort_unstable();
+        let mean = costs.iter().sum::<usize>() as f64 / SAMPLES as f64;
+        let p90 = costs[(SAMPLES * 90) / 100];
+        let max = costs[SAMPLES - 1];
+        let two_denominators = 2.0 * WINDOWS as f64 * mean;
+        let target_per_window = 10_000.0;
+        eprintln!(
+            "BY last-shot fixed-matrix/q window budget: mean_ccx={mean:.1}, p90_ccx={p90}, max_ccx={max}, max_peak={max_peak}q, two_denominators≈{two_denominators:.0}, target_per_window≈{target_per_window:.0}"
+        );
+        assert!(mean > target_per_window * 1.8, "fixed-matrix window unexpectedly reached SOTA target; wire it immediately");
+        assert!(two_denominators > 1_300_000.0, "two-denominator fixed-window budget unexpectedly fits SOTA margin");
+    }
+
+    #[test]
     fn controlled_dirty_qoffset_adder_small_basis_check() {
         let n = 8usize;
         let mask = (1u64 << n) - 1;
