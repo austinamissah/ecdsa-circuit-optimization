@@ -4539,6 +4539,178 @@ fn by_signed_branch_step_reverse_for_bench(
     b.cx(g[0], odd_hist);
 }
 
+fn by_signed_branch_apply_step_for_bench(
+    b: &mut B,
+    f: &[QubitId],
+    g: &[QubitId],
+    delta: &[QubitId],
+    odd: QubitId,
+    a: QubitId,
+) {
+    for i in 0..f.len() {
+        cswap(b, a, f[i], g[i]);
+    }
+    by_twos_cneg_for_bench(b, g, a);
+    cucc_add_ctrl(b, f, g, odd);
+    by_arithmetic_shift_right_even_for_bench(b, g);
+
+    by_twos_cneg_for_bench(b, delta, a);
+    add_nbit_const_fast(b, delta, U256::from(1u64));
+}
+
+fn by_signed_branch_apply_step_reverse_for_bench(
+    b: &mut B,
+    f: &[QubitId],
+    g: &[QubitId],
+    delta: &[QubitId],
+    odd: QubitId,
+    a: QubitId,
+) {
+    sub_nbit_const_fast(b, delta, U256::from(1u64));
+    by_twos_cneg_for_bench(b, delta, a);
+    by_arithmetic_shift_left_even_inverse_for_bench(b, g);
+    cucc_sub_ctrl(b, f, g, odd);
+    by_twos_cneg_for_bench(b, g, a);
+    for i in 0..f.len() {
+        cswap(b, a, f[i], g[i]);
+    }
+}
+
+fn by_copy_lowword_sign_extended_for_bench(
+    b: &mut B,
+    src: &[QubitId],
+    dst: &[QubitId],
+    low_bits: usize,
+) {
+    assert!(dst.len() >= low_bits);
+    assert!(src.len() >= low_bits);
+    for i in 0..low_bits {
+        b.cx(src[i], dst[i]);
+    }
+    for i in low_bits..dst.len() {
+        b.cx(src[low_bits - 1], dst[i]);
+    }
+}
+
+fn by_xor_signed_lowword_const_for_bench(b: &mut B, dst: &[QubitId], c: U256, low_bits: usize) {
+    assert!(dst.len() >= low_bits);
+    for i in 0..low_bits {
+        if bit(c, i) {
+            b.x(dst[i]);
+        }
+    }
+    if bit(c, low_bits - 1) {
+        for i in low_bits..dst.len() {
+            b.x(dst[i]);
+        }
+    }
+}
+
+fn by_signed_lowword_window_xor_controls_for_bench(
+    b: &mut B,
+    f_full: &[QubitId],
+    g_full: &[QubitId],
+    delta_full: &[QubitId],
+    odd_hist: &[QubitId],
+    a_hist: &[QubitId],
+    start: usize,
+) {
+    // Window selector primitive for the centered-BY denominator path.  The next
+    // 16 BY branch decisions depend only on the low 16 bits of the current
+    // signed denominator pair plus delta.  Compute them in a narrow local
+    // 2-adic simulator, xor them into the persistent odd/A histories, and then
+    // reverse the simulator.  The full-width denominator state is updated by a
+    // separate selected-control application below; this first hook deliberately
+    // wires the lowword-window control source into the real pair replacement.
+    const W: usize = 16;
+    const QBITS: usize = 34;
+    let f = b.alloc_qubits(QBITS);
+    let g = b.alloc_qubits(QBITS);
+    let delta = b.alloc_qubits(delta_full.len());
+    let odd_tmp = b.alloc_qubits(W);
+    let a_tmp = b.alloc_qubits(W);
+
+    by_copy_lowword_sign_extended_for_bench(b, f_full, &f, W);
+    by_copy_lowword_sign_extended_for_bench(b, g_full, &g, W);
+    for i in 0..delta_full.len() {
+        b.cx(delta_full[i], delta[i]);
+    }
+
+    for j in 0..W {
+        by_signed_branch_step_for_bench(b, &f, &g, &delta, odd_tmp[j], a_tmp[j]);
+    }
+    for j in 0..W {
+        b.cx(odd_tmp[j], odd_hist[start + j]);
+        b.cx(a_tmp[j], a_hist[start + j]);
+    }
+    for j in (0..W).rev() {
+        by_signed_branch_step_reverse_for_bench(b, &f, &g, &delta, odd_tmp[j], a_tmp[j]);
+    }
+
+    for i in (0..delta_full.len()).rev() {
+        b.cx(delta_full[i], delta[i]);
+    }
+    by_copy_lowword_sign_extended_for_bench(b, g_full, &g, W);
+    by_copy_lowword_sign_extended_for_bench(b, f_full, &f, W);
+    b.free_vec(&a_tmp);
+    b.free_vec(&odd_tmp);
+    b.free_vec(&delta);
+    b.free_vec(&g);
+    b.free_vec(&f);
+}
+
+fn by_window_controls_enabled_for_bench() -> bool {
+    std::env::var("BY_CENTERED_WINDOW_DENOM_REPLACE").ok().as_deref() == Some("1")
+}
+
+fn by_generate_signed_controls_for_bench(
+    b: &mut B,
+    f: &[QubitId],
+    g: &[QubitId],
+    delta: &[QubitId],
+    odd: &[QubitId],
+    a_ctrl: &[QubitId],
+) {
+    if by_window_controls_enabled_for_bench() {
+        const W: usize = 16;
+        assert_eq!(odd.len() % W, 0);
+        for start in (0..odd.len()).step_by(W) {
+            by_signed_lowword_window_xor_controls_for_bench(b, f, g, delta, odd, a_ctrl, start);
+            for j in 0..W {
+                by_signed_branch_apply_step_for_bench(b, f, g, delta, odd[start + j], a_ctrl[start + j]);
+            }
+        }
+    } else {
+        for i in 0..odd.len() {
+            by_signed_branch_step_for_bench(b, f, g, delta, odd[i], a_ctrl[i]);
+        }
+    }
+}
+
+fn by_reverse_signed_controls_for_bench(
+    b: &mut B,
+    f: &[QubitId],
+    g: &[QubitId],
+    delta: &[QubitId],
+    odd: &[QubitId],
+    a_ctrl: &[QubitId],
+) {
+    if by_window_controls_enabled_for_bench() {
+        const W: usize = 16;
+        assert_eq!(odd.len() % W, 0);
+        for start in (0..odd.len()).step_by(W).rev() {
+            for j in (0..W).rev() {
+                by_signed_branch_apply_step_reverse_for_bench(b, f, g, delta, odd[start + j], a_ctrl[start + j]);
+            }
+            by_signed_lowword_window_xor_controls_for_bench(b, f, g, delta, odd, a_ctrl, start);
+        }
+    } else {
+        for i in (0..odd.len()).rev() {
+            by_signed_branch_step_reverse_for_bench(b, f, g, delta, odd[i], a_ctrl[i]);
+        }
+    }
+}
+
 fn emit_centered_signed_by_replay_body_benchmark_scaffold(b: &mut B, p: U256) {
     // Harness integration smoke test for the centered signed redundant replay.
     // Reuses one zero odd/A/parity control so the clean no-op fits next to the
@@ -4863,13 +5035,12 @@ fn compute_pair1_lam_with_centered_by_bench(b: &mut B, tx: &[QubitId], ty: &[Qub
     let center_flag = by_load_centered_copy_for_bench(b, &num, &s, p);
 
     b.set_phase("pair1_by_centered_generate");
-    for i in 0..STEPS {
-        // Full-width denominator evolution preserves the final f sign needed
-        // by tagged quotient recovery. The tapered generator intentionally
-        // discards high 2-adic bits and is fine for controls-only hooks, but not
-        // for producing a quotient frame.
-        by_signed_branch_step_for_bench(b, &f, &g, &delta, odd[i], a_ctrl[i]);
-    }
+    // Full-width denominator evolution preserves the final f sign needed by
+    // tagged quotient recovery.  With BY_CENTERED_WINDOW_DENOM_REPLACE=1 the
+    // branch decisions are sourced from 16-step lowword window oracles, then
+    // applied to this full-width state; otherwise this is the original direct
+    // per-step generator.
+    by_generate_signed_controls_for_bench(b, &f, &g, &delta, &odd, &a_ctrl);
 
     b.set_phase("pair1_by_centered_forward");
     for i in 0..STEPS {
@@ -4886,9 +5057,7 @@ fn compute_pair1_lam_with_centered_by_bench(b: &mut B, tx: &[QubitId], ty: &[Qub
     }
 
     b.set_phase("pair1_by_centered_reverse_den");
-    for i in (0..STEPS).rev() {
-        by_signed_branch_step_reverse_for_bench(b, &f, &g, &delta, odd[i], a_ctrl[i]);
-    }
+    by_reverse_signed_controls_for_bench(b, &f, &g, &delta, &odd, &a_ctrl);
 
     b.set_phase("pair1_by_centered_clear");
     by_unload_centered_copy_for_bench(b, &num, &s, p, center_flag);
@@ -4950,9 +5119,7 @@ fn add_neg_quotient_into_acc_with_centered_by_bench(
     let center_flag = by_load_centered_copy_for_bench(b, &num, &s, p);
 
     b.set_phase("by_centered_accquot_generate");
-    for i in 0..STEPS {
-        by_signed_branch_step_for_bench(b, &f, &g, &delta, odd[i], a_ctrl[i]);
-    }
+    by_generate_signed_controls_for_bench(b, &f, &g, &delta, &odd, &a_ctrl);
 
     b.set_phase("by_centered_accquot_forward");
     for i in 0..STEPS {
@@ -4969,9 +5136,7 @@ fn add_neg_quotient_into_acc_with_centered_by_bench(
     }
 
     b.set_phase("by_centered_accquot_reverse_den");
-    for i in (0..STEPS).rev() {
-        by_signed_branch_step_reverse_for_bench(b, &f, &g, &delta, odd[i], a_ctrl[i]);
-    }
+    by_reverse_signed_controls_for_bench(b, &f, &g, &delta, &odd, &a_ctrl);
 
     b.set_phase("by_centered_accquot_clear");
     by_unload_centered_copy_for_bench(b, &num, &s, p, center_flag);
