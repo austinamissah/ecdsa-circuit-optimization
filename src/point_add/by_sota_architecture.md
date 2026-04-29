@@ -119,34 +119,52 @@ two-to-one.  Therefore the x-column must be recomputed from retained pattern
 history, kept at a wider exact width, or cleaned by a nontrivial MBUC phase
 method.  Do not wire the 816-bit model as a rolling register.
 
-## Tail ratio compression
+## Full ratio selector compression
 
-Once the first 16 windows have consumed all quantum bits of `x`, the remaining
-19 windows do not need a two-row carry at all.  Because BY branch choices are
-invariant under common odd scale, keep only
-
-```text
-h = g/f mod 2^304
-```
-
-and update it with the closed 2-adic ratio formulas.  The test
-`tail_ratio_state_streams_remaining_branches_in_304_bits` validates this for 64
-sampled denominators: the 304-bit `h` stream produces exactly the same remaining
-branch bits and tapers to zero.
-
-This reframes the selector budget:
+A stronger route eliminates the x-column/carry split entirely.  BY branch
+choices depend only on `delta` and the 2-adic ratio
 
 ```text
-first16 fixed pattern IDs ≈ 208 bits
-post-tail ratio/history   = 304 bits
-combined selector payload = 512 bits
+h = g/f.
 ```
 
-That is finally low-qubit-shaped in information terms (`512 data + 512 selector
-≈ 1024q`, before b-workspace and arithmetic scratch).  The remaining hard part
-is making the transition from first16 carry state to `h` reversible/cheap, and
-borrowing/recomputing the 288-bit first16 x-column workspace without keeping it
-live next to replay.
+For the denominator pair `(f,g)=(p,x)`, initialize
+
+```text
+h0 = x * p^-1 mod 2^560
+```
+
+and update `h` directly.  The closed ratio rules are:
+
+```text
+C (g even):        h' = h/2,              delta' = delta + 1
+B (g odd, δ <= 0): h' = (h + 1)/2,        delta' = delta + 1
+A (g odd, δ > 0):  h' = (h - 1)/(2h),     delta' = 1 - delta
+```
+
+The active width drops by one bit per divstep, so a fixed 560-qubit register can
+hold both the remaining ratio and the consumed branch history in its vacated
+bits.  `full_ratio_state_streams_all_branches_in_560_bits` validates this on 64
+sampled denominators: the 560-bit ratio stream exactly matches all BY branch
+bits and tapers to zero.
+
+Selector information budget:
+
+```text
+full ratio/history selector = 560 bits
+low-qubit allowance target  ≈ 600 bits
+```
+
+This is the first selector architecture that is genuinely 1175q-shaped in
+state, without first16 carry rows, 288-bit x-column residues, or separate tail
+history.  The next blocker is circuit cost for:
+
+1. computing/uncomputing `h0 = x * p^-1 mod 2^560`, and
+2. implementing the A-step ratio update `(h - 1)/(2h)` reversibly without a
+   per-step variable inverse blow-up.
+
+The 304-bit tail-ratio result remains useful as a fallback/diagnostic: after 16
+windows, `h=g/f mod 2^304` streams the remaining 304 branch bits exactly.
 
 A tempting projective normalization sets the folded carry `c0=1`, because BY
 branch choices are invariant under a common odd scale.  That would reduce the

@@ -1750,6 +1750,149 @@ mod tests {
         (acc + mul_i128_mod_width_for_streaming_test(x, coeff, bits)) & mask_u512_bits_for_streaming_test(bits)
     }
 
+    type Big9 = [u64; 9];
+
+    fn big9_mask(bits: usize) -> Big9 {
+        let mut out = [0u64; 9];
+        let full = bits / 64;
+        let rem = bits % 64;
+        for limb in out.iter_mut().take(full.min(9)) {
+            *limb = u64::MAX;
+        }
+        if full < 9 && rem != 0 {
+            out[full] = (1u64 << rem) - 1;
+        }
+        out
+    }
+
+    fn big9_apply_mask(x: &mut Big9, bits: usize) {
+        let mask = big9_mask(bits);
+        for i in 0..9 {
+            x[i] &= mask[i];
+        }
+    }
+
+    fn big9_from_u256(x: U256) -> Big9 {
+        let mut out = [0u64; 9];
+        let limbs = x.as_limbs();
+        out[..4].copy_from_slice(limbs);
+        out
+    }
+
+    fn big9_bit(x: &Big9, bit: usize) -> bool {
+        if bit >= 576 {
+            false
+        } else {
+            ((x[bit / 64] >> (bit % 64)) & 1) != 0
+        }
+    }
+
+    fn big9_set_bit(x: &mut Big9, bit: usize) {
+        x[bit / 64] |= 1u64 << (bit % 64);
+    }
+
+    fn big9_add_word(tmp: &mut [u64; 19], mut idx: usize, mut val: u64) {
+        while val != 0 {
+            let (sum, carry) = tmp[idx].overflowing_add(val);
+            tmp[idx] = sum;
+            val = carry as u64;
+            idx += 1;
+        }
+    }
+
+    fn big9_mul_mod(a: &Big9, b: &Big9, bits: usize) -> Big9 {
+        let mut tmp = [0u64; 19];
+        let need_limbs = ((bits + 63) / 64).min(9);
+        for i in 0..need_limbs {
+            for j in 0..need_limbs {
+                if i + j >= need_limbs {
+                    continue;
+                }
+                let prod = (a[i] as u128) * (b[j] as u128);
+                big9_add_word(&mut tmp, i + j, prod as u64);
+                big9_add_word(&mut tmp, i + j + 1, (prod >> 64) as u64);
+            }
+        }
+        let mut out = [0u64; 9];
+        out.copy_from_slice(&tmp[..9]);
+        big9_apply_mask(&mut out, bits);
+        out
+    }
+
+    fn big9_sub1(mut x: Big9, bits: usize) -> Big9 {
+        let mut i = 0usize;
+        loop {
+            let (v, borrow) = x[i].overflowing_sub(1);
+            x[i] = v;
+            if !borrow {
+                break;
+            }
+            i += 1;
+        }
+        big9_apply_mask(&mut x, bits);
+        x
+    }
+
+    fn big9_add1(mut x: Big9, bits: usize) -> Big9 {
+        let mut i = 0usize;
+        loop {
+            let (v, carry) = x[i].overflowing_add(1);
+            x[i] = v;
+            if !carry {
+                break;
+            }
+            i += 1;
+        }
+        big9_apply_mask(&mut x, bits);
+        x
+    }
+
+    fn big9_shr1(mut x: Big9, bits: usize) -> Big9 {
+        let mut carry = 0u64;
+        for limb in x.iter_mut().rev() {
+            let next = *limb << 63;
+            *limb = (*limb >> 1) | carry;
+            carry = next;
+        }
+        big9_apply_mask(&mut x, bits.saturating_sub(1));
+        x
+    }
+
+    fn big9_inv_odd_mod_pow2(a: &Big9, bits: usize) -> Big9 {
+        if bits == 0 {
+            return [0u64; 9];
+        }
+        assert!(big9_bit(a, 0));
+        let mut inv = [0u64; 9];
+        inv[0] = 1;
+        for i in 1..bits {
+            let prod = big9_mul_mod(a, &inv, i + 1);
+            if big9_bit(&prod, i) {
+                big9_set_bit(&mut inv, i);
+            }
+        }
+        big9_apply_mask(&mut inv, bits);
+        inv
+    }
+
+    fn h_ratio_step_big9_for_streaming_test(delta: i64, h: Big9, t: usize) -> (i64, Big9, bool) {
+        let odd = big9_bit(&h, 0);
+        if t == 1 {
+            let next_delta = if delta > 0 && odd { 1 - delta } else { 1 + delta };
+            return (next_delta, [0u64; 9], odd);
+        }
+        let next_bits = t - 1;
+        if delta > 0 && odd {
+            let half_num = big9_shr1(big9_sub1(h, t), t);
+            let inv_h = big9_inv_odd_mod_pow2(&h, next_bits);
+            (1 - delta, big9_mul_mod(&half_num, &inv_h, next_bits), odd)
+        } else if odd {
+            (1 + delta, big9_shr1(big9_add1(h, t), t), odd)
+        } else {
+            (1 + delta, big9_shr1(h, t), odd)
+        }
+    }
+
     fn sint_residue_u512_for_streaming_test(x: SInt, bits: usize) -> U512 {
         let mask = mask_u512_bits_for_streaming_test(bits);
         let mag = U512::from(x.mag) & mask;
@@ -2239,6 +2382,43 @@ mod tests {
         );
         assert_eq!(c_core_bits, 528);
         assert!(c_core_bits < 600, "post-tail selector core misses low-scratch target");
+    }
+
+    #[test]
+    fn full_ratio_state_streams_all_branches_in_560_bits() {
+        // Stronger selector compression: since BY branch decisions depend only
+        // on delta and the 2-adic ratio h=g/f, start with
+        // h0 = x / p mod 2^560 and never materialize the denominator pair or
+        // the affine x-column/carry decomposition.  The active ratio width
+        // shrinks by one bit per divstep; the vacated bits can be the branch
+        // history in a reversible implementation.  This makes the whole
+        // denominator selector/history a 560-bit object, inside the low-qubit
+        // target's ~600-bit allowance.
+        const TOTAL_BITS: usize = 35 * 16;
+        let samples = 64usize;
+        let p_big = big9_from_u256(SECP256K1_P);
+        let p_inv = big9_inv_odd_mod_pow2(&p_big, TOTAL_BITS);
+        let mut sampler = Sampler::new(b"by-full-ratio-state-v1", SECP256K1_P);
+        for _ in 0..samples {
+            let x = sampler.next();
+            let x_big = big9_from_u256(x);
+            let mut h = big9_mul_mod(&x_big, &p_inv, TOTAL_BITS);
+            let mut delta = 1i64;
+            let mut f = SInt::from_u(SECP256K1_P);
+            let mut g = SInt::from_u(x);
+            for t in (1..=TOTAL_BITS).rev() {
+                let (next_d, next_h, odd_h) = h_ratio_step_big9_for_streaming_test(delta, h, t);
+                assert_eq!(odd_h, g.bit0(), "full-ratio odd mismatch at t={t}");
+                divstep_sint_state(&mut delta, &mut f, &mut g);
+                assert_eq!(next_d, delta, "full-ratio delta mismatch at t={t}");
+                delta = next_d;
+                h = next_h;
+            }
+            assert!(g.is_zero(), "560 BY ratio steps did not converge g");
+            assert_eq!(h, [0u64; 9], "full ratio did not taper to zero");
+        }
+        eprintln!("BY full ratio selector: samples={samples}, total_bits={TOTAL_BITS}");
+        assert_eq!(TOTAL_BITS, 560);
     }
 
     #[test]
