@@ -1193,6 +1193,32 @@ mod tests {
         sizes
     }
 
+    #[test]
+    fn efficient_curve_model_transforms_need_missing_torsion() {
+        // Another architectural escape would move secp256k1 into a model with
+        // cheaper complete addition laws (Montgomery/Edwards/Hessian), do the
+        // point-add there, then convert back.  Over the base field, birational
+        // maps preserve rational torsion.  Montgomery/Edwards models require a
+        // rational 2-torsion point; Hessian/twisted-Hessian models require a
+        // rational 3-torsion point.  secp256k1 has prime odd order not
+        // divisible by 3, so these base-field model changes are unavailable for
+        // the exact affine benchmark.
+        let order = U256::from_str_radix(
+            "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141",
+            16,
+        )
+        .unwrap();
+        let two = U256::from(2u64);
+        let three = U256::from(3u64);
+        eprintln!(
+            "secp256k1 order torsion check: order mod 2 = {}, order mod 3 = {}",
+            order % two,
+            order % three
+        );
+        assert_eq!(order % two, U256::from(1u64));
+        assert_eq!(order % three, U256::from(1u64));
+    }
+
     fn sqrt_phase_anf_stats_for_lambda_cleanup_test(n: usize, p: u16, mask: u16) -> (usize, usize) {
         let size = 1usize << n;
         let mut sqrt = vec![0u16; p as usize];

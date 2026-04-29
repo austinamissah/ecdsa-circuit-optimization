@@ -1608,6 +1608,14 @@ canonical square-root phase is dense/high-degree on toy primes (`n=8,10,12`
 densities `126/256`, `502/1024`, `2072/4096`, degree up to full).  For
 secp256k1 this is an exponentiation, not a cleanup primitive.  Kill it.
 
+Coordinate-model escape check: `efficient_curve_model_transforms_need_missing_torsion`
+records that secp256k1's prime-order group has `order mod 2 = 1` and
+`order mod 3 = 1`.  Base-field Montgomery/Edwards models need rational
+2-torsion and Hessian/twisted-Hessian models need rational 3-torsion; birational
+maps preserve torsion.  So cheap complete-law model changes are unavailable for
+this exact affine benchmark.  Projective/isogenous variants still need affine
+conversion cleanup.
+
 Fifth primitive/global attempt: compute the affine output out-of-place, X-measure
 the old point, and correct phase using `P = R - Q`.  The toy test
 `top_level_mbuc_of_old_point_requires_dense_point_subtraction_phase` shows the

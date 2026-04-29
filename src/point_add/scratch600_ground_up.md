@@ -788,6 +788,24 @@ n=12 p=4093  degree=12/12 density=2072/4096
 For secp256k1 (`p≡3 mod 4`) square root is an exponentiation anyway.  This is
 not a low-cost substitute for the second division or for an in-place multiply.
 
+### Coordinate-model escape check
+
+Efficient complete addition laws in Montgomery/Edwards/Hessian-like models are
+tempting, especially for j=0 curves.  `efficient_curve_model_transforms_need_missing_torsion`
+records the base-field obstruction: birational maps preserve rational torsion,
+Montgomery/Edwards models require rational 2-torsion, and Hessian/twisted-Hessian
+models require rational 3-torsion.  secp256k1's prime group order is
+
+```text
+order mod 2 = 1
+order mod 3 = 1
+```
+
+So those cheap base-field model changes are not available for this exact affine
+benchmark.  Projective/isogenous/extension-field variants still need an affine
+conversion/cleanup and fall back into the inversion wall unless they bring a new
+cleanup primitive.
+
 ## 12. Attempt F: absorb Kaliski's scale by pre-scaling the denominator
 
 Kaliski exposes a raw coefficient of the form
