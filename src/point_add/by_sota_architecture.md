@@ -186,7 +186,10 @@ v2(m01) histogram over 2240 windows:
 ```
 
 So a geometric-series inverse gets some help (`v2>=1` always) but not enough for
-a free update: 45.5% of windows have only `v2=1` or `2`.
+a free update: 45.5% of 16-bit windows have only `v2=1` or `2`.
+`wider_ratio_windows_do_not_remove_mobius_inverse_problem` repeats the check for
+32-bit windows; 822/1088 sampled windows still have `v2(m01)<=4`.  Simply
+increasing the window size does not remove the variable-inverse problem.
 
 The 304-bit tail-ratio result remains useful as a fallback/diagnostic: after 16
 windows, `h=g/f mod 2^304` streams the remaining 304 branch bits exactly.

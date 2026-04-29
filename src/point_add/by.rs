@@ -1690,14 +1690,20 @@ mod tests {
         assert!(fail_16 > 0.01, "16-bit/window rank would meet 1% tolerance; revisit h-only path");
     }
 
-    fn low_signed_sint16_for_streaming_test(x: SInt) -> i128 {
-        let low = x.mag.as_limbs()[0] & 0xffff;
-        let residue = if x.neg { ((!low).wrapping_add(1)) & 0xffff } else { low };
-        if (residue & 0x8000) != 0 {
-            residue as i128 - (1i128 << 16)
+    fn low_signed_sint_for_streaming_test(x: SInt, bits: usize) -> i128 {
+        assert!((1..=63).contains(&bits));
+        let mask = (1u64 << bits) - 1;
+        let low = x.mag.as_limbs()[0] & mask;
+        let residue = if x.neg { ((!low).wrapping_add(1)) & mask } else { low };
+        if (residue & (1u64 << (bits - 1))) != 0 {
+            residue as i128 - (1i128 << bits)
         } else {
             residue as i128
         }
+    }
+
+    fn low_signed_sint16_for_streaming_test(x: SInt) -> i128 {
+        low_signed_sint_for_streaming_test(x, 16)
     }
 
     fn u256_limb16_for_streaming_test(x: U256, win: usize) -> u64 {
@@ -2433,6 +2439,47 @@ mod tests {
         } else {
             (x.unsigned_abs()).trailing_zeros() as usize
         }
+    }
+
+    fn ratio_window_v2_hist_for_test(w: usize, samples: usize) -> Vec<usize> {
+        let mut sampler = Sampler::new(b"by-ratio-window-size-v2-v1", SECP256K1_P);
+        let mut hist = vec![0usize; w + 1];
+        for _ in 0..samples {
+            let x = sampler.next();
+            let mut delta = 1i64;
+            let mut f = SInt::from_u(SECP256K1_P);
+            let mut g = SInt::from_u(x);
+            let mut done = 0usize;
+            while done + w <= 35 * 16 {
+                let f_low = low_signed_sint_for_streaming_test(f, w);
+                let g_low = low_signed_sint_for_streaming_test(g, w);
+                let bits = branch_bits_for_lowword_window(w, delta, f_low, g_low);
+                let m = matrix_from_branch_bits(delta, &bits);
+                let v = v2_i128_for_ratio_test(m.m01).min(w);
+                hist[v] += 1;
+                for _ in 0..w {
+                    divstep_sint_state(&mut delta, &mut f, &mut g);
+                }
+                done += w;
+            }
+        }
+        hist
+    }
+
+    #[test]
+    fn wider_ratio_windows_do_not_remove_mobius_inverse_problem() {
+        // Larger windows reduce the number of Möbius updates, but make the
+        // decoder/table larger.  They would be attractive if m01 gained enough
+        // powers of two to make D=q0+m01*H almost constant.  Sampling W=32 still
+        // leaves many low-valuation denominators.
+        let hist32 = ratio_window_v2_hist_for_test(32, 64);
+        let windows32: usize = hist32.iter().sum();
+        let weak32: usize = hist32.iter().take(5).sum();
+        eprintln!(
+            "BY ratio W=32 denominator v2(m01): windows={windows32}, hist={hist32:?}, v<=4={weak32}"
+        );
+        assert_eq!(windows32, 64 * 17);
+        assert!(weak32 * 3 > windows32, "W=32 unexpectedly makes denominators almost constant");
     }
 
     #[test]
