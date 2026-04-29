@@ -4048,7 +4048,8 @@ const BULK_PREFIX_SAFE_ITERS: usize = 375;
 
 fn bulk_prefix_safe_iters() -> usize {
     let centered_roundtrip_hook = std::env::var("BY_CENTERED_CLEAN_ROUNDTRIP_BENCH").ok().as_deref() == Some("1")
-        || std::env::var("BY_CENTERED_FAST_CLEAN_ROUNDTRIP_BENCH").ok().as_deref() == Some("1");
+        || std::env::var("BY_CENTERED_FAST_CLEAN_ROUNDTRIP_BENCH").ok().as_deref() == Some("1")
+        || std::env::var("BY_CENTERED_DENOM_CONTROLS_BENCH").ok().as_deref() == Some("1");
     let default = if centered_roundtrip_hook {
         // The huge centered roundtrip hooks change the circuit hash / RNG stream
         // enough that the aggressively tuned 375 bulk-prefix setting can hit a
@@ -4410,6 +4411,80 @@ fn centered_signed_by_clear_parity_after_inverse_for_bench(
     b.ccx(odd, r[0], parity);
 }
 
+fn by_logical_shift_right_even_for_bench(b: &mut B, v: &[QubitId]) {
+    for i in 0..v.len() - 1 {
+        b.swap(v[i], v[i + 1]);
+    }
+}
+
+fn by_logical_shift_left_even_inverse_for_bench(b: &mut B, v: &[QubitId]) {
+    for i in (0..v.len() - 1).rev() {
+        b.swap(v[i], v[i + 1]);
+    }
+}
+
+fn by_delta_positive_into_for_bench(b: &mut B, delta: &[QubitId], flag: QubitId) {
+    let nz = b.alloc_qubit();
+    cmp_neq_zero_into(b, delta, nz);
+    let sign = delta[delta.len() - 1];
+    b.x(sign);
+    b.ccx(nz, sign, flag);
+    b.x(sign);
+    cmp_neq_zero_into(b, delta, nz);
+    b.free(nz);
+}
+
+fn by_2adic_branch_step_for_bench(
+    b: &mut B,
+    f: &[QubitId],
+    g: &[QubitId],
+    delta: &[QubitId],
+    odd_out: QubitId,
+    a_out: QubitId,
+) {
+    b.cx(g[0], odd_out);
+    let positive = b.alloc_qubit();
+    by_delta_positive_into_for_bench(b, delta, positive);
+    b.ccx(odd_out, positive, a_out);
+    by_delta_positive_into_for_bench(b, delta, positive);
+    b.free(positive);
+
+    for i in 0..f.len() {
+        cswap(b, a_out, f[i], g[i]);
+    }
+    by_twos_cneg_for_bench(b, g, a_out);
+    cucc_add_ctrl(b, f, g, odd_out);
+    by_logical_shift_right_even_for_bench(b, g);
+
+    by_twos_cneg_for_bench(b, delta, a_out);
+    add_nbit_const_fast(b, delta, U256::from(1u64));
+}
+
+fn by_2adic_branch_step_reverse_for_bench(
+    b: &mut B,
+    f: &[QubitId],
+    g: &[QubitId],
+    delta: &[QubitId],
+    odd_hist: QubitId,
+    a_hist: QubitId,
+) {
+    sub_nbit_const_fast(b, delta, U256::from(1u64));
+    by_twos_cneg_for_bench(b, delta, a_hist);
+    by_logical_shift_left_even_inverse_for_bench(b, g);
+    cucc_sub_ctrl(b, f, g, odd_hist);
+    by_twos_cneg_for_bench(b, g, a_hist);
+    for i in 0..f.len() {
+        cswap(b, a_hist, f[i], g[i]);
+    }
+
+    let positive = b.alloc_qubit();
+    by_delta_positive_into_for_bench(b, delta, positive);
+    b.ccx(odd_hist, positive, a_hist);
+    by_delta_positive_into_for_bench(b, delta, positive);
+    b.free(positive);
+    b.cx(g[0], odd_hist);
+}
+
 fn emit_centered_signed_by_replay_body_benchmark_scaffold(b: &mut B, p: U256) {
     // Harness integration smoke test for the centered signed redundant replay.
     // Reuses one zero odd/A/parity control so the clean no-op fits next to the
@@ -4598,6 +4673,66 @@ fn emit_centered_signed_by_fast_clean_roundtrip_benchmark_scaffold(b: &mut B, p:
         }
     }
     let _ = (odd, a_ctrl, parity, r, s);
+}
+
+fn emit_centered_by_denominator_derived_controls_benchmark_scaffold(b: &mut B, tx: &[QubitId], p: U256) {
+    // First functional integration step beyond fixed traces: derive the BY odd/A
+    // controls reversibly from a live quantum denominator copy (here the current
+    // output x register), run a clean fast centered replay roundtrip on scratch,
+    // then reverse the denominator generator to clean the controls.  The replay
+    // scratch is zero so this is still a no-op, but the control bank is now
+    // genuinely denominator-derived rather than hard-coded.
+    const STEPS: usize = 560;
+    const DBITS: usize = 12;
+    const WIDE: usize = N + 4;
+    b.set_phase("by_centered_denom_controls_bench_alloc");
+    let f = b.alloc_qubits(STEPS);
+    let g = b.alloc_qubits(STEPS);
+    let delta = b.alloc_qubits(DBITS);
+    let odd = b.alloc_qubits(STEPS);
+    let a_ctrl = b.alloc_qubits(STEPS);
+    let parity = b.alloc_qubits(STEPS);
+    let r = b.alloc_qubits(WIDE);
+    let s = b.alloc_qubits(WIDE);
+
+    for i in 0..N {
+        if bit(p, i) {
+            b.x(f[i]);
+        }
+        b.cx(tx[i], g[i]);
+    }
+    b.x(delta[0]);
+
+    b.set_phase("by_centered_denom_controls_bench_generate");
+    for i in 0..STEPS {
+        let rem = STEPS - i;
+        by_2adic_branch_step_for_bench(b, &f[..rem], &g[..rem], &delta, odd[i], a_ctrl[i]);
+    }
+
+    b.set_phase("by_centered_denom_controls_bench_replay");
+    for i in 0..STEPS {
+        centered_signed_by_microstep_for_bench(b, &r, &s, odd[i], a_ctrl[i], parity[i], p);
+    }
+    for i in (0..STEPS).rev() {
+        centered_signed_by_microstep_inverse_for_bench(b, &r, &s, odd[i], a_ctrl[i], parity[i], p);
+        centered_signed_by_clear_parity_after_inverse_for_bench(b, &r, &s, odd[i], parity[i]);
+    }
+
+    b.set_phase("by_centered_denom_controls_bench_reverse");
+    for i in (0..STEPS).rev() {
+        let rem = STEPS - i;
+        by_2adic_branch_step_reverse_for_bench(b, &f[..rem], &g[..rem], &delta, odd[i], a_ctrl[i]);
+    }
+
+    b.set_phase("by_centered_denom_controls_bench_clear");
+    b.x(delta[0]);
+    for i in 0..N {
+        b.cx(tx[i], g[i]);
+        if bit(p, i) {
+            b.x(f[i]);
+        }
+    }
+    let _ = (f, g, delta, odd, a_ctrl, parity, r, s);
 }
 
 /// Specialized real forward primitive for the first few guaranteed-bulk
@@ -7466,6 +7601,9 @@ pub fn build() -> Vec<Op> {
     }
     if std::env::var("BY_CENTERED_FAST_CLEAN_ROUNDTRIP_BENCH").ok().as_deref() == Some("1") {
         emit_centered_signed_by_fast_clean_roundtrip_benchmark_scaffold(b, p);
+    }
+    if std::env::var("BY_CENTERED_DENOM_CONTROLS_BENCH").ok().as_deref() == Some("1") {
+        emit_centered_by_denominator_derived_controls_benchmark_scaffold(b, &tx, p);
     }
 
     if std::env::var("BY_TEST").is_ok() {

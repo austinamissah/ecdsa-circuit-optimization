@@ -873,6 +873,28 @@ are all live. It is nevertheless the first production-harness proof that the
 SOTA-shaped fast centered replay can be cleaned once the correct unhalve
 sign-history is used.
 
+A first denominator-derived integration hook is now wired as
+`BY_CENTERED_DENOM_CONTROLS_BENCH=1`. This still appends a no-op after the
+normal Kaliski point-add, but it no longer uses a fixed odd/A trace: it copies
+the live quantum output-x register into a 560-bit 2-adic denominator state,
+reversibly generates BY odd/A controls, runs the clean fast centered replay
+roundtrip on scratch, reverses the denominator generator to clear controls, and
+uncopies the denominator. The real harness accepts it:
+
+```text
+BY_CENTERED_DENOM_CONTROLS_BENCH=1
+avg_toffoli = 7,868,378
+qubits      = 4,964
+emitted_ops = 55,824,052
+altseed/classical/phase/ancilla failures = 0
+```
+
+This is far too wide and expensive, but it is the first production-harness
+component where BY controls are genuinely denominator-derived from live quantum
+data and then self-cleaned. The remaining replacement work is to make the
+replay act on the tagged numerator/product channel instead of zero scratch, and
+then move this component into pair1/pair2 rather than appending it.
+
 Naively synthesizing the range test is too expensive:
 `naive_centered_parity_recovery_cost_would_erase_redundant_replay_win` measures
 about `1,296 CCX/flag`, or `≈725,760` CCX just to clean 560 parity bits. A cheap
