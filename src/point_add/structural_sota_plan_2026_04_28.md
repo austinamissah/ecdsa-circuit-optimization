@@ -718,9 +718,19 @@ checks that, away from the fast-negation zero representative edge, the flag is
 copy plus a comparator and uncompute, about `766 CCX/flag`, which is more than
 the `cmp_lt` cost we skipped.
 
-This is now the sharp replay moonshot: find a way to clean/absorb those flags
-(possibly during reverse denominator/window cleanup) without paying the full
-post-halve recovery cost.
+The flags are also not a sparse side list. `live_reduction_flag_history_is_dense_and_high_entropy`
+measures actual tagged-DIV trajectories:
+
+```text
+mean true flags              ≈ 133.8 / 560
+p99 true flags               = 155
+independent entropy upper    ≈ 436.1 bits
+```
+
+So a position-list escape is dead; at best they are another compressed history
+bank. This is now the sharp replay moonshot: find a way to clean/absorb those
+flags (possibly during reverse denominator/window cleanup) without paying the
+full post-halve recovery cost.
 A production replay therefore needs either (a) keep A controls/live flags until
 the end and clean them globally, or (b) fuse the modular average so the same
 flag is recoverable from later state.

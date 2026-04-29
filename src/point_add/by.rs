@@ -5646,6 +5646,84 @@ mod tests {
     }
 
     #[test]
+    fn live_reduction_flag_history_is_dense_and_high_entropy() {
+        // If we cannot clean live reduction flags, can we at least treat them
+        // as a small sparse history? No: they are arithmetic carry/borrow bits
+        // of the tagged numerator channel and are common enough to resist a
+        // simple position list. This does not kill compression, but it kills a
+        // sparse-red-flag escape.
+        let p = SECP256K1_P;
+        let inv2 = (p.wrapping_add(U256::from(1u64))) >> 1usize;
+        let samples = 3_000usize;
+        let mut sx = Sampler::new(b"by-live-flag-density-x-v1", p);
+        let mut sy = Sampler::new(b"by-live-flag-density-y-v1", p);
+        let mut per_step_true = vec![0usize; 560];
+        let mut counts = Vec::with_capacity(samples);
+        let mut accepted = 0usize;
+        while accepted < samples {
+            let x = sx.next();
+            let y = sy.next();
+            let mut delta = 1i64;
+            let mut f = SInt::from_u(p);
+            let mut g = SInt::from_u(x);
+            let mut controls = Vec::with_capacity(560);
+            for _ in 0..560 {
+                let odd = g.bit0();
+                let a = delta > 0 && odd;
+                controls.push((odd, a));
+                divstep_sint_state(&mut delta, &mut f, &mut g);
+            }
+            if !g.is_zero() || !(f.is_one_pos() || f.is_one_neg()) { continue; }
+            let mut r = U256::ZERO;
+            let mut s = addm(y, x, p);
+            let mut sample_true = 0usize;
+            for (i, &(odd, a)) in controls.iter().enumerate() {
+                let flag = if !odd {
+                    false
+                } else if a {
+                    // After A swap+cneg, the add is (p-r_old)+s_old.  Fast
+                    // cneg maps r=0 to p, which also sets the live flag.
+                    r.is_zero() || s >= r
+                } else {
+                    s >= p.wrapping_sub(r)
+                };
+                if flag {
+                    per_step_true[i] += 1;
+                    sample_true += 1;
+                }
+                if a {
+                    let nr = s;
+                    let ns = mulm(subm(s, r, p), inv2, p);
+                    r = nr;
+                    s = ns;
+                } else if odd {
+                    s = mulm(addm(s, r, p), inv2, p);
+                } else {
+                    s = mulm(s, inv2, p);
+                }
+            }
+            counts.push(sample_true);
+            accepted += 1;
+        }
+        counts.sort_unstable();
+        let mean_true = counts.iter().sum::<usize>() as f64 / samples as f64;
+        let p90 = counts[(samples * 90) / 100];
+        let p99 = counts[(samples * 99) / 100];
+        let entropy: f64 = per_step_true
+            .iter()
+            .map(|&c| {
+                let q = c as f64 / samples as f64;
+                if q <= 0.0 || q >= 1.0 { 0.0 } else { -q * q.log2() - (1.0 - q) * (1.0 - q).log2() }
+            })
+            .sum();
+        eprintln!(
+            "BY live reduction flag history: mean_true={mean_true:.1}, p90={p90}, p99={p99}, independent_entropy≈{entropy:.1} bits"
+        );
+        assert!(mean_true > 80.0, "live flags unexpectedly sparse enough for a position-list escape");
+        assert!(entropy > 250.0, "live flag history unexpectedly low entropy");
+    }
+
+    #[test]
     fn live_reduction_flag_is_recoverable_from_doubled_output_but_cleanup_is_costly() {
         // Algebra for cleaning a live modular-add reduction flag after the
         // following halve: for canonical inputs, z = 2*out_s mod p is the
