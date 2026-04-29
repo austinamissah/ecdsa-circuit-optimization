@@ -1615,6 +1615,7 @@ add/sub but fast modular shifts and are clean:
 ```text
 pair1 mixed: avg_toffoli=4,223,465  qubits=2,972
 pair2 mixed: avg_toffoli=4,220,405  qubits=2,969
+both mixed:  avg_toffoli=4,331,952  qubits=2,972
 ```
 
 So the phase culprit is the fast q-q add/sub in constant multiplication, not the
