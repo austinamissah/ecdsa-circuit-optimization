@@ -1521,6 +1521,53 @@ Do not pursue a code change unless it plausibly satisfies at least one:
 - **Fast falsification:** conclusively kills a tempting structural path so we
   do not waste another session on it.
 
-Immediate next target: **Program A**, because it is the only public-ish path
-whose economics can plausibly produce the missing 1.4M Toffoli while staying
-inside the exact harness.
+Immediate next target update after BY invalidation: **Program B only if it
+produces a new primitive-level win before point-add wiring**.  The old Program A
+BY denominator route is no longer a production target with current primitives.
+
+## 6. Post-BY ground-up attempt: Strategy E slope-coordinate map
+
+New non-BY candidate: make the slope the live y-coordinate and avoid an
+independent `lam` register entirely.
+
+```text
+dx = Px-Qx
+dy = Py-Qy
+m  = dy/dx
+Rx = m^2 - dx - 2Qx
+Ry = -m*(Rx-Qx) - Qy
+```
+
+This gives a triangular affine permutation:
+
+```text
+(tx,ty)=(dx,dy)
+DIV(tx,ty)        -> (dx,m)
+tx := m^2-tx-2Qx -> (Rx,m)
+IMUL(tx,ty)       -> (Rx,Ry)
+```
+
+`strategy_e_slope_coordinate_formula_passes_200` validates the formula on 200
+random secp256k1 point pairs.  It is the cleanest one-inversion-looking affine
+schedule so far because `dx -> Rx` is an involution once `m` is live, and no
+fresh output registers are required.
+
+Fast invalidation: with current reversible primitives, `IMUL(tx,ty)` is not a
+schoolbook multiply.  The map `(c,m)->(c,m*c)` is not globally reversible when
+`c=0`, and known exact/product-clean constructions need an inverse-sized cleanup
+object.  That collapses Strategy E back to the measured pair2
+scaled-product-clean world.  The executable budget guard
+`strategy_e_slope_coordinate_budget_requires_new_inplace_variable_multiply`
+records:
+
+```text
+current known product-clean route ≈ 2,988,510 Toffoli before safety margin
+if IMUL were schoolbook-like       ≈ 2,022,750 Toffoli
+needed IMUL saving                 ≈   965,760 Toffoli
+```
+
+Decision: **Strategy E is algebraically validated but circuit-invalidated with
+current primitives**.  Do not wire it using existing Kaliski/BY product-clean
+machinery; it only becomes SOTA-shaped if we invent a genuinely new phase-clean
+in-place variable multiply/divide primitive at roughly schoolbook cost and
+without raw inverse/history storage.

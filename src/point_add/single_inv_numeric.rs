@@ -389,6 +389,34 @@ pub fn replay_strategy_c(px: U256, py: U256, qx: U256, qy: U256) -> (U256, U256)
     (rx, ry)
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// STRATEGY E: slope-coordinate point-add permutation.
+//
+// This is a ground-up non-BY/non-denominator-history approach. It uses the
+// slope m=dy/dx as the temporary coordinate and updates the x register by the
+// involution
+//
+//     dx -> Rx = m² - dx - 2Qx.
+//
+// Then the y register is converted from slope to affine output by
+//
+//     m -> Ry = -m*(Rx-Qx) - Qy.
+//
+// Algebraically this is the cleanest one-division point-add map found so far.
+// It is SOTA-shaped only if the required in-place variable multiply/divide can
+// be made roughly schoolbook-cost and product-clean without inverse history.
+// ─────────────────────────────────────────────────────────────────────
+pub fn replay_strategy_e_slope_coordinate(px: U256, py: U256, qx: U256, qy: U256) -> (U256, U256) {
+    let p = SECP256K1_P;
+    let dx = sub_mod(px, qx, p);
+    let dy = sub_mod(py, qy, p);
+    let m = dy.mul_mod(dx.inv_mod(p).expect("dx nonzero"), p);
+    let rx = sub_mod(sub_mod(m.mul_mod(m, p), dx, p), qx.mul_mod(U256::from(2), p), p);
+    let rx_minus_qx = sub_mod(rx, qx, p);
+    let ry = sub_mod(neg_mod(m.mul_mod(rx_minus_qx, p), p), qy, p);
+    (rx, ry)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -607,6 +635,40 @@ mod tests {
             assert_eq!(rx, rx_ref);
             assert_eq!(ry, ry_ref);
         });
+    }
+
+    #[test]
+    fn strategy_e_slope_coordinate_formula_passes_200() {
+        // New ground-up attempt: convert to the line slope m=dy/dx, update
+        // x by the involution dx -> Rx, then convert m to Ry. This validates
+        // the algebra before any circuit work.
+        each_trial(|px, py, qx, qy, rx_ref, ry_ref| {
+            let (rx, ry) = replay_strategy_e_slope_coordinate(px, py, qx, qy);
+            assert_eq!(rx, rx_ref);
+            assert_eq!(ry, ry_ref);
+        });
+    }
+
+    #[test]
+    fn strategy_e_slope_coordinate_budget_requires_new_inplace_variable_multiply() {
+        // The slope-coordinate map has one division plus one in-place variable
+        // multiplication m -> -m*(Rx-Qx)-Qy. Known reversible ways to make
+        // that multiplication product-clean are equivalent to the pair2
+        // product-clean primitive already measured. This budget is the early
+        // invalidation gate: current primitives miss SOTA, while a genuinely
+        // new schoolbook-like in-place variable multiply would be worth wiring.
+        let non_div_scaffold_after_one_div = 942_750.0;
+        let compact_div_target = 900_000.0;
+        let known_product_clean = 1_145_760.0;
+        let schoolbook_like_product_target = 180_000.0;
+        let current_known_total = non_div_scaffold_after_one_div + compact_div_target + known_product_clean;
+        let target_if_new_mul = non_div_scaffold_after_one_div + compact_div_target + schoolbook_like_product_target;
+        eprintln!(
+            "Strategy E slope-coordinate budget: current_known≈{current_known_total:.0}, if_new_inplace_mul≈{target_if_new_mul:.0}, need_new_mul_saving≈{:.0}",
+            known_product_clean - schoolbook_like_product_target
+        );
+        assert!(current_known_total > 2_700_000.0, "known product-clean primitive would already be SOTA-shaped; wire Strategy E");
+        assert!(target_if_new_mul < 2_100_000.0, "even a schoolbook-cost in-place variable multiply would not make Strategy E worthwhile");
     }
 }
 

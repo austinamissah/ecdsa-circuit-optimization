@@ -577,3 +577,54 @@ This is the next hard synthesis problem.
    - qubits if folded into `ty` and history compressed: plausibly **1100-1500q**
 
 This is now the main ground-up research direction alongside jumped Kaliski.
+
+## 12. Strategy E — slope-coordinate affine permutation
+
+After the BY denominator route missed budget, the cleanest non-BY ground-up
+candidate is to make the line slope itself the live coordinate.  The algebra is
+now captured in `single_inv_numeric.rs` as `replay_strategy_e_slope_coordinate`.
+For
+
+```text
+dx = Px-Qx
+dy = Py-Qy
+m  = dy/dx
+```
+
+the point-add map can be written as the in-place-looking triangular schedule
+
+```text
+tx: dx -> Rx = m^2 - dx - 2Qx
+ty: m  -> Ry = -m*(Rx-Qx) - Qy
+```
+
+`strategy_e_slope_coordinate_formula_passes_200` validates this exactly on 200
+random secp256k1 point pairs.  This is a real algebraic reduction: `dx -> Rx`
+is an involution once `m` is live, and no separate `lam` register is needed in
+the final state.
+
+The fast invalidation is equally sharp.  To make this a circuit we need both:
+
+```text
+DIV:   (x,y) -> (x,y/x)
+IMUL:  (c,m) -> (c,-m*c-Qy)
+```
+
+with scratch cleaned and no copied quotient/product.  Known reversible ways to
+implement `IMUL` are product-clean multiplication, which is equivalent to the
+already-measured pair2 scaled inverse/product-clean primitive.  The budget test
+`strategy_e_slope_coordinate_budget_requires_new_inplace_variable_multiply`
+records the economics:
+
+```text
+current known product-clean route ≈ 2,988,510 Toffoli before safety margin
+if IMUL were schoolbook-like       ≈ 2,022,750 Toffoli
+needed IMUL saving                 ≈   965,760 Toffoli
+```
+
+So Strategy E is **validated algebraically** but **invalidated with current
+primitives**.  It becomes SOTA-shaped only if a genuinely new in-place variable
+multiply/divide primitive exists, roughly schoolbook-cost, phase-clean, and
+without a raw inverse/history bank.  That primitive is more general than BY and
+would also solve the earlier pair2 cleanup obstruction; without it, there is no
+point wiring another affine scaffold around existing product-clean machinery.
