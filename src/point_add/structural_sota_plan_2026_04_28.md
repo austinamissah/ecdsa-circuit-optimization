@@ -836,7 +836,13 @@ expensive. The important structural lesson is sharper than before: the dirty
 parity bits are not the only issue; any replay control that will later be
 cleaned must either avoid MBU phase dependencies or carry an explicit phase
 witness/live-flag that is cleaned with it. A global `Neg` cannot fix this,
-because exact-parity/fast-signed cleanup has data-dependent phase.
+because exact-parity/fast-signed cleanup has data-dependent phase. Simple
+sign-flip patches to the MBU measurements do not work either:
+`negating_signed_copy_measurements_does_not_fix_centered_control_phase`,
+`negating_cuccaro_carry_measurements_does_not_fix_centered_control_phase`, and
+`negating_all_signed_mbu_measurements_does_not_fix_centered_control_phase` all
+still see both phase values over 560-step samples at the same `2,618,000` CCX
+exact-parity/fast-signed cost.
 
 Naively synthesizing the range test is too expensive:
 `naive_centered_parity_recovery_cost_would_erase_redundant_replay_win` measures

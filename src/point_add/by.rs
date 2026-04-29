@@ -4008,6 +4008,228 @@ mod tests {
         b.free_vec(&f);
     }
 
+    fn emit_signed_controlled_add_negcopy_for_test(
+        b: &mut super::super::B,
+        acc: &[super::super::QubitId],
+        a: &[super::super::QubitId],
+        ctrl: super::super::QubitId,
+    ) {
+        let f = b.alloc_qubits(acc.len());
+        for i in 0..acc.len() {
+            b.ccx(ctrl, a[i], f[i]);
+        }
+        super::super::add_nbit_qq_fast(b, &f, acc);
+        for i in 0..acc.len() {
+            let m = b.alloc_bit();
+            b.hmr(f[i], m);
+            b.cz_if(ctrl, a[i], m);
+            b.neg_if(m);
+        }
+        b.free_vec(&f);
+    }
+
+    fn emit_signed_controlled_sub_negcopy_for_test(
+        b: &mut super::super::B,
+        acc: &[super::super::QubitId],
+        a: &[super::super::QubitId],
+        ctrl: super::super::QubitId,
+    ) {
+        let f = b.alloc_qubits(acc.len());
+        for i in 0..acc.len() {
+            b.ccx(ctrl, a[i], f[i]);
+        }
+        super::super::sub_nbit_qq_fast(b, &f, acc);
+        for i in 0..acc.len() {
+            let m = b.alloc_bit();
+            b.hmr(f[i], m);
+            b.cz_if(ctrl, a[i], m);
+            b.neg_if(m);
+        }
+        b.free_vec(&f);
+    }
+
+    fn cuccaro_add_fast_negphase_for_test(
+        b: &mut super::super::B,
+        a: &[super::super::QubitId],
+        acc: &[super::super::QubitId],
+        c_in: super::super::QubitId,
+    ) {
+        let n = a.len();
+        assert_eq!(n, acc.len());
+        if n == 0 { return; }
+        if n == 1 {
+            b.cx(c_in, acc[0]);
+            b.cx(a[0], acc[0]);
+            return;
+        }
+        let carries = b.alloc_qubits(n - 1);
+        b.cx(a[0], acc[0]);
+        b.cx(a[0], c_in);
+        b.ccx(c_in, acc[0], carries[0]);
+        b.cx(carries[0], a[0]);
+        for i in 1..n - 1 {
+            b.cx(a[i], acc[i]);
+            b.cx(a[i], a[i - 1]);
+            b.ccx(a[i - 1], acc[i], carries[i]);
+            b.cx(carries[i], a[i]);
+        }
+        b.cx(a[n - 2], acc[n - 1]);
+        b.cx(a[n - 1], acc[n - 1]);
+        for i in (1..n - 1).rev() {
+            b.cx(carries[i], a[i]);
+            let m = b.alloc_bit();
+            b.hmr(carries[i], m);
+            b.cz_if(a[i - 1], acc[i], m);
+            b.neg_if(m);
+            b.cx(a[i], a[i - 1]);
+            b.cx(a[i - 1], acc[i]);
+        }
+        b.cx(carries[0], a[0]);
+        let m0 = b.alloc_bit();
+        b.hmr(carries[0], m0);
+        b.cz_if(c_in, acc[0], m0);
+        b.neg_if(m0);
+        b.cx(a[0], c_in);
+        b.cx(c_in, acc[0]);
+        b.free_vec(&carries);
+    }
+
+    fn cuccaro_sub_fast_negphase_for_test(
+        b: &mut super::super::B,
+        a: &[super::super::QubitId],
+        acc: &[super::super::QubitId],
+        c_in: super::super::QubitId,
+    ) {
+        let n = a.len();
+        assert_eq!(n, acc.len());
+        if n == 0 { return; }
+        if n == 1 {
+            b.cx(a[0], acc[0]);
+            b.cx(c_in, acc[0]);
+            return;
+        }
+        let carries = b.alloc_qubits(n - 1);
+        b.cx(c_in, acc[0]);
+        b.cx(a[0], c_in);
+        b.ccx(c_in, acc[0], carries[0]);
+        b.cx(carries[0], a[0]);
+        for i in 1..n - 1 {
+            b.cx(a[i - 1], acc[i]);
+            b.cx(a[i], a[i - 1]);
+            b.ccx(a[i - 1], acc[i], carries[i]);
+            b.cx(carries[i], a[i]);
+        }
+        b.cx(a[n - 1], acc[n - 1]);
+        b.cx(a[n - 2], acc[n - 1]);
+        for i in (1..n - 1).rev() {
+            b.cx(carries[i], a[i]);
+            let m = b.alloc_bit();
+            b.hmr(carries[i], m);
+            b.cz_if(a[i - 1], acc[i], m);
+            b.neg_if(m);
+            b.cx(a[i], a[i - 1]);
+            b.cx(a[i], acc[i]);
+        }
+        b.cx(carries[0], a[0]);
+        let m0 = b.alloc_bit();
+        b.hmr(carries[0], m0);
+        b.cz_if(c_in, acc[0], m0);
+        b.neg_if(m0);
+        b.cx(a[0], c_in);
+        b.cx(a[0], acc[0]);
+        b.free_vec(&carries);
+    }
+
+    fn add_nbit_qq_fast_negphase_for_test(
+        b: &mut super::super::B,
+        a: &[super::super::QubitId],
+        acc: &[super::super::QubitId],
+    ) {
+        let c_in = b.alloc_qubit();
+        cuccaro_add_fast_negphase_for_test(b, a, acc, c_in);
+        b.free(c_in);
+    }
+
+    fn sub_nbit_qq_fast_negphase_for_test(
+        b: &mut super::super::B,
+        a: &[super::super::QubitId],
+        acc: &[super::super::QubitId],
+    ) {
+        let c_in = b.alloc_qubit();
+        cuccaro_sub_fast_negphase_for_test(b, a, acc, c_in);
+        b.free(c_in);
+    }
+
+    fn emit_signed_controlled_add_negcarry_for_test(
+        b: &mut super::super::B,
+        acc: &[super::super::QubitId],
+        a: &[super::super::QubitId],
+        ctrl: super::super::QubitId,
+    ) {
+        let f = b.alloc_qubits(acc.len());
+        for i in 0..acc.len() { b.ccx(ctrl, a[i], f[i]); }
+        add_nbit_qq_fast_negphase_for_test(b, &f, acc);
+        for i in 0..acc.len() {
+            let m = b.alloc_bit();
+            b.hmr(f[i], m);
+            b.cz_if(ctrl, a[i], m);
+        }
+        b.free_vec(&f);
+    }
+
+    fn emit_signed_controlled_sub_negcarry_for_test(
+        b: &mut super::super::B,
+        acc: &[super::super::QubitId],
+        a: &[super::super::QubitId],
+        ctrl: super::super::QubitId,
+    ) {
+        let f = b.alloc_qubits(acc.len());
+        for i in 0..acc.len() { b.ccx(ctrl, a[i], f[i]); }
+        sub_nbit_qq_fast_negphase_for_test(b, &f, acc);
+        for i in 0..acc.len() {
+            let m = b.alloc_bit();
+            b.hmr(f[i], m);
+            b.cz_if(ctrl, a[i], m);
+        }
+        b.free_vec(&f);
+    }
+
+    fn emit_signed_controlled_add_negboth_for_test(
+        b: &mut super::super::B,
+        acc: &[super::super::QubitId],
+        a: &[super::super::QubitId],
+        ctrl: super::super::QubitId,
+    ) {
+        let f = b.alloc_qubits(acc.len());
+        for i in 0..acc.len() { b.ccx(ctrl, a[i], f[i]); }
+        add_nbit_qq_fast_negphase_for_test(b, &f, acc);
+        for i in 0..acc.len() {
+            let m = b.alloc_bit();
+            b.hmr(f[i], m);
+            b.cz_if(ctrl, a[i], m);
+            b.neg_if(m);
+        }
+        b.free_vec(&f);
+    }
+
+    fn emit_signed_controlled_sub_negboth_for_test(
+        b: &mut super::super::B,
+        acc: &[super::super::QubitId],
+        a: &[super::super::QubitId],
+        ctrl: super::super::QubitId,
+    ) {
+        let f = b.alloc_qubits(acc.len());
+        for i in 0..acc.len() { b.ccx(ctrl, a[i], f[i]); }
+        sub_nbit_qq_fast_negphase_for_test(b, &f, acc);
+        for i in 0..acc.len() {
+            let m = b.alloc_bit();
+            b.hmr(f[i], m);
+            b.cz_if(ctrl, a[i], m);
+            b.neg_if(m);
+        }
+        b.free_vec(&f);
+    }
+
     fn emit_signed_controlled_add_exact_for_test(
         b: &mut super::super::B,
         acc: &[super::super::QubitId],
@@ -4273,6 +4495,108 @@ mod tests {
         } else {
             emit_twos_complement_cneg_for_test(b, s, a_ctrl);
         }
+        for i in 0..r.len() {
+            super::super::cswap(b, a_ctrl, r[i], s[i]);
+        }
+    }
+
+    fn emit_scaled_by_centered_signed_microstep_live_parity_negboth_exact_parity_for_test(
+        b: &mut super::super::B,
+        r: &[super::super::QubitId],
+        s: &[super::super::QubitId],
+        odd_ctrl: super::super::QubitId,
+        a_ctrl: super::super::QubitId,
+        parity_hist: super::super::QubitId,
+        p: U256,
+    ) {
+        for i in 0..r.len() {
+            super::super::cswap(b, a_ctrl, r[i], s[i]);
+        }
+        emit_twos_complement_cneg_exact_for_test(b, s, a_ctrl);
+        emit_signed_controlled_add_negboth_for_test(b, s, r, odd_ctrl);
+        emit_signed_redundant_halve_centered_live_parity_exact_const_for_test(b, s, parity_hist, p);
+    }
+
+    fn emit_scaled_by_centered_signed_microstep_inverse_live_parity_negboth_exact_parity_for_test(
+        b: &mut super::super::B,
+        r: &[super::super::QubitId],
+        s: &[super::super::QubitId],
+        odd_ctrl: super::super::QubitId,
+        a_ctrl: super::super::QubitId,
+        parity_hist: super::super::QubitId,
+        p: U256,
+    ) {
+        emit_signed_redundant_unhalve_centered_with_parity_exact_const_for_test(b, s, parity_hist, p);
+        emit_signed_controlled_sub_negboth_for_test(b, s, r, odd_ctrl);
+        emit_twos_complement_cneg_exact_for_test(b, s, a_ctrl);
+        for i in 0..r.len() {
+            super::super::cswap(b, a_ctrl, r[i], s[i]);
+        }
+    }
+
+    fn emit_scaled_by_centered_signed_microstep_live_parity_negcarry_exact_parity_for_test(
+        b: &mut super::super::B,
+        r: &[super::super::QubitId],
+        s: &[super::super::QubitId],
+        odd_ctrl: super::super::QubitId,
+        a_ctrl: super::super::QubitId,
+        parity_hist: super::super::QubitId,
+        p: U256,
+    ) {
+        for i in 0..r.len() {
+            super::super::cswap(b, a_ctrl, r[i], s[i]);
+        }
+        emit_twos_complement_cneg_exact_for_test(b, s, a_ctrl);
+        emit_signed_controlled_add_negcarry_for_test(b, s, r, odd_ctrl);
+        emit_signed_redundant_halve_centered_live_parity_exact_const_for_test(b, s, parity_hist, p);
+    }
+
+    fn emit_scaled_by_centered_signed_microstep_inverse_live_parity_negcarry_exact_parity_for_test(
+        b: &mut super::super::B,
+        r: &[super::super::QubitId],
+        s: &[super::super::QubitId],
+        odd_ctrl: super::super::QubitId,
+        a_ctrl: super::super::QubitId,
+        parity_hist: super::super::QubitId,
+        p: U256,
+    ) {
+        emit_signed_redundant_unhalve_centered_with_parity_exact_const_for_test(b, s, parity_hist, p);
+        emit_signed_controlled_sub_negcarry_for_test(b, s, r, odd_ctrl);
+        emit_twos_complement_cneg_exact_for_test(b, s, a_ctrl);
+        for i in 0..r.len() {
+            super::super::cswap(b, a_ctrl, r[i], s[i]);
+        }
+    }
+
+    fn emit_scaled_by_centered_signed_microstep_live_parity_negcopy_exact_parity_for_test(
+        b: &mut super::super::B,
+        r: &[super::super::QubitId],
+        s: &[super::super::QubitId],
+        odd_ctrl: super::super::QubitId,
+        a_ctrl: super::super::QubitId,
+        parity_hist: super::super::QubitId,
+        p: U256,
+    ) {
+        for i in 0..r.len() {
+            super::super::cswap(b, a_ctrl, r[i], s[i]);
+        }
+        emit_twos_complement_cneg_exact_for_test(b, s, a_ctrl);
+        emit_signed_controlled_add_negcopy_for_test(b, s, r, odd_ctrl);
+        emit_signed_redundant_halve_centered_live_parity_exact_const_for_test(b, s, parity_hist, p);
+    }
+
+    fn emit_scaled_by_centered_signed_microstep_inverse_live_parity_negcopy_exact_parity_for_test(
+        b: &mut super::super::B,
+        r: &[super::super::QubitId],
+        s: &[super::super::QubitId],
+        odd_ctrl: super::super::QubitId,
+        a_ctrl: super::super::QubitId,
+        parity_hist: super::super::QubitId,
+        p: U256,
+    ) {
+        emit_signed_redundant_unhalve_centered_with_parity_exact_const_for_test(b, s, parity_hist, p);
+        emit_signed_controlled_sub_negcopy_for_test(b, s, r, odd_ctrl);
+        emit_twos_complement_cneg_exact_for_test(b, s, a_ctrl);
         for i in 0..r.len() {
             super::super::cswap(b, a_ctrl, r[i], s[i]);
         }
@@ -6960,6 +7284,195 @@ mod tests {
         }
         eprintln!("BY centered exact-parity/fast-signed full clean phases: saw0={}, saw1={}", saw[0], saw[1]);
         assert!(saw[0] && saw[1], "fast signed-control phase was only a global constant; a neg correction might be enough");
+    }
+
+    #[test]
+    fn negating_signed_copy_measurements_does_not_fix_centered_control_phase() {
+        const WIDE: usize = 260;
+        const STEPS: usize = 560;
+        let p = SECP256K1_P;
+        let mut b = super::super::B::new();
+        let odd = b.alloc_qubits(STEPS);
+        let a_ctrl = b.alloc_qubits(STEPS);
+        let parity = b.alloc_qubits(STEPS);
+        let r = b.alloc_qubits(WIDE);
+        let s = b.alloc_qubits(WIDE);
+        for i in 0..STEPS {
+            emit_scaled_by_centered_signed_microstep_live_parity_negcopy_exact_parity_for_test(
+                &mut b, &r, &s, odd[i], a_ctrl[i], parity[i], p,
+            );
+        }
+        for i in (0..STEPS).rev() {
+            emit_scaled_by_centered_signed_microstep_inverse_live_parity_negcopy_exact_parity_for_test(
+                &mut b, &r, &s, odd[i], a_ctrl[i], parity[i], p,
+            );
+            emit_centered_signed_clear_parity_after_inverse_for_test(&mut b, &r, &s, odd[i], parity[i]);
+        }
+        let ccx = count_ccx(&b.ops);
+        let num_qubits = b.next_qubit as usize;
+        let num_bits = b.next_bit as usize;
+        let ops = b.ops;
+        let mut sx = Sampler::new(b"by-centered-negcopy-phase-x-v1", p);
+        let mut sy = Sampler::new(b"by-centered-negcopy-phase-y-v1", p);
+        let mut saw = [false; 2];
+        for sample in 0..12 {
+            let x = sx.next();
+            let y = sy.next();
+            let start_s = sw_centered_from_u256_for_test(addm(y, x, p), p);
+            let mut delta = 1i64;
+            let mut f = SInt::from_u(p);
+            let mut g = SInt::from_u(x);
+            let mut controls = Vec::with_capacity(STEPS);
+            for _ in 0..STEPS {
+                let odd_v = g.bit0();
+                let a_v = delta > 0 && odd_v;
+                controls.push((odd_v, a_v));
+                divstep_sint_state(&mut delta, &mut f, &mut g);
+            }
+            let mut hasher = sha3::Shake128::default();
+            hasher.update(b"by-centered-negcopy-phase-sim-v1");
+            hasher.update(&(sample as u64).to_le_bytes());
+            let mut xof = hasher.finalize_xof();
+            let mut sim = crate::sim::Simulator::new(num_qubits, num_bits, &mut xof);
+            for (i, &(odd_v, a_v)) in controls.iter().enumerate() {
+                if odd_v { *sim.qubit_mut(odd[i]) |= 1; }
+                if a_v { *sim.qubit_mut(a_ctrl[i]) |= 1; }
+            }
+            set_slice_u512_by(&mut sim, &r, U512::ZERO);
+            set_slice_u512_by(&mut sim, &s, sw_twos_for_width_for_test(start_s, WIDE));
+            sim.apply(&ops);
+            assert_eq!(get_slice_u512_by(&sim, &r), U512::ZERO, "sample {sample}: r not restored");
+            assert_eq!(get_slice_u512_by(&sim, &s), sw_twos_for_width_for_test(start_s, WIDE), "sample {sample}: s not restored");
+            saw[(sim.global_phase() & 1) as usize] = true;
+        }
+        eprintln!("BY centered negcopy signed-control phase test: ccx={ccx}, saw0={}, saw1={}", saw[0], saw[1]);
+        assert!(saw[0] && saw[1], "neg_if on copied signed-add controls unexpectedly made phase a global constant");
+    }
+
+    #[test]
+    fn negating_cuccaro_carry_measurements_does_not_fix_centered_control_phase() {
+        const WIDE: usize = 260;
+        const STEPS: usize = 560;
+        let p = SECP256K1_P;
+        let mut b = super::super::B::new();
+        let odd = b.alloc_qubits(STEPS);
+        let a_ctrl = b.alloc_qubits(STEPS);
+        let parity = b.alloc_qubits(STEPS);
+        let r = b.alloc_qubits(WIDE);
+        let s = b.alloc_qubits(WIDE);
+        for i in 0..STEPS {
+            emit_scaled_by_centered_signed_microstep_live_parity_negcarry_exact_parity_for_test(
+                &mut b, &r, &s, odd[i], a_ctrl[i], parity[i], p,
+            );
+        }
+        for i in (0..STEPS).rev() {
+            emit_scaled_by_centered_signed_microstep_inverse_live_parity_negcarry_exact_parity_for_test(
+                &mut b, &r, &s, odd[i], a_ctrl[i], parity[i], p,
+            );
+            emit_centered_signed_clear_parity_after_inverse_for_test(&mut b, &r, &s, odd[i], parity[i]);
+        }
+        let ccx = count_ccx(&b.ops);
+        let num_qubits = b.next_qubit as usize;
+        let num_bits = b.next_bit as usize;
+        let ops = b.ops;
+        let mut sx = Sampler::new(b"by-centered-negcarry-phase-x-v1", p);
+        let mut sy = Sampler::new(b"by-centered-negcarry-phase-y-v1", p);
+        let mut saw = [false; 2];
+        for sample in 0..12 {
+            let x = sx.next();
+            let y = sy.next();
+            let start_s = sw_centered_from_u256_for_test(addm(y, x, p), p);
+            let mut delta = 1i64;
+            let mut f = SInt::from_u(p);
+            let mut g = SInt::from_u(x);
+            let mut controls = Vec::with_capacity(STEPS);
+            for _ in 0..STEPS {
+                let odd_v = g.bit0();
+                let a_v = delta > 0 && odd_v;
+                controls.push((odd_v, a_v));
+                divstep_sint_state(&mut delta, &mut f, &mut g);
+            }
+            let mut hasher = sha3::Shake128::default();
+            hasher.update(b"by-centered-negcarry-phase-sim-v1");
+            hasher.update(&(sample as u64).to_le_bytes());
+            let mut xof = hasher.finalize_xof();
+            let mut sim = crate::sim::Simulator::new(num_qubits, num_bits, &mut xof);
+            for (i, &(odd_v, a_v)) in controls.iter().enumerate() {
+                if odd_v { *sim.qubit_mut(odd[i]) |= 1; }
+                if a_v { *sim.qubit_mut(a_ctrl[i]) |= 1; }
+            }
+            set_slice_u512_by(&mut sim, &r, U512::ZERO);
+            set_slice_u512_by(&mut sim, &s, sw_twos_for_width_for_test(start_s, WIDE));
+            sim.apply(&ops);
+            assert_eq!(get_slice_u512_by(&sim, &r), U512::ZERO, "sample {sample}: r not restored");
+            assert_eq!(get_slice_u512_by(&sim, &s), sw_twos_for_width_for_test(start_s, WIDE), "sample {sample}: s not restored");
+            saw[(sim.global_phase() & 1) as usize] = true;
+        }
+        eprintln!("BY centered negcarry signed-control phase test: ccx={ccx}, saw0={}, saw1={}", saw[0], saw[1]);
+        assert!(saw[0] && saw[1], "neg_if on Cuccaro carry measurements unexpectedly fixed the cleaned-control phase");
+    }
+
+    #[test]
+    fn negating_all_signed_mbu_measurements_does_not_fix_centered_control_phase() {
+        const WIDE: usize = 260;
+        const STEPS: usize = 560;
+        let p = SECP256K1_P;
+        let mut b = super::super::B::new();
+        let odd = b.alloc_qubits(STEPS);
+        let a_ctrl = b.alloc_qubits(STEPS);
+        let parity = b.alloc_qubits(STEPS);
+        let r = b.alloc_qubits(WIDE);
+        let s = b.alloc_qubits(WIDE);
+        for i in 0..STEPS {
+            emit_scaled_by_centered_signed_microstep_live_parity_negboth_exact_parity_for_test(
+                &mut b, &r, &s, odd[i], a_ctrl[i], parity[i], p,
+            );
+        }
+        for i in (0..STEPS).rev() {
+            emit_scaled_by_centered_signed_microstep_inverse_live_parity_negboth_exact_parity_for_test(
+                &mut b, &r, &s, odd[i], a_ctrl[i], parity[i], p,
+            );
+            emit_centered_signed_clear_parity_after_inverse_for_test(&mut b, &r, &s, odd[i], parity[i]);
+        }
+        let ccx = count_ccx(&b.ops);
+        let num_qubits = b.next_qubit as usize;
+        let num_bits = b.next_bit as usize;
+        let ops = b.ops;
+        let mut sx = Sampler::new(b"by-centered-negboth-phase-x-v1", p);
+        let mut sy = Sampler::new(b"by-centered-negboth-phase-y-v1", p);
+        let mut saw = [false; 2];
+        for sample in 0..12 {
+            let x = sx.next();
+            let y = sy.next();
+            let start_s = sw_centered_from_u256_for_test(addm(y, x, p), p);
+            let mut delta = 1i64;
+            let mut f = SInt::from_u(p);
+            let mut g = SInt::from_u(x);
+            let mut controls = Vec::with_capacity(STEPS);
+            for _ in 0..STEPS {
+                let odd_v = g.bit0();
+                let a_v = delta > 0 && odd_v;
+                controls.push((odd_v, a_v));
+                divstep_sint_state(&mut delta, &mut f, &mut g);
+            }
+            let mut hasher = sha3::Shake128::default();
+            hasher.update(b"by-centered-negboth-phase-sim-v1");
+            hasher.update(&(sample as u64).to_le_bytes());
+            let mut xof = hasher.finalize_xof();
+            let mut sim = crate::sim::Simulator::new(num_qubits, num_bits, &mut xof);
+            for (i, &(odd_v, a_v)) in controls.iter().enumerate() {
+                if odd_v { *sim.qubit_mut(odd[i]) |= 1; }
+                if a_v { *sim.qubit_mut(a_ctrl[i]) |= 1; }
+            }
+            set_slice_u512_by(&mut sim, &r, U512::ZERO);
+            set_slice_u512_by(&mut sim, &s, sw_twos_for_width_for_test(start_s, WIDE));
+            sim.apply(&ops);
+            assert_eq!(get_slice_u512_by(&sim, &r), U512::ZERO, "sample {sample}: r not restored");
+            assert_eq!(get_slice_u512_by(&sim, &s), sw_twos_for_width_for_test(start_s, WIDE), "sample {sample}: s not restored");
+            saw[(sim.global_phase() & 1) as usize] = true;
+        }
+        eprintln!("BY centered negboth signed-control phase test: ccx={ccx}, saw0={}, saw1={}", saw[0], saw[1]);
+        assert!(saw[0] && saw[1], "neg_if on all signed MBU measurements unexpectedly fixed the cleaned-control phase");
     }
 
     #[test]
