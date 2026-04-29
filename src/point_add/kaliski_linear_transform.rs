@@ -858,6 +858,52 @@ fn toy_curve_restricted_mod2_sidecar_conflicts(
     (conflicts, support)
 }
 
+fn toy_sidecar_left_coefficients(alpha: u64, beta: u64, br: Branch, mask: u64) -> (u64, u64) {
+    let mut r0 = 1u64;
+    let mut s0 = 0u64;
+    toy_update_mod2_sidecar(&mut r0, &mut s0, br, mask);
+    let coeff_r = alpha.wrapping_mul(r0).wrapping_add(beta.wrapping_mul(s0)) & mask;
+    let mut r1 = 0u64;
+    let mut s1 = 1u64;
+    toy_update_mod2_sidecar(&mut r1, &mut s1, br, mask);
+    let coeff_s = alpha.wrapping_mul(r1).wrapping_add(beta.wrapping_mul(s1)) & mask;
+    (coeff_r, coeff_s)
+}
+
+fn toy_one_lane_common_linear_sidecar_count(bits: usize) -> usize {
+    let modulus = 1u64 << bits;
+    let mask = modulus - 1;
+    let branches = [
+        Branch { a_swap: false, add: false },
+        Branch { a_swap: false, add: true },
+        Branch { a_swap: true, add: false },
+        Branch { a_swap: true, add: true },
+    ];
+    let mut count = 0usize;
+    for alpha in 0..modulus {
+        for beta in 0..modulus {
+            if alpha == 0 && beta == 0 { continue; }
+            let mut ok = true;
+            for &br in &branches {
+                let (cr, cs) = toy_sidecar_left_coefficients(alpha, beta, br, mask);
+                let mut branch_ok = false;
+                for c in 0..modulus {
+                    if cr == (c * alpha) & mask && cs == (c * beta) & mask {
+                        branch_ok = true;
+                        break;
+                    }
+                }
+                if !branch_ok {
+                    ok = false;
+                    break;
+                }
+            }
+            if ok { count += 1; }
+        }
+    }
+    count
+}
+
 fn toy_curve_restricted_mod2_sidecar_best_bits(
     n: usize,
     p: u64,
@@ -1090,6 +1136,25 @@ fn curve_restricted_tagged_kaliski_poststate_ambiguity_is_small_but_not_exact() 
         last_frac = frac;
     }
     assert!(last_frac < 0.005);
+}
+
+#[test]
+fn one_lane_linear_sidecar_has_no_closed_update_for_all_kaliski_branches() {
+    // Could we compress the two-lane 2-adic sidecar to one b-bit register h and
+    // update it locally under every Kaliski branch?  For any linear h=αr+βs,
+    // this would require αr'+βs' to be a branch-dependent scalar multiple of h
+    // for all (r,s).  The four reachable branch matrices have no common
+    // one-dimensional quotient even modulo small powers of two.  Nonlinear
+    // finite-state encodings are still possible, but the natural one-lane
+    // linear/eigenvector escape is closed.
+    let mut total = 0usize;
+    for bits in 1..=8 {
+        let count = toy_one_lane_common_linear_sidecar_count(bits);
+        eprintln!("one-lane linear sidecar common eigenvectors mod 2^{bits}: {count}");
+        total += count;
+    }
+    println!("METRIC one_lane_linear_sidecar_common_eigenvectors_mod256={}", toy_one_lane_common_linear_sidecar_count(8));
+    assert_eq!(total, 0);
 }
 
 #[test]

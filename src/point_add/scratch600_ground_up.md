@@ -792,9 +792,12 @@ implementable but still not slack-safe in the simple form:
 independent two-lane sidecar modulo `2^b`, so only the stored low bits are used
 for future updates.  Best tested lane widths on curve support are
 `2,3,5,6,6` for toy `n=8,10,12,14,16`; this is 12 sidecar qubits at n=16 and a
-linear pair extrapolation of 192 bits at secp256k1, above the 88-bit slack.  Keep
-this route only if a strongly sublinear/entropy-coded sidecar or a cheap curve
-invariant appears.
+linear pair extrapolation of 192 bits at secp256k1, above the 88-bit slack.
+Trying to collapse that pair to a single linear lane also fails algebraically:
+`one_lane_linear_sidecar_has_no_closed_update_for_all_kaliski_branches` finds no
+common one-dimensional linear quotient modulo `2^1..2^8` for the four reachable
+swap/add/double branch matrices.  Keep this route only if a nonlinear
+finite-state/entropy-coded sidecar or a cheap curve invariant appears.
 
 ## 11. Fast invalidation tasks still open
 

@@ -137,7 +137,10 @@ updatable two-lane sidecar modulo `2^b` and finds best toy lane widths
 `2,3,5,6,6` for `n=8,10,12,14,16`; pair bits are already 12 at n=16, linearly
 extrapolating to 192 bits at secp256k1.  A sublinear/entropy-coded sidecar is
 still a possible research object, but the naive two-lane 2-adic tag is not a
-600-scratch solution.
+600-scratch solution.  The natural one-lane linear/eigenvector compression is
+also closed: `one_lane_linear_sidecar_has_no_closed_update_for_all_kaliski_branches`
+finds zero common one-dimensional linear sidecar updates modulo `2^1..2^8` for
+all four reachable branch matrices.
 
 ### Strategy C re-estimate at the current baseline
 
