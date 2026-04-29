@@ -130,7 +130,14 @@ actual secp256k1 curve-supported samples and still sees local predecessor
 ambiguity in `23016/26048 = 88.36%` of steps.  The obvious discriminator is the
 shifted curve equation for candidate predecessor `(dx,dy)`, i.e. a cubic field
 check per Kaliski iteration, which is not SOTA-shaped.  Do not count the rare
-curve-support collision rate as a free branch oracle.
+curve-support collision rate as a free branch oracle.  The simple compact-tag
+variant is also too weak for the 88-bit slack if scaled linearly:
+`implementable_curve_sidecar_still_extrapolates_over_88q_slack` keeps an actually
+updatable two-lane sidecar modulo `2^b` and finds best toy lane widths
+`2,3,5,6,6` for `n=8,10,12,14,16`; pair bits are already 12 at n=16, linearly
+extrapolating to 192 bits at secp256k1.  A sublinear/entropy-coded sidecar is
+still a possible research object, but the naive two-lane 2-adic tag is not a
+600-scratch solution.
 
 ### Strategy C re-estimate at the current baseline
 

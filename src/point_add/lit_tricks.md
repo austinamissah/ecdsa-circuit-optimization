@@ -350,4 +350,8 @@ On real secp256k1 curve-supported samples,
 `(u,v,r,s,f)` alone.  The missing discriminator is the shifted curve equation
 for candidate `(dx,dy)`, a cubic field check per Kaliski step unless some cheaper
 transformed invariant exists.  So curve support is an information-theoretic
-hint, not yet a low-gate/low-scratch branch-cleaning primitive.
+hint, not yet a low-gate/low-scratch branch-cleaning primitive.  The simple
+low-bit sidecar variant is also not enough by itself: an actually updatable
+mod-`2^b` two-lane sidecar needs lane widths `2,3,5,6,6` at toy
+`n=8,10,12,14,16`, which linearly projects to 192 sidecar qubits at secp256k1
+versus the 88-bit folded-Kaliski slack.

@@ -812,6 +812,72 @@ fn toy_curve_restricted_sidecar_min_bits(n: usize, p: u64, beta: u64, max_bits: 
     None
 }
 
+fn toy_update_mod2_sidecar(zr: &mut u64, zs: &mut u64, br: Branch, mask: u64) {
+    if br.a_swap { std::mem::swap(zr, zs); }
+    if br.add { *zs = zs.wrapping_add(*zr) & mask; }
+    *zr = zr.wrapping_mul(2) & mask;
+    if br.a_swap { std::mem::swap(zr, zs); }
+}
+
+fn toy_curve_restricted_mod2_sidecar_conflicts(
+    n: usize,
+    p: u64,
+    bits: usize,
+    zr0: u64,
+    zs0: u64,
+) -> (usize, usize) {
+    use std::collections::HashMap;
+    let q = toy_first_curve_point(p);
+    let roots = toy_sqrt_buckets(p);
+    let mask = if bits >= 64 { u64::MAX } else { (1u64 << bits) - 1 };
+    let mut seen: HashMap<(usize, u64, u64, u64, u64, u8, u64, u64), Branch> = HashMap::new();
+    let mut conflicts = 0usize;
+    let mut support = 0usize;
+    for px in 0..p {
+        let rhs = toy_curve_rhs(px, p);
+        for &py in &roots[rhs as usize] {
+            let dx = (px + p - q.0) % p;
+            let dy = (py + p - q.1) % p;
+            if dx == 0 { continue; }
+            let tag = (dy + dx) % p;
+            if tag == 0 { continue; }
+            support += 1;
+            let mut st = ToyLinState { u: p, v: dx, r: 0, s: tag, f: 1 };
+            let mut zr = zr0 & mask;
+            let mut zs = zs0 & mask;
+            for iter in 0..(2 * n - 1) {
+                let br = toy_step_linear_canonical(&mut st, p);
+                toy_update_mod2_sidecar(&mut zr, &mut zs, br, mask);
+                let key = (iter, st.u, st.v, st.r, st.s, st.f, zr, zs);
+                if let Some(prev) = seen.insert(key, br) {
+                    if prev != br { conflicts += 1; }
+                }
+            }
+        }
+    }
+    (conflicts, support)
+}
+
+fn toy_curve_restricted_mod2_sidecar_best_bits(
+    n: usize,
+    p: u64,
+    candidates: &[(u64, u64)],
+    max_bits: usize,
+) -> (usize, u64, u64, usize) {
+    let mut best = (usize::MAX, 0u64, 0u64, 0usize);
+    for &(zr0, zs0) in candidates {
+        for bits in 0..=max_bits {
+            let (conflicts, support) = toy_curve_restricted_mod2_sidecar_conflicts(n, p, bits, zr0, zs0);
+            if conflicts == 0 {
+                if bits < best.0 { best = (bits, zr0, zs0, support); }
+                break;
+            }
+        }
+    }
+    assert!(best.0 != usize::MAX, "no exact mod-2^b sidecar found within {max_bits} bits");
+    best
+}
+
 fn toy_unreduced_coeff_highbit_phase_anf_stats(n: usize, p: u64, bit_shift: usize) -> (usize, usize) {
     assert!(n <= 10, "truth table kept small");
     let vars = 2 * n;
@@ -1024,6 +1090,37 @@ fn curve_restricted_tagged_kaliski_poststate_ambiguity_is_small_but_not_exact() 
         last_frac = frac;
     }
     assert!(last_frac < 0.005);
+}
+
+#[test]
+fn implementable_curve_sidecar_still_extrapolates_over_88q_slack() {
+    // Full mod-p sidecar columns were deliberately optimistic.  A real compact
+    // sidecar must be updated using only stored low bits, so evolve an
+    // independent coefficient pair modulo 2^b with the same swap/add/double
+    // branch operations.  This is far better than generic Kaliski history, but
+    // the sidecar has two b-bit lanes.  At n=16 the best tested seed still uses
+    // 12 pair bits; linear secp extrapolation is 192 bits, above the 88-bit
+    // slack left by folded one-pair Kaliski.  Only a strongly sublinear or
+    // entropy-coded sidecar would revive this simple curve-support tag route.
+    let candidates = [(1, 3), (1, 5), (1, 7), (2, 1), (2, 3), (3, 1), (5, 1), (6, 1), (7, 1), (7, 12)];
+    let cases = [(8usize, 251u64), (10, 1021), (12, 4093), (14, 16381), (16, 65521)];
+    let mut n16_lane_bits = 0usize;
+    for &(n, p) in &cases {
+        let (bits, zr0, zs0, support) = toy_curve_restricted_mod2_sidecar_best_bits(n, p, &candidates, 12);
+        eprintln!(
+            "curve-supported implementable 2-adic sidecar: n={n}, p={p}, support={support}, lane_bits={bits}, pair_bits={}, seed=({zr0},{zs0})",
+            2 * bits
+        );
+        if n == 16 { n16_lane_bits = bits; }
+    }
+    let pair_bits_n16 = 2 * n16_lane_bits;
+    let linear_extrapolated_pair_bits = (pair_bits_n16 * 256 + 15) / 16;
+    println!("METRIC curve_mod2_sidecar_lane_bits_n16={n16_lane_bits}");
+    println!("METRIC curve_mod2_sidecar_pair_bits_n16={pair_bits_n16}");
+    println!("METRIC curve_mod2_sidecar_linear_extrapolated_pair_bits={linear_extrapolated_pair_bits}");
+    println!("METRIC curve_mod2_sidecar_slack_bits=88");
+    assert!(n16_lane_bits <= 7, "candidate sidecar search regressed on n=16");
+    assert!(linear_extrapolated_pair_bits > 88, "simple sidecar would fit 88q slack; revisit folded Kaliski");
 }
 
 #[test]

@@ -786,8 +786,15 @@ poststate inverse still has generic ambiguity: `secp_curve_support_does_not_make
 gets `23016/26048 = 88.36%` ambiguous local candidate steps.  Exploiting the
 rare collision rate therefore requires a cheap per-candidate curve-support
 check in coefficient coordinates; the obvious check is a cubic field relation
-per inverse microstep and is not SOTA-shaped.  Keep this as a possible
-approximate route only if a cheap transformed curve invariant appears.
+per inverse microstep and is not SOTA-shaped.  A compact sidecar version is more
+implementable but still not slack-safe in the simple form:
+`implementable_curve_sidecar_still_extrapolates_over_88q_slack` evolves an
+independent two-lane sidecar modulo `2^b`, so only the stored low bits are used
+for future updates.  Best tested lane widths on curve support are
+`2,3,5,6,6` for toy `n=8,10,12,14,16`; this is 12 sidecar qubits at n=16 and a
+linear pair extrapolation of 192 bits at secp256k1, above the 88-bit slack.  Keep
+this route only if a strongly sublinear/entropy-coded sidecar or a cheap curve
+invariant appears.
 
 ## 11. Fast invalidation tasks still open
 
