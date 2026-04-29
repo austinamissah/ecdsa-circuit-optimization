@@ -918,6 +918,22 @@ n=12 p=4093  min_degree=4
 So measuring `λ` after affine add does not delete the second inversion unless a
 new sparse phase identity is found.
 
+A coordinate-change variant using the pencil of lines through fixed `Q` was also
+checked.  A slope through `Q` identifies two non-`Q` curve intersections, so the
+missing root-choice bit is a square-root/discriminant problem.  `pencil_slope_coordinate_needs_dense_root_choice_phase`
+gets dense/high-degree root-choice phases:
+
+```text
+n=4  p=13    support=1     degree=4   density=16/16
+n=6  p=61    support=28    degree=5   density=32/64
+n=8  p=251   support=124   degree=7   density=114/256
+n=10 p=1021  support=514   degree=10  density=486/1024
+n=12 p=4093  support=2083  degree=11  density=2006/4096
+```
+
+So a slope-pencil/compressed-coordinate rewrite does not avoid the same dense
+root/sqrt cleanup wall.
+
 Sequential MBUC was also checked: measure only old `y` while keeping old `x`
 and the output point live.  `sequential_old_coordinate_mbuc_still_has_growing_phase_degree`
 solves the support-restricted interpolation on `(old_x,R_x,R_y)` and sees:

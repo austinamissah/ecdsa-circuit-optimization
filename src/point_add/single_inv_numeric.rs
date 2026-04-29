@@ -1195,6 +1195,75 @@ mod tests {
         })
     }
 
+    fn pencil_slope_root_choice_anf_stats(n: usize, p: u16, qx: u16, qy: u16, phase_mask: u16) -> (usize, usize, usize) {
+        let size = 1usize << n;
+        let mut anf = vec![0u8; size];
+        let mut supported_slopes = 0usize;
+        for lambda_idx in 0..size {
+            let mut phase = 0u8;
+            if (lambda_idx as u16) < p {
+                let lambda = lambda_idx as u16;
+                let mut roots = Vec::new();
+                for x in 0..p {
+                    let dx = sub_mod_u16_for_phase_test(x, qx, p);
+                    let y = add_mod_u16_for_phase_test(qy, mul_mod_u16_for_phase_test(lambda, dx, p), p);
+                    if x != qx && is_curve_point_u16_for_phase_test(x, y, p) {
+                        roots.push(x);
+                    }
+                }
+                if roots.len() == 2 {
+                    supported_slopes += 1;
+                    let canonical_root = roots[0].min(roots[1]);
+                    phase = ((canonical_root & phase_mask).count_ones() & 1) as u8;
+                }
+            }
+            anf[lambda_idx] = phase;
+        }
+        for bit in 0..n {
+            for idx in 0..size {
+                if (idx & (1usize << bit)) != 0 {
+                    anf[idx] ^= anf[idx ^ (1usize << bit)];
+                }
+            }
+        }
+        let density = anf.iter().filter(|&&c| c != 0).count();
+        let degree = anf
+            .iter()
+            .enumerate()
+            .filter_map(|(i, &c)| if c != 0 { Some(i.count_ones() as usize) } else { None })
+            .max()
+            .unwrap_or(0);
+        (degree, density, supported_slopes)
+    }
+
+    #[test]
+    fn pencil_slope_coordinate_needs_dense_root_choice_phase() {
+        // A tempting coordinate change is the pencil of lines through fixed Q:
+        // store the slope lambda of the line through Q and P.  But one slope
+        // generally corresponds to two non-Q curve intersections; choosing the
+        // right root is a square-root/discriminant problem.  A canonical root
+        // bit is already dense/high-degree as a function of lambda on toy
+        // secp-shaped curves, so this does not give a cheap affine point-add
+        // coordinate system or MBUC cleanup.
+        let cases = [
+            (4usize, 13u16, 0b1010u16),
+            (6usize, 61u16, 0b10_1010u16),
+            (8usize, 251u16, 0b1010_0101u16),
+            (10usize, 1021u16, 0b10_1001_0101u16),
+            (12usize, 4093u16, 0b1010_0101_0101u16),
+        ];
+        for &(n, p, mask) in &cases {
+            let (qx, qy) = first_curve_point_u16_for_phase_test(p);
+            let (degree, density, support) = pencil_slope_root_choice_anf_stats(n, p, qx, qy, mask);
+            let table = 1usize << n;
+            eprintln!(
+                "Pencil-slope root-choice phase: n={n}, p={p}, q=({qx},{qy}), support_slopes={support}, degree={degree}, density={density}/{table}"
+            );
+            assert!(degree + 1 >= n);
+            assert!(density > table / 4);
+        }
+    }
+
     #[test]
     fn measuring_lambda_after_affine_add_still_needs_growing_degree_phase() {
         // Another way to delete the second affine inversion would be to keep the
