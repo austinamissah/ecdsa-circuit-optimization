@@ -1622,11 +1622,15 @@ densities `126/256`, `502/1024`, `2072/4096`, degree up to full).  For
 secp256k1 this is an exponentiation, not a cleanup primitive.  Kill it.
 
 Forward-only coefficient-transform Kaliski also got a stronger exactness check.
-The earlier secp sample suggested full post-state `(u,v,r,s,f)` might recover
-branches, but `exhaustive_toy_full_poststate_does_not_recover_forward_branch`
-finds exact tagged-DIV collisions even when the reverse iteration index and full
-post-state are known (`n=4,5,6` conflicts `108,1200,5760`).  The approximate
-exception version is also not viable: `tagged_full_poststate_branch_ambiguity_is_not_a_rare_exception`
+The earlier secp collision sample suggested full post-state `(u,v,r,s,f)` might
+recover branches, but `secp_local_poststate_predecessor_branch_is_ambiguous`
+now directly enumerates locally consistent inverse branches on actually reached
+secp tagged poststates and finds ambiguity in `7205/8140 = 88.5%` of sampled
+steps (`hist=[0,935,1833,1779,3593]` for 0..4 predecessor branch counts).
+`exhaustive_toy_full_poststate_does_not_recover_forward_branch` also finds exact
+tagged-DIV collisions even when the reverse iteration index and full post-state
+are known (`n=4,5,6` conflicts `108,1200,5760`).  The approximate exception
+version is not viable either: `tagged_full_poststate_branch_ambiguity_is_not_a_rare_exception`
 finds ambiguous full-poststate occurrences at about 19%, 22%, 23%, 23%, and 24%
 for toy `n=4..8` with nonzero tag `s0=x+y`, so the ambiguity is not a tiny
 patchable tail.  Direct regeneration from the preserved initial `x` is not cheap either:

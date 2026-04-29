@@ -403,11 +403,25 @@ best majority lookup from the low 3 bits of `(u,v,r,s,f)` and tests it on
 disjoint samples. Error is >50%. So the needed end-state branch predicate is
 not a small low-bit heuristic.
 
-The even stronger exhaustive toy check
+The exact local inverse-candidate check
+`secp_local_poststate_predecessor_branch_is_ambiguous` is stronger than random
+collision sampling.  For actually reached secp tagged poststates, it enumerates
+all locally consistent predecessor branches and re-runs the step to verify them:
+
+```text
+hist=[0, 935, 1833, 1779, 3593]
+ambiguous=7205/8140
+frac=0.885135
+```
+
+So even on secp samples, the live poststate usually has multiple exact local
+predecessor branches.  There is no hidden simple poststate predicate.
+
+The exhaustive toy check
 `exhaustive_toy_full_poststate_does_not_recover_forward_branch` corrects the
-optimistic reading of the sampled full-state result: on tiny fields, even with
-the reverse iteration index and full tagged post-state `(u,v,r,s,f)`, branch
-collisions exist:
+optimistic reading of the sampled full-state result another way: on tiny fields,
+even with the reverse iteration index and full tagged post-state `(u,v,r,s,f)`,
+branch collisions exist:
 
 ```text
 n=4 p=13 total=1008  states=612   conflicts=108

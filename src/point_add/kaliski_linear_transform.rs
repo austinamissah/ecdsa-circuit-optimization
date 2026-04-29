@@ -651,6 +651,90 @@ fn exhaustive_toy_full_poststate_does_not_recover_forward_branch() {
     }
 }
 
+fn same_lin_state(a: &LinState, b: &LinState) -> bool {
+    a.u == b.u && a.v == b.v && a.r == b.r && a.s == b.s && a.f == b.f
+}
+
+fn exact_local_predecessor_branch_count(post: LinState) -> usize {
+    use std::collections::BTreeSet;
+    let p = SECP256K1_P;
+    let inv2 = U256::from(2u64).inv_mod(p).unwrap();
+    let mut branches = BTreeSet::new();
+    for a_swap in [false, true] {
+        for add in [false, true] {
+            let (u_after_shift, v_after_shift, r_after_double, s_after_add) = if a_swap {
+                (post.v, post.u, post.s, post.r)
+            } else {
+                (post.u, post.v, post.r, post.s)
+            };
+            let r_before_double = r_after_double.mul_mod(inv2, p);
+            let v_before_shift = v_after_shift << 1usize;
+            let (v_before_add, s_before_add) = if add {
+                (
+                    v_before_shift.wrapping_add(u_after_shift),
+                    sub_mod(s_after_add, r_before_double, p),
+                )
+            } else {
+                (v_before_shift, s_after_add)
+            };
+            let (u0, v0, r0, s0) = if a_swap {
+                (v_before_add, u_after_shift, s_before_add, r_before_double)
+            } else {
+                (u_after_shift, v_before_add, r_before_double, s_before_add)
+            };
+            for f0 in [0u8, 1u8] {
+                let terminal_m = if f0 == 1 && v0 == U256::ZERO { 1u8 } else { 0u8 };
+                if (f0 ^ terminal_m) != post.f {
+                    continue;
+                }
+                let mut cand = LinState { u: u0, v: v0, r: r0, s: s0, f: f0 };
+                let br = step_linear_canonical(&mut cand);
+                if br == (Branch { a_swap, add }) && same_lin_state(&cand, &post) {
+                    branches.insert((a_swap, add));
+                }
+            }
+        }
+    }
+    branches.len()
+}
+
+#[test]
+fn secp_local_poststate_predecessor_branch_is_ambiguous() {
+    // Stronger than collision sampling: for each actually reached secp poststate,
+    // enumerate all locally consistent inverse branches and re-run the step to
+    // verify them.  Most tagged poststates still have multiple exact predecessor
+    // branches.  Therefore there is no exact local poststate predicate hiding in
+    // the arithmetic; branch cleanup needs history or a different transform.
+    let mut hist = [0usize; 5];
+    let mut ambiguous = 0usize;
+    let mut total = 0usize;
+    for seed in 1..=20u64 {
+        let x = random_element(seed);
+        let y = random_element(seed + 10_000);
+        let mut st = LinState {
+            u: SECP256K1_P,
+            v: x,
+            r: U256::ZERO,
+            s: add_mod(x, y, SECP256K1_P),
+            f: 1,
+        };
+        for _ in 0..ITERS {
+            step_linear_canonical(&mut st);
+            let count = exact_local_predecessor_branch_count(st);
+            hist[count] += 1;
+            if count > 1 {
+                ambiguous += 1;
+            }
+            total += 1;
+        }
+    }
+    let frac = ambiguous as f64 / total as f64;
+    eprintln!(
+        "secp exact local poststate predecessor branch counts: hist={hist:?}, ambiguous={ambiguous}/{total}, frac={frac:.6}"
+    );
+    assert!(frac > 0.60, "local poststate ambiguity unexpectedly rare: frac={frac}");
+}
+
 #[test]
 fn tagged_full_poststate_branch_ambiguity_is_not_a_rare_exception() {
     // The approximate escape hatch would be to ignore the branch-recovery
