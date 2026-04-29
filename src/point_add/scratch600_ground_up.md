@@ -775,6 +775,20 @@ input frame `(x,y)`.  At toy `n=10`, one high quotient bit has ANF degree
 `20/20` and density `516314/1048576`.  So the quotient bits are not cheap
 kickmix garbage; they are dense functions carrying the Euclidean history.
 
+A curve-support-only loophole is narrower than it first looked.  If the
+reachable set is restricted to actual toy curve inputs `(dx,dy)=(Px-Qx,Py-Qy)`,
+poststate collisions are rare: `curve_restricted_tagged_kaliski_poststate_ambiguity_is_small_but_not_exact`
+finds ambiguity fractions `1.12%` at `n=8`, `0.886%` at `n=10`, `0.578%` at
+`n=12`, and `0.476%` at `n=14`; exact sidecar bits are only `3,5,6,6` on those
+toys.  But this uses the **global curve-support predicate** to discard false
+predecessors.  On actual secp256k1 curve-supported samples, the purely local
+poststate inverse still has generic ambiguity: `secp_curve_support_does_not_make_kaliski_branch_choice_locally_free`
+gets `23016/26048 = 88.36%` ambiguous local candidate steps.  Exploiting the
+rare collision rate therefore requires a cheap per-candidate curve-support
+check in coefficient coordinates; the obvious check is a cubic field relation
+per inverse microstep and is not SOTA-shaped.  Keep this as a possible
+approximate route only if a cheap transformed curve invariant appears.
+
 ## 11. Fast invalidation tasks still open
 
 1. **End-state branch predicate synthesis**: derive a reversible predicate for

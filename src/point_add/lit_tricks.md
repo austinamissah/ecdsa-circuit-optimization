@@ -335,3 +335,19 @@ curve-support retarget n=12: min_degree=4
 So a single slope tag is just moving the variable division to every change of
 selected table point.  It is not a universal 2n-bit coordinate system for the
 windowed/kickmix architecture.
+
+## Later curve-support check: rare Kaliski collisions need a curve oracle
+
+A tempting approximation story is that point-add denominators and numerators are
+not arbitrary `(x,y)` pairs: they come from curve points.  The executable test
+`curve_restricted_tagged_kaliski_poststate_ambiguity_is_small_but_not_exact`
+confirms that, on toy curves, global poststate collisions for tagged Kaliski are
+rare on the curve-supported set (down to `0.476%` at toy `n=14`, exact sidecar
+`6` bits).  However, the reverse microstep does not know that support for free.
+On real secp256k1 curve-supported samples,
+`secp_curve_support_does_not_make_kaliski_branch_choice_locally_free` still sees
+`23016/26048 = 88.36%` locally ambiguous predecessor-candidate steps from
+`(u,v,r,s,f)` alone.  The missing discriminator is the shifted curve equation
+for candidate `(dx,dy)`, a cubic field check per Kaliski step unless some cheaper
+transformed invariant exists.  So curve support is an information-theoretic
+hint, not yet a low-gate/low-scratch branch-cleaning primitive.

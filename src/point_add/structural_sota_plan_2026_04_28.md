@@ -119,6 +119,19 @@ quotient bits is not a cheap kickmix fix either:
 frame.  The viable transform must make the inverse branch local without
 field-sized quotient side information in the first place.
 
+New curve-support check: restricting the actual image set to toy curve inputs
+makes poststate collisions rare (`curve_restricted_tagged_kaliski_poststate_ambiguity_is_small_but_not_exact`:
+ambiguous occurrence fractions `1.12%, 0.886%, 0.578%, 0.476%` for
+`n=8,10,12,14`; exact sidecar bits `3,5,6,6`).  That is an information-theoretic
+opening for approximate no-history Kaliski **only if** the reverse step can test
+curve support cheaply.  It cannot do so from the Kaliski poststate alone:
+`secp_curve_support_does_not_make_kaliski_branch_choice_locally_free` runs on
+actual secp256k1 curve-supported samples and still sees local predecessor
+ambiguity in `23016/26048 = 88.36%` of steps.  The obvious discriminator is the
+shifted curve equation for candidate predecessor `(dx,dy)`, i.e. a cubic field
+check per Kaliski iteration, which is not SOTA-shaped.  Do not count the rare
+curve-support collision rate as a free branch oracle.
+
 ### Strategy C re-estimate at the current baseline
 
 Classically correct formula:

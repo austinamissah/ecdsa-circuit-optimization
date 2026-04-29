@@ -22,8 +22,32 @@ use alloy_primitives::U256;
 use sha3::{digest::{ExtendableOutput, Update, XofReader}, Shake128};
 
 use super::SECP256K1_P;
+use crate::weierstrass_elliptic_curve::WeierstrassEllipticCurve;
 
 const ITERS: usize = 407;
+
+fn secp256k1_curve_for_kal_transform_tests() -> WeierstrassEllipticCurve {
+    WeierstrassEllipticCurve {
+        modulus: SECP256K1_P,
+        a: U256::from(0),
+        b: U256::from(7),
+        gx: U256::from_str_radix(
+            "79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798",
+            16,
+        )
+        .unwrap(),
+        gy: U256::from_str_radix(
+            "483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8",
+            16,
+        )
+        .unwrap(),
+        order: U256::from_str_radix(
+            "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141",
+            16,
+        )
+        .unwrap(),
+    }
+}
 
 fn random_element(seed: u64) -> U256 {
     let mut h = Shake128::default();
@@ -685,6 +709,109 @@ fn toy_unreduced_coeff_final_r(n: usize, p: u64, x: u64, y: u64) -> Option<u128>
     Some(st.r)
 }
 
+fn toy_curve_rhs(x: u64, p: u64) -> u64 {
+    (((x * x) % p) * x + 7) % p
+}
+
+fn toy_is_curve_point(x: u64, y: u64, p: u64) -> bool {
+    (y * y) % p == toy_curve_rhs(x, p)
+}
+
+fn toy_first_curve_point(p: u64) -> (u64, u64) {
+    for x in 1..p {
+        for y in 1..p {
+            if toy_is_curve_point(x, y, p) {
+                return (x, y);
+            }
+        }
+    }
+    panic!("toy curve has no nonzero point")
+}
+
+fn toy_sqrt_buckets(p: u64) -> Vec<Vec<u64>> {
+    let mut buckets = vec![Vec::new(); p as usize];
+    for y in 0..p {
+        buckets[((y * y) % p) as usize].push(y);
+    }
+    buckets
+}
+
+fn toy_curve_restricted_branch_ambiguity(n: usize, p: u64, beta: u64) -> (usize, usize, usize, usize, usize) {
+    use std::collections::BTreeMap;
+    let q = toy_first_curve_point(p);
+    let roots = toy_sqrt_buckets(p);
+    let mut seen: BTreeMap<(usize, u64, u64, u64, u64, u8), [usize; 4]> = BTreeMap::new();
+    let mut total = 0usize;
+    let mut support = 0usize;
+    for px in 0..p {
+        let rhs = toy_curve_rhs(px, p);
+        for &py in &roots[rhs as usize] {
+            let dx = (px + p - q.0) % p;
+            let dy = (py + p - q.1) % p;
+            if dx == 0 {
+                continue;
+            }
+            let tag = (dy + (beta * dx) % p) % p;
+            if tag == 0 {
+                continue;
+            }
+            support += 1;
+            let mut st = ToyLinState { u: p, v: dx, r: 0, s: tag, f: 1 };
+            for iter in 0..(2 * n - 1) {
+                let br = toy_step_linear_canonical(&mut st, p);
+                let key = (iter, st.u, st.v, st.r, st.s, st.f);
+                let idx = (br.a_swap as usize) * 2 + br.add as usize;
+                seen.entry(key).or_default()[idx] += 1;
+                total += 1;
+            }
+        }
+    }
+    let ambiguous_keys = seen.values().filter(|counts| counts.iter().filter(|&&c| c != 0).count() > 1).count();
+    let ambiguous_occurrences = seen
+        .values()
+        .filter(|counts| counts.iter().filter(|&&c| c != 0).count() > 1)
+        .map(|counts| counts.iter().sum::<usize>())
+        .sum::<usize>();
+    (ambiguous_keys, ambiguous_occurrences, total, support, seen.len())
+}
+
+fn toy_curve_restricted_sidecar_min_bits(n: usize, p: u64, beta: u64, max_bits: usize) -> Option<usize> {
+    let q = toy_first_curve_point(p);
+    let roots = toy_sqrt_buckets(p);
+    for bits in 0..=max_bits {
+        let mask = if bits >= 64 { u64::MAX } else { (1u64 << bits) - 1 };
+        use std::collections::BTreeMap;
+        let mut seen: BTreeMap<(usize, u64, u64, u64, u64, u8, u64, u64), Branch> = BTreeMap::new();
+        let mut conflicts = 0usize;
+        for px in 0..p {
+            let rhs = toy_curve_rhs(px, p);
+            for &py in &roots[rhs as usize] {
+                let dx = (px + p - q.0) % p;
+                let dy = (py + p - q.1) % p;
+                if dx == 0 {
+                    continue;
+                }
+                let tag = (dy + (beta * dx) % p) % p;
+                if tag == 0 {
+                    continue;
+                }
+                let mut st = ToyLinStateWithSidecar { u: p, v: dx, r: 0, s: tag, tag_r: 1, tag_s: 0, f: 1 };
+                for iter in 0..(2 * n - 1) {
+                    let br = toy_step_linear_canonical_with_sidecar(&mut st, p);
+                    let key = (iter, st.u, st.v, st.r, st.s, st.f, st.tag_r & mask, st.tag_s & mask);
+                    if let Some(prev) = seen.insert(key, br) {
+                        if prev != br { conflicts += 1; }
+                    }
+                }
+            }
+        }
+        if conflicts == 0 {
+            return Some(bits);
+        }
+    }
+    None
+}
+
 fn toy_unreduced_coeff_highbit_phase_anf_stats(n: usize, p: u64, bit_shift: usize) -> (usize, usize) {
     assert!(n <= 10, "truth table kept small");
     let vars = 2 * n;
@@ -818,6 +945,85 @@ fn toy_step_linear_canonical(st: &mut ToyLinState, p: u64) -> Branch {
         core::mem::swap(&mut st.r, &mut st.s);
     }
     br
+}
+
+#[test]
+fn secp_curve_support_does_not_make_kaliski_branch_choice_locally_free() {
+    // Curve support is information-theoretically useful (see the toy collision
+    // test below), but it is not locally visible to the Kaliski poststate.  If
+    // the inverse microstep only enumerates algebraic predecessor branches from
+    // (u,v,r,s,f), actual secp256k1 curve-supported inputs still look almost as
+    // ambiguous as generic coefficient inputs.  Exploiting the rare collision
+    // rate would require an additional curve-support predicate for candidate
+    // predecessors, i.e. a per-step cubic field check unless a cheaper invariant
+    // is found.
+    let c = secp256k1_curve_for_kal_transform_tests();
+    let qx = c.gx;
+    let qy = c.gy;
+    let mut hist = [0usize; 5];
+    let mut ambiguous = 0usize;
+    let mut total = 0usize;
+    for seed in 2..=65u64 {
+        let k = random_element(seed);
+        let (px, py) = c.mul(c.gx, c.gy, k);
+        if px == qx || (px.is_zero() && py.is_zero()) {
+            continue;
+        }
+        let dx = sub_mod(px, qx, SECP256K1_P);
+        let dy = sub_mod(py, qy, SECP256K1_P);
+        let tag = add_mod(dx, dy, SECP256K1_P);
+        if tag.is_zero() {
+            continue;
+        }
+        let mut st = LinState { u: SECP256K1_P, v: dx, r: U256::ZERO, s: tag, f: 1 };
+        for _ in 0..ITERS {
+            step_linear_canonical(&mut st);
+            let count = exact_local_predecessor_branch_count(st);
+            hist[count] += 1;
+            if count > 1 {
+                ambiguous += 1;
+            }
+            total += 1;
+        }
+    }
+    let frac = ambiguous as f64 / total as f64;
+    eprintln!(
+        "secp curve-supported local Kaliski branch candidates: hist={hist:?}, ambiguous={ambiguous}/{total}, frac={frac:.6}"
+    );
+    println!("METRIC secp_curve_local_candidate_ambiguity_frac={frac:.6}");
+    println!("METRIC secp_curve_local_candidate_ambiguous_steps={ambiguous}");
+    println!("METRIC secp_curve_local_candidate_total_steps={total}");
+    assert!(frac > 0.80, "curve support unexpectedly made the local branch predicate easy: frac={frac}");
+}
+
+#[test]
+fn curve_restricted_tagged_kaliski_poststate_ambiguity_is_small_but_not_exact() {
+    // The 600-scratch discussion above treated DIV as a generic map over all
+    // (x,y).  Point addition is easier: y=Py-Qy is constrained by the curve once
+    // x=Px-Qx is fixed.  Re-running the poststate-branch ambiguity test on this
+    // curve support changes the signal dramatically.  Ambiguity is no longer a
+    // 20%-scale generic-DIV obstruction; it falls below 1% on larger toys.
+    // This does NOT give a clean primitive yet: we still need a cheap local
+    // predicate and an approximate-correctness story.  But it is the first
+    // 600-scratch-shaped crack in the no-history Kaliski wall, because exact
+    // sidecar needs on curve support scale closer to n/2 instead of n.
+    let cases = [(8usize, 251u64), (10, 1021), (12, 4093), (14, 16381)];
+    let mut last_frac = 1.0f64;
+    for &(n, p) in &cases {
+        let (amb_keys, amb_occ, total, support, states) = toy_curve_restricted_branch_ambiguity(n, p, 1);
+        let frac = amb_occ as f64 / total as f64;
+        let sidecar = toy_curve_restricted_sidecar_min_bits(n, p, 1, n).unwrap();
+        eprintln!(
+            "curve-restricted tagged Kaliski ambiguity: n={n}, p={p}, support={support}, states={states}, ambiguous_keys={amb_keys}, ambiguous_occurrences={amb_occ}/{total}, frac={frac:.6}, exact_sidecar_bits={sidecar}"
+        );
+        if n == 14 {
+            println!("METRIC curve_restricted_kaliski_ambiguity_frac_n14={frac:.6}");
+            println!("METRIC curve_restricted_kaliski_sidecar_bits_n14={sidecar}");
+        }
+        assert!(frac < last_frac || n == 10, "curve ambiguity stopped decreasing enough to be interesting");
+        last_frac = frac;
+    }
+    assert!(last_frac < 0.005);
 }
 
 #[test]
