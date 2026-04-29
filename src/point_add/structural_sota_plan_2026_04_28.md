@@ -797,6 +797,21 @@ centered signed inverse 560 scaffold = 873,600 CCX
 peak                                 = 2,722q
 ```
 
+The centered replay body is now wired into the benchmark path behind
+`BY_CENTERED_REPLAY_BODY_BENCH=1` as a clean no-op smoke hook (one zero odd/A/
+parity control reused to avoid adding the unsolved history bank). The real
+harness accepts it:
+
+```text
+BY_CENTERED_REPLAY_BODY_BENCH=1
+avg_toffoli = 4,985,518
+qubits      = 2,716
+emitted_ops = 38,874,541
+altseed/classical/phase/ancilla failures = 0
+```
+
+Default path remains unchanged at `4,111,918 Toffoli @ 2,716q`.
+
 Naively synthesizing the range test is too expensive:
 `naive_centered_parity_recovery_cost_would_erase_redundant_replay_win` measures
 about `1,296 CCX/flag`, or `≈725,760` CCX just to clean 560 parity bits. A cheap

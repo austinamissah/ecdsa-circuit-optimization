@@ -4140,6 +4140,99 @@ fn emit_scaled_by_pattern_replay_benchmark_scaffold(b: &mut B, p: U256) {
     b.free_vec(&odd_pattern);
 }
 
+fn by_signed_controlled_add_for_bench(b: &mut B, acc: &[QubitId], a: &[QubitId], ctrl: QubitId) {
+    let f = b.alloc_qubits(acc.len());
+    for i in 0..acc.len() {
+        b.ccx(ctrl, a[i], f[i]);
+    }
+    add_nbit_qq_fast(b, &f, acc);
+    for i in 0..acc.len() {
+        let m = b.alloc_bit();
+        b.hmr(f[i], m);
+        b.cz_if(ctrl, a[i], m);
+    }
+    b.free_vec(&f);
+}
+
+fn by_twos_cneg_for_bench(b: &mut B, v: &[QubitId], ctrl: QubitId) {
+    for &q in v {
+        b.cx(ctrl, q);
+    }
+    cadd_nbit_const_fast(b, v, U256::from(1u64), ctrl);
+}
+
+fn by_arithmetic_shift_right_even_for_bench(b: &mut B, v: &[QubitId]) {
+    for i in 0..v.len() - 1 {
+        b.swap(v[i], v[i + 1]);
+    }
+    b.cx(v[v.len() - 2], v[v.len() - 1]);
+}
+
+fn by_centered_halve_live_parity_for_bench(b: &mut B, v: &[QubitId], parity: QubitId, p: U256) {
+    let sign_hist = b.alloc_qubit();
+    let add_ctrl = b.alloc_qubit();
+    let sub_ctrl = b.alloc_qubit();
+    b.cx(v[0], parity);
+    b.cx(v[v.len() - 1], sign_hist);
+    b.ccx(parity, sign_hist, add_ctrl);
+    b.x(sign_hist);
+    b.ccx(parity, sign_hist, sub_ctrl);
+    b.x(sign_hist);
+    cadd_nbit_const_fast(b, v, p, add_ctrl);
+    csub_nbit_const_fast(b, v, p, sub_ctrl);
+    b.x(sign_hist);
+    b.ccx(parity, sign_hist, sub_ctrl);
+    b.x(sign_hist);
+    b.ccx(parity, sign_hist, add_ctrl);
+    b.free(sub_ctrl);
+    b.free(add_ctrl);
+    by_arithmetic_shift_right_even_for_bench(b, v);
+    b.cx(v[v.len() - 1], sign_hist);
+    b.cx(parity, sign_hist);
+    b.free(sign_hist);
+}
+
+fn centered_signed_by_microstep_for_bench(
+    b: &mut B,
+    r: &[QubitId],
+    s: &[QubitId],
+    odd: QubitId,
+    a: QubitId,
+    parity: QubitId,
+    p: U256,
+) {
+    for i in 0..r.len() {
+        cswap(b, a, r[i], s[i]);
+    }
+    by_twos_cneg_for_bench(b, s, a);
+    by_signed_controlled_add_for_bench(b, s, r, odd);
+    by_centered_halve_live_parity_for_bench(b, s, parity, p);
+}
+
+fn emit_centered_signed_by_replay_body_benchmark_scaffold(b: &mut B, p: U256) {
+    // Harness integration smoke test for the centered signed redundant replay.
+    // Reuses one zero odd/A/parity control so the clean no-op fits next to the
+    // live point-add outputs; this exercises the 873.6k-CCX body without adding
+    // the still-unsolved persistent parity/history bank to the default circuit.
+    const WIDE: usize = N + 4;
+    b.set_phase("by_centered_replay_body_bench_alloc");
+    let odd = b.alloc_qubit();
+    let a = b.alloc_qubit();
+    let parity = b.alloc_qubit();
+    let r = b.alloc_qubits(WIDE);
+    let s = b.alloc_qubits(WIDE);
+    b.set_phase("by_centered_replay_body_bench_560");
+    for _ in 0..560 {
+        centered_signed_by_microstep_for_bench(b, &r, &s, odd, a, parity, p);
+    }
+    b.set_phase("by_centered_replay_body_bench_free");
+    b.free_vec(&s);
+    b.free_vec(&r);
+    b.free(parity);
+    b.free(a);
+    b.free(odd);
+}
+
 /// Specialized real forward primitive for the first few guaranteed-bulk
 /// Kaliski iterations where `f = 1` and `v_w != 0` are known a priori.
 ///
@@ -6997,6 +7090,9 @@ pub fn build() -> Vec<Op> {
 
     if std::env::var("BY_REPLAY_BENCH_SCAFFOLD").ok().as_deref() == Some("1") {
         emit_scaled_by_pattern_replay_benchmark_scaffold(b, p);
+    }
+    if std::env::var("BY_CENTERED_REPLAY_BODY_BENCH").ok().as_deref() == Some("1") {
+        emit_centered_signed_by_replay_body_benchmark_scaffold(b, p);
     }
 
     if std::env::var("BY_TEST").is_ok() {
