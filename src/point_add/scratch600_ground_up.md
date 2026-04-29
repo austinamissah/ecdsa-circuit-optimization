@@ -401,8 +401,23 @@ The stronger follow-up test
 `low_bit_end_state_branch_classifier_is_not_approx_good_enough` trains the
 best majority lookup from the low 3 bits of `(u,v,r,s,f)` and tests it on
 disjoint samples. Error is >50%. So the needed end-state branch predicate is
-not a small low-bit heuristic. The branch information is globally present in
-full coefficient state, but extracting it cheaply appears hard.
+not a small low-bit heuristic.
+
+The even stronger exhaustive toy check
+`exhaustive_toy_full_poststate_does_not_recover_forward_branch` corrects the
+optimistic reading of the sampled full-state result: on tiny fields, even with
+the reverse iteration index and full tagged post-state `(u,v,r,s,f)`, branch
+collisions exist:
+
+```text
+n=4 p=13 total=1008  states=612   conflicts=108
+n=5 p=31 total=8100  states=4710  conflicts=1200
+n=6 p=61 total=39600 states=21000 conflicts=5760
+```
+
+So a forward-only self-cleaning Kaliski cannot simply uncompute each branch by
+looking at the live post-state.  It needs explicit history, a different state
+invariant, or an approximate exceptional-set argument.
 
 ### Approximate-tolerant tag breakthrough: seed with `y+x`
 

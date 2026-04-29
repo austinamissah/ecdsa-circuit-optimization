@@ -433,6 +433,96 @@ fn end_state_needs_coefficient_registers_to_recover_branch() {
     assert_eq!(full_conflicts, 0, "full end-state branch recovery collided in samples");
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+struct ToyLinKey {
+    iter: usize,
+    u: u64,
+    v: u64,
+    r: u64,
+    s: u64,
+    f: u8,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct ToyLinState {
+    u: u64,
+    v: u64,
+    r: u64,
+    s: u64,
+    f: u8,
+}
+
+fn toy_step_linear_canonical(st: &mut ToyLinState, p: u64) -> Branch {
+    let mut m = 0u8;
+    if st.f == 1 && st.v == 0 { m ^= 1; }
+    st.f ^= m;
+    let u0 = (st.u & 1) as u8;
+    let v0 = (st.v & 1) as u8;
+    let mut a = 0u8;
+    if st.f == 1 && u0 == 0 { a ^= 1; }
+    if st.f == 1 && u0 == 1 && v0 == 0 { m ^= 1; }
+    let b = a ^ m;
+    let gt = if st.u > st.v { 1u8 } else { 0u8 };
+    let delta = (st.f & gt) & (1 ^ b);
+    a ^= delta;
+    m ^= delta;
+    let br = Branch { a_swap: a == 1, add: (st.f & (1 ^ b)) == 1 };
+    if br.a_swap {
+        core::mem::swap(&mut st.u, &mut st.v);
+        core::mem::swap(&mut st.r, &mut st.s);
+    }
+    if br.add {
+        assert!(st.v >= st.u);
+        st.v -= st.u;
+        st.s = (st.s + st.r) % p;
+    }
+    st.v >>= 1;
+    st.r = (2 * st.r) % p;
+    if br.a_swap {
+        core::mem::swap(&mut st.u, &mut st.v);
+        core::mem::swap(&mut st.r, &mut st.s);
+    }
+    br
+}
+
+#[test]
+fn exhaustive_toy_full_poststate_does_not_recover_forward_branch() {
+    // The secp256k1 sample above found no collisions when full coefficient
+    // state was included, but that is not an information-theoretic guarantee.
+    // Exhaustive tiny fields with the tagged nonzero seed s0=x+y show exact
+    // collisions even when the reverse iteration index and full post-state are
+    // known.  A forward-only self-cleaning Kaliski therefore needs more than
+    // "inspect the live post-state"; it needs extra history, a different state
+    // invariant, or a deliberately approximate exceptional set.
+    use std::collections::BTreeMap;
+    let cases = [(4usize, 13u64), (5usize, 31u64), (6usize, 61u64)];
+    for &(n, p) in &cases {
+        let mut seen: BTreeMap<ToyLinKey, Branch> = BTreeMap::new();
+        let mut conflicts = 0usize;
+        let mut total = 0usize;
+        for x in 1..p {
+            for y in 0..p {
+                let tag = (x + y) % p;
+                if tag == 0 { continue; }
+                let mut st = ToyLinState { u: p, v: x, r: 0, s: tag, f: 1 };
+                for iter in 0..(2 * n - 1) {
+                    let br = toy_step_linear_canonical(&mut st, p);
+                    let key = ToyLinKey { iter, u: st.u, v: st.v, r: st.r, s: st.s, f: st.f };
+                    if let Some(prev) = seen.insert(key, br) {
+                        if prev != br { conflicts += 1; }
+                    }
+                    total += 1;
+                }
+            }
+        }
+        eprintln!(
+            "toy full-poststate branch recovery: n={n}, p={p}, total={total}, states={}, conflicts={conflicts}",
+            seen.len()
+        );
+        assert!(conflicts > 0, "toy full post-state unexpectedly determined every branch");
+    }
+}
+
 #[test]
 fn bilinear_invariant_does_not_recover_inverse_branch() {
     // The obvious algebraic invariant of the coefficient transform is

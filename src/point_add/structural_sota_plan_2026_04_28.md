@@ -1608,6 +1608,14 @@ canonical square-root phase is dense/high-degree on toy primes (`n=8,10,12`
 densities `126/256`, `502/1024`, `2072/4096`, degree up to full).  For
 secp256k1 this is an exponentiation, not a cleanup primitive.  Kill it.
 
+Forward-only coefficient-transform Kaliski also got a stronger exactness check.
+The earlier secp sample suggested full post-state `(u,v,r,s,f)` might recover
+branches, but `exhaustive_toy_full_poststate_does_not_recover_forward_branch`
+finds exact tagged-DIV collisions even when the reverse iteration index and full
+post-state are known (`n=4,5,6` conflicts `108,1200,5760`).  So branch cleanup
+cannot simply inspect live post-state; it needs history, a different invariant,
+or a deliberate approximate exception argument.
+
 Coefficient-transform refinement checked: a single Kaliski coefficient pair
 cannot both preserve `x` and expose `y/x` by just using a constant tag.  If
 `r0=ρ` and `s0=y+β`, the outputs are `s=ρx` and
