@@ -3811,6 +3811,24 @@ mod tests {
         }
     }
 
+    fn emit_unary_history_to_binary_threshold_xor_for_plusminus(
+        b: &mut super::super::B,
+        hist: &[super::super::QubitId],
+        kbits: &[super::super::QubitId],
+    ) {
+        // For unary prefix hist[i]=[k>i], bit j of k is parity of
+        // floor(k/2^j), i.e. XOR of all threshold predicates k >= m*2^j.
+        // The threshold predicate k >= t is exactly hist[t-1].
+        for (j, &kb) in kbits.iter().enumerate() {
+            let step = 1usize << j;
+            let mut t = step;
+            while t <= hist.len() {
+                b.cx(hist[t - 1], kb);
+                t += step;
+            }
+        }
+    }
+
     fn emit_unary_history_to_binary_count_for_plusminus(
         b: &mut super::super::B,
         hist: &[super::super::QubitId],
@@ -4447,6 +4465,60 @@ mod tests {
         println!("METRIC plusminus_signed_barrel_w64_left_ccx={w64_left_ccx}");
         println!("METRIC plusminus_signed_barrel_extrap257_left_ccx={extrap257_left}");
         assert!(left_ccx > W * KB && left_ccx < 2 * W * KB, "signed cleanup should be small over W log W");
+    }
+
+    #[test]
+    fn plusminus_unary_history_to_binary_k_is_clifford_threshold_xor() {
+        use sha3::digest::{ExtendableOutput, Update};
+        const W: usize = 16;
+        const KB: usize = 5;
+        let mut b = super::super::B::new();
+        let hist = b.alloc_qubits(W);
+        let kbits = b.alloc_qubits(KB);
+        let start = b.ops.len();
+        emit_unary_history_to_binary_threshold_xor_for_plusminus(&mut b, &hist, &kbits);
+        let compute_ccx = local_count_ccx_for_plusminus_cost(&b.ops[start..]);
+        emit_unary_history_to_binary_threshold_xor_for_plusminus(&mut b, &hist, &kbits);
+        let roundtrip_ccx = local_count_ccx_for_plusminus_cost(&b.ops[start..]);
+        let peak = b.peak_qubits;
+        let num_qubits = b.next_qubit as usize;
+        let num_bits = b.next_bit as usize;
+        let ops = b.ops;
+        for k in 0u64..=W as u64 {
+            let hist_val = if k == W as u64 { (1u64 << W) - 1 } else { (1u64 << k) - 1 };
+            let mut hasher = sha3::Shake128::default();
+            hasher.update(b"plusminus-unary-to-binary-threshold-xor-v2");
+            let mut xof = hasher.finalize_xof();
+            let mut sim = crate::sim::Simulator::new(num_qubits, num_bits, &mut xof);
+            set_slice_u512_pm(&mut sim, &hist, U512::from(hist_val));
+            sim.apply(&ops);
+            assert_eq!(get_slice_u512_pm(&sim, &hist).as_limbs()[0] & ((1u64 << W) - 1), hist_val, "hist changed k={k}");
+            assert_eq!(get_slice_u512_pm(&sim, &kbits), U512::ZERO, "kbits dirty after roundtrip k={k}");
+            assert_eq!(sim.global_phase() & 1, 0, "unexpected phase k={k}");
+        }
+        let mut bc = super::super::B::new();
+        let hist_c = bc.alloc_qubits(W);
+        let kbits_c = bc.alloc_qubits(KB);
+        emit_unary_history_to_binary_threshold_xor_for_plusminus(&mut bc, &hist_c, &kbits_c);
+        let c_num_qubits = bc.next_qubit as usize;
+        let c_num_bits = bc.next_bit as usize;
+        let c_ops = bc.ops;
+        for k in 0u64..=W as u64 {
+            let hist_val = if k == W as u64 { (1u64 << W) - 1 } else { (1u64 << k) - 1 };
+            let mut hasher = sha3::Shake128::default();
+            hasher.update(b"plusminus-unary-to-binary-threshold-xor-compute-v2");
+            let mut xof = hasher.finalize_xof();
+            let mut sim = crate::sim::Simulator::new(c_num_qubits, c_num_bits, &mut xof);
+            set_slice_u512_pm(&mut sim, &hist_c, U512::from(hist_val));
+            sim.apply(&c_ops);
+            assert_eq!(get_slice_u512_pm(&sim, &kbits_c).as_limbs()[0] & ((1u64 << KB) - 1), k, "kbits mismatch k={k}");
+        }
+        println!("METRIC plusminus_unary_to_binary_xor_width={W}");
+        println!("METRIC plusminus_unary_to_binary_xor_compute_ccx={compute_ccx}");
+        println!("METRIC plusminus_unary_to_binary_xor_roundtrip_ccx={roundtrip_ccx}");
+        println!("METRIC plusminus_unary_to_binary_xor_peak_q={peak}");
+        assert_eq!(compute_ccx, 0);
+        assert_eq!(roundtrip_ccx, 0);
     }
 
     #[test]
