@@ -1192,6 +1192,43 @@ mod tests {
         }
     }
 
+    #[test]
+    fn endomorphism_slope_support_degree_still_grows() {
+        // The full-domain ANF above is pessimistic.  Repeat the interpolation
+        // only on valid curve outputs for j=0 toy primes (p≡1 mod 3).  The
+        // minimum degree still grows with n, matching the earlier ordinary
+        // lambda cleanup story rather than revealing a constant-degree
+        // automorphism phase.
+        let cases = [
+            (4usize, 13u16, 0b1010u16, 3usize),
+            (6usize, 61u16, 0b10_1010u16, 4usize),
+            (8usize, 241u16, 0b1010_0101u16, 5usize),
+            (10usize, 1009u16, 0b10_1001_0101u16, 6usize),
+            (12usize, 4093u16, 0b1010_0101_0101u16, 6usize),
+        ];
+        let mut last_min = 0usize;
+        for &(n, p, mask, expected_upper) in &cases {
+            let (qx, qy) = first_curve_point_u16_for_phase_test(p);
+            let min_degree = endomorphism_curve_support_lambda_phase_min_degree(
+                n,
+                p,
+                qx,
+                qy,
+                mask,
+                expected_upper,
+            )
+            .expect("endomorphism support phase should interpolate by expected degree");
+            eprintln!(
+                "Endomorphism support-restricted slope phase: n={n}, p={p}, q=({qx},{qy}), min_degree={min_degree}"
+            );
+            if n == 12 {
+                println!("METRIC endomorphism_slope_support_min_degree_n12={min_degree}");
+            }
+            assert!(min_degree >= last_min, "support degree unexpectedly decreased");
+            last_min = min_degree;
+        }
+    }
+
     fn monomial_masks_for_curve_phase_test(vars: usize, max_degree: usize) -> Vec<u32> {
         fn rec(out: &mut Vec<u32>, vars: usize, start: usize, left: usize, acc: u32) {
             if left == 0 {
@@ -1446,6 +1483,85 @@ mod tests {
             p - add_mod_u16_for_phase_test(ry, qy, p)
         };
         Some(mul_mod_u16_for_phase_test(num, inv_mod_u16_for_phase_test(dx, p), p))
+    }
+
+    fn endomorphism_lambda_from_output_const_u16_for_phase_test(
+        rx: u16,
+        ry: u16,
+        qx: u16,
+        qy: u16,
+        p: u16,
+    ) -> Option<u16> {
+        if !is_curve_point_u16_for_phase_test(rx, ry, p) {
+            return None;
+        }
+        let den = sub_mod_u16_for_phase_test(qy, ry, p);
+        if den == 0 {
+            return None;
+        }
+        let numer = add_mod_u16_for_phase_test(
+            add_mod_u16_for_phase_test(
+                mul_mod_u16_for_phase_test(rx, rx, p),
+                mul_mod_u16_for_phase_test(qx, rx, p),
+                p,
+            ),
+            mul_mod_u16_for_phase_test(qx, qx, p),
+            p,
+        );
+        Some(mul_mod_u16_for_phase_test(numer, inv_mod_u16_for_phase_test(den, p), p))
+    }
+
+    fn endomorphism_curve_support_lambda_phase_has_degree_at_most(
+        n: usize,
+        p: u16,
+        qx: u16,
+        qy: u16,
+        phase_mask: u16,
+        degree: usize,
+    ) -> bool {
+        let vars = 2 * n;
+        let masks = monomial_masks_for_curve_phase_test(vars, degree);
+        let cols = masks.len();
+        let chunks = (cols + 1 + 63) / 64;
+        let mut rows = Vec::new();
+        for rx in 0..p {
+            for ry in 0..p {
+                let Some(lambda) = endomorphism_lambda_from_output_const_u16_for_phase_test(rx, ry, qx, qy, p) else {
+                    continue;
+                };
+                let idx = (rx as u32) | ((ry as u32) << n);
+                let mut row = vec![0u64; chunks];
+                for (col, &m) in masks.iter().enumerate() {
+                    if (idx & m) == m {
+                        row[col / 64] |= 1u64 << (col % 64);
+                    }
+                }
+                if ((lambda & phase_mask).count_ones() & 1) != 0 {
+                    row[cols / 64] |= 1u64 << (cols % 64);
+                }
+                rows.push(row);
+            }
+        }
+        let mut rows_a = rows.clone();
+        for row in &mut rows_a {
+            row[cols / 64] &= !(1u64 << (cols % 64));
+        }
+        let rank_a = gf2_rank_bitrows_for_curve_phase_test(&mut rows_a, cols);
+        let rank_aug = gf2_rank_bitrows_for_curve_phase_test(&mut rows, cols + 1);
+        rank_a == rank_aug
+    }
+
+    fn endomorphism_curve_support_lambda_phase_min_degree(
+        n: usize,
+        p: u16,
+        qx: u16,
+        qy: u16,
+        phase_mask: u16,
+        max_degree: usize,
+    ) -> Option<usize> {
+        (0..=max_degree).find(|&d| {
+            endomorphism_curve_support_lambda_phase_has_degree_at_most(n, p, qx, qy, phase_mask, d)
+        })
     }
 
     fn curve_support_lambda_phase_has_degree_at_most(

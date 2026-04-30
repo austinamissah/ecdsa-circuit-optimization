@@ -1811,8 +1811,10 @@ validates the denominator swap on 200/200 secp samples with zero y-sum
 exceptions.  But it is not a cleanup primitive: from the output frame,
 `λ=(Rx²+Qx*Rx+Qx²)/(Qy-Ry)`, and
 `endomorphism_slope_swap_cleanup_phase_is_still_dense` gets toy n=10 phase ANF
-`degree=20/20`, `density=297278/1048576`.  The automorphism is useful algebra,
-but still quotient-like for reversible cleanup.
+`degree=20/20`, `density=297278/1048576`.  Restricting interpolation to valid
+j=0 curve outputs still gives growing min degrees `1,3,3,3,4` through n=12 in
+`endomorphism_slope_support_degree_still_grows`.  The automorphism is useful
+algebra, but still quotient-like for reversible cleanup.
 
 Coordinate-model escape check: `efficient_curve_model_transforms_need_missing_torsion`
 records that secp256k1's prime-order group has `order mod 2 = 1` and

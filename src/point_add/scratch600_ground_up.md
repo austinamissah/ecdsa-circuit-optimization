@@ -1188,9 +1188,12 @@ output side the same slope is
 
 for the line through `Q` and `-R`.  `endomorphism_slope_swap_cleanup_phase_is_still_dense`
 computes the MBUC/cleanup phase in this output frame and gets toy n=10 ANF
-`degree=20/20`, `density=297278/1048576`.  So the j=0 automorphism is useful
-algebraic ammunition only; by itself it is another quotient-like dense phase,
-not a one-inversion or IMUL replacement.
+`degree=20/20`, `density=297278/1048576`.  The usual full-domain caveat also
+fails to rescue it: `endomorphism_slope_support_degree_still_grows` restricts
+interpolation to curve outputs on j=0 toy primes and still sees min degrees
+`1,3,3,3,4` for `n=4,6,8,10,12`.  So the j=0 automorphism is useful algebraic
+ammunition only; by itself it is another quotient-like phase, not a
+one-inversion or IMUL replacement.
 
 ### Coordinate-model escape check
 
