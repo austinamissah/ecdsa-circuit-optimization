@@ -3595,6 +3595,125 @@ mod tests {
         unreachable!()
     }
 
+    fn inv_mod_u64_for_power_two_odd(a: u64, k: usize) -> u64 {
+        debug_assert!(k < 64);
+        debug_assert_eq!(a & 1, 1);
+        let mask = (1u64 << k) - 1;
+        let mut x = 1u64;
+        // Newton iteration modulo 2,4,8,...; enough for k<=32 in these tests.
+        for _ in 0..6 {
+            x = x.wrapping_mul(2u64.wrapping_sub(a.wrapping_mul(x))) & mask;
+        }
+        x & mask
+    }
+
+    fn u256_from_low_u512_for_multihalve_test(x: U512) -> U256 {
+        let l = x.as_limbs();
+        debug_assert_eq!(l[4], 0);
+        debug_assert_eq!(l[5], 0);
+        debug_assert_eq!(l[6], 0);
+        debug_assert_eq!(l[7], 0);
+        U256::from_limbs([l[0], l[1], l[2], l[3]])
+    }
+
+    fn halve_once_mod_p_for_multihalve_test(x: U256, p: U256) -> U256 {
+        let mut wide = u512_from_u256_for_halfgcd_test(x);
+        if (x.as_limbs()[0] & 1) != 0 {
+            wide += u512_from_u256_for_halfgcd_test(p);
+        }
+        u256_from_low_u512_for_multihalve_test(wide >> 1)
+    }
+
+    fn solinas_direct_multihalve_step_for_test(x: U256, k: usize) -> (U256, u64) {
+        debug_assert!((1..=31).contains(&k));
+        let p = SECP256K1_P;
+        let c = U256::MAX.wrapping_sub(p).wrapping_add(U256::from(1u64));
+        let mask = (1u64 << k) - 1;
+        let c_low = c.as_limbs()[0] & mask;
+        let c_inv = inv_mod_u64_for_power_two_odd(c_low, k);
+        let x_low = x.as_limbs()[0] & mask;
+        let t = ((x_low as u128 * c_inv as u128) as u64) & mask;
+        let wide = u512_from_u256_for_halfgcd_test(x)
+            + u512_from_u256_for_halfgcd_test(p) * U512::from(t);
+        let y = u256_from_low_u512_for_multihalve_test(wide >> k);
+        debug_assert!(y < p);
+        (y, t)
+    }
+
+    fn multihalve_output_quotient_anf_stats(n: usize, p: u16, k: usize, mask: u16) -> (usize, usize) {
+        let size = 1usize << n;
+        let mut anf = vec![0u8; size];
+        for y in 0..p {
+            let q = (((1u32 << k) * y as u32) / p as u32) as u16;
+            anf[y as usize] = ((q & mask).count_ones() & 1) as u8;
+        }
+        for bit in 0..n {
+            for idx in 0..size {
+                if (idx & (1usize << bit)) != 0 {
+                    anf[idx] ^= anf[idx ^ (1usize << bit)];
+                }
+            }
+        }
+        let density = anf.iter().filter(|&&v| v != 0).count();
+        let degree = anf
+            .iter()
+            .enumerate()
+            .filter_map(|(i, &v)| if v != 0 { Some(i.count_ones() as usize) } else { None })
+            .max()
+            .unwrap_or(0);
+        (degree, density)
+    }
+
+    #[test]
+    fn solinas_chunk_multihalve_has_sparse_quotient_cleanup_shape() {
+        // Direct k-bit halving over p=2^256-c is classically much nicer than a
+        // generic divide: choose t from the low k input bits such that
+        // x+t*p is divisible by 2^k.  The cleanup quotient is also recoverable
+        // from the output as floor(2^k*y/p), which for a Solinas p is basically
+        // the high k bits plus a tiny threshold correction.  This keeps the
+        // chunked correction-loop idea alive; the remaining work is a fully
+        // reversible in-place circuit for computing/clearing t and its small
+        // product t*c.
+        let p = SECP256K1_P;
+        let mut rng = 0x5eed_d1ec_7a1f_0001u64;
+        let samples = 1024usize;
+        for _ in 0..samples {
+            let mut x = rand_u256(&mut rng);
+            if x >= p { x %= p; }
+            let (y22, t22) = solinas_direct_multihalve_step_for_test(x, 22);
+            let mut reference = x;
+            for _ in 0..22 {
+                reference = halve_once_mod_p_for_multihalve_test(reference, p);
+            }
+            assert_eq!(y22, reference);
+            let numerator: U512 = u512_from_u256_for_halfgcd_test(y22) << 22usize;
+            let q_wide: U512 = numerator / u512_from_u256_for_halfgcd_test(p);
+            let q = q_wide.as_limbs()[0];
+            assert_eq!(q, t22);
+        }
+        let mut chunked = rand_u256(&mut rng) % p;
+        let mut reference = chunked;
+        for _ in 0..404 {
+            reference = halve_once_mod_p_for_multihalve_test(reference, p);
+        }
+        let mut remaining = 404usize;
+        while remaining > 0 {
+            let k = remaining.min(22);
+            chunked = solinas_direct_multihalve_step_for_test(chunked, k).0;
+            remaining -= k;
+        }
+        assert_eq!(chunked, reference);
+
+        let (degree, density) = multihalve_output_quotient_anf_stats(14, 16381, 4, 0b1011);
+        eprintln!("Solinas multihalve output quotient ANF: n=14,k=4 degree={degree}, density={density}/16384");
+        println!("METRIC solinas_multihalve_chunk_bits={}", 22);
+        println!("METRIC solinas_multihalve_product_bits={}", 54);
+        println!("METRIC solinas_multihalve_output_quotient_degree_n14={degree}");
+        println!("METRIC solinas_multihalve_output_quotient_density_n14={density}");
+        assert!(degree >= 12);
+        assert!(density <= 32);
+    }
+
     #[test]
     fn two_adic_inverse_still_needs_dense_field_correction() {
         // Another tempting inversion primitive for the pseudo-Mersenne prime
