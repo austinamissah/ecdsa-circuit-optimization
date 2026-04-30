@@ -1326,9 +1326,7 @@ fn c_xor_right_shifted_carries_into_qoffset_stream_mask(
         b.ccx(ctrl, q_offset[k], q_mask);
     }
     for k in 0..n {
-        b.ccx(ctrl, q_offset[k], q_mask);
-        b.cx(q_mask, q_dst[k]);
-        b.ccx(ctrl, q_offset[k], q_mask);
+        b.ccx(ctrl, q_offset[k], q_dst[k]);
     }
     b.ccx(ctrl, q_offset[0], q_mask);
     b.cx(q_mask, q_src[0]);

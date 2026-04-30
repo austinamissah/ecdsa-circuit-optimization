@@ -825,17 +825,20 @@ compressed history + decoder + mask: ~766 scratch
 ```
 
 So the gate count is near the scaled-BY target, but the clean 256-bit mask keeps
-it above the user's ~600-scratch cap.  A linear partial-mask tradeoff just
-misses: with 481 history bits + 26 decoder bits + small clean controls, only 90
+it above the user's ~600-scratch cap.  A linear partial-mask tradeoff appeared to
+miss: with 481 history bits + 26 decoder bits + small clean controls, only 90
 mask bits remain; `partial_mask_controlled_qoffset_linear_tradeoff_just_misses_600q_target`
 interpolates to add≈2755 CCX, replay560≈1,971,760, and point-add≈2,764,476
-after scaffold+branch margin.  The direct one-bit streaming implementation was tested next:
-`streamed_mask_controlled_qoffset_fits_scratch_but_misses_gate_target` keeps only
-one clean mask bit and is phase-clean, with `scratch_with_history≈510q`, but it
-costs `2796` CCX and `div560≈1,994,720`.  Thus naive streaming fits scratch but
-misses the gate target almost exactly as predicted.  A BY revival under 600
-scratch needs a nontrivial carry/mask sharing trick that beats this linear
-tradeoff, not another generic controlled-adder wrapper.
+after scaffold+branch margin.  The actual one-bit streaming implementation beats
+that model after a small structural optimization: keep one `ctrl&offset[k]` mask
+only for places that need a masked control, but emit simple `offset -> dst`
+broadcasts as direct controlled toggles.  `streamed_mask_controlled_qoffset_fits_scratch_and_hits_lowqubit_target`
+is phase-clean, keeps `scratch_with_history≈510q`, measures `2542` CCX and
+`div560≈1,852,480`, and projects point-add≈2,645,196 with scaffold+branch margin.
+This is the first BY replay primitive that is simultaneously 600-scratch-shaped
+and below the Google 2.7M low-qubit Toffoli target on paper.  Remaining work is
+not the controlled adder itself, but reversible branch-pattern compression/
+cleanup and integration into the affine schedule.
 
 ## 12. Fast invalidation tasks still open
 

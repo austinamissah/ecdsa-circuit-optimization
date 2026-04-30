@@ -4075,12 +4075,13 @@ mod tests {
     }
 
     #[test]
-    fn streamed_mask_controlled_qoffset_fits_scratch_but_misses_gate_target() {
+    fn streamed_mask_controlled_qoffset_fits_scratch_and_hits_lowqubit_target() {
         // Real version of the mask-streaming idea: keep only a one-qubit
         // ctrl&offset[k] mask at a time, while using an independent dirty bank.
-        // It retains the low scratch of the naive controlled dirty adder, but
-        // the repeated mask compute/uncompute lands near the linear tradeoff
-        // model instead of the full-mask gate count.
+        // Simple q_offset->dst broadcasts are emitted as direct controlled
+        // toggles instead of materializing the mask bit.  That small structural
+        // change is enough to beat the linear partial-mask tradeoff while
+        // keeping the 600-scratch model intact.
         let n = 8usize;
         let maskv = (1u64 << n) - 1;
         let mut b = super::super::B::new();
@@ -4128,15 +4129,20 @@ mod tests {
         let peak = b.peak_qubits as usize;
         let scaled_microstep_with_this_add = ccx + 256 + 255 + 255;
         let div560 = scaled_microstep_with_this_add as f64 * 560.0;
+        let scaffold_after_div = 642_716usize;
+        let branch_decode_margin = 150_000usize;
+        let projected_point_add = div560 as usize + scaffold_after_div + branch_decode_margin;
         let scratch_with_history = 481usize + 26 + 3;
         eprintln!(
-            "streamed-mask controlled qoffset: ccx={ccx}, peak={peak}q, div560≈{div560:.0}, scratch_with_history≈{scratch_with_history}q"
+            "streamed-mask controlled qoffset: ccx={ccx}, peak={peak}q, div560≈{div560:.0}, projected≈{projected_point_add}, scratch_with_history≈{scratch_with_history}q"
         );
         println!("METRIC streamed_mask_qoffset_ccx={ccx}");
         println!("METRIC streamed_mask_qoffset_peak={peak}");
         println!("METRIC streamed_mask_qoffset_div560={div560:.0}");
+        println!("METRIC streamed_mask_qoffset_projected_point_add={projected_point_add}");
         println!("METRIC streamed_mask_qoffset_scratch_with_history={scratch_with_history}");
-        assert!(ccx > 2_700, "streamed-mask qoffset unexpectedly beat the linear tradeoff; revisit BY integration");
+        assert!(ccx < 2_650, "streamed-mask qoffset no longer beats the 600q low-qubit gate target");
+        assert!(projected_point_add < 2_700_000, "streamed-mask qoffset misses the Google low-qubit point-add target");
         assert!(scratch_with_history < 600, "streamed-mask qoffset does not fit 600q scratch model");
     }
 

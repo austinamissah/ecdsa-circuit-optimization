@@ -1312,15 +1312,18 @@ compressed history + mask scratch:       ≈766q
 
 Thus control-efficient dirty qoffset is possible, but the clean mask misses the
 user's ~600-scratch cap by ~166q when added to compressed pattern history. A
-linear partial-mask interpolation is slightly short of the target:
+linear partial-mask interpolation looked slightly short of the target:
 `partial_mask_controlled_qoffset_linear_tradeoff_just_misses_600q_target` leaves
 90 mask bits under the 600q cap, estimates add≈2755 CCX, replay560≈1,971,760,
-and point-add≈2,764,476 with scaffold+branch margin.  The direct streaming implementation was tried:
-`streamed_mask_controlled_qoffset_fits_scratch_but_misses_gate_target` keeps one
-mask bit, passes basis/phase checks, and fits scratch (`scratch_with_history≈510q`),
-but costs `2796` CCX with `div560≈1,994,720`.  So the next implementation
-problem is not raw correctness; it is overlapping/sharing mask and carry work
-**better than linearly**.  Plain one-bit streaming is a dead end.
+and point-add≈2,764,476 with scaffold+branch margin.  The real one-bit streaming
+implementation is better than that model once simple broadcasts are emitted as
+direct controlled toggles instead of materializing the mask:
+`streamed_mask_controlled_qoffset_fits_scratch_and_hits_lowqubit_target` keeps
+one mask bit, passes basis/phase checks, fits scratch (`scratch_with_history≈510q`),
+and measures `2542` CCX with `div560≈1,852,480`, projecting point-add≈2,645,196.
+So the controlled-add scratch/gate blocker is no longer the main issue for the
+low-qubit BY route; branch-pattern compression/cleanup and real affine
+integration are now the production blockers.
 
 This is the first coherent selected BY replay model in the right Toffoli band.
 It is not yet a complete DIV: branch-history compression/cleanup still need
