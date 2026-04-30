@@ -825,8 +825,12 @@ compressed history + decoder + mask: ~766 scratch
 ```
 
 So the gate count is near the scaled-BY target, but the clean 256-bit mask keeps
-it above the user's ~600-scratch cap.  A BY revival under 600 scratch now needs
-mask streaming/overlap with branch-history workspace, not another generic
+it above the user's ~600-scratch cap.  A linear partial-mask tradeoff just
+misses: with 481 history bits + 26 decoder bits + small clean controls, only 90
+mask bits remain; `partial_mask_controlled_qoffset_linear_tradeoff_just_misses_600q_target`
+interpolates to add≈2755 CCX, replay560≈1,971,760, and point-add≈2,764,476
+after scaffold+branch margin.  A BY revival under 600 scratch needs mask
+streaming/overlap that beats this linear tradeoff, not another generic
 controlled-adder wrapper.
 
 ## 12. Fast invalidation tasks still open

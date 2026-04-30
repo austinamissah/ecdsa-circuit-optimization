@@ -1311,9 +1311,13 @@ compressed history + mask scratch:       ≈766q
 ```
 
 Thus control-efficient dirty qoffset is possible, but the clean mask misses the
-user's ~600-scratch cap by ~166q when added to compressed pattern history. The
-next implementation problem is not raw Toffoli anymore; it is streaming or
-overlapping that mask with history/decoder workspace without losing phase
+user's ~600-scratch cap by ~166q when added to compressed pattern history. A
+linear partial-mask interpolation is slightly short of the target:
+`partial_mask_controlled_qoffset_linear_tradeoff_just_misses_600q_target` leaves
+90 mask bits under the 600q cap, estimates add≈2755 CCX, replay560≈1,971,760,
+and point-add≈2,764,476 with scaffold+branch margin.  The next implementation
+problem is not raw Toffoli anymore; it is streaming or overlapping that mask
+with history/decoder workspace **better than linearly** without losing phase
 cleanliness.
 
 This is the first coherent selected BY replay model in the right Toffoli band.

@@ -4075,6 +4075,40 @@ mod tests {
     }
 
     #[test]
+    fn partial_mask_controlled_qoffset_linear_tradeoff_just_misses_600q_target() {
+        // First-order model after the masked-borrow primitive: full mask gives
+        // good gates but 766q scratch with compressed history; no mask gives
+        // good scratch but 3557-CCX add.  The 600q cap leaves only ~90 clean
+        // mask bits after 481 pattern-history bits and 26 decoder bits.  Even a
+        // generous linear interpolation between the measured endpoints lands
+        // just above the 2.7M low-qubit point-add target once branch/decode
+        // margin is included, so mask streaming must beat linear interpolation.
+        let no_mask_ccx = 3557usize;
+        let full_mask_ccx = 1274usize;
+        let full_mask_bits = 256usize;
+        let compressed_history = 481usize;
+        let decoder = 26usize;
+        let small_clean = 3usize;
+        let scratch_cap = 600usize;
+        let mask_budget = scratch_cap - compressed_history - decoder - small_clean;
+        let saved = (no_mask_ccx - full_mask_ccx) * mask_budget / full_mask_bits;
+        let interpolated_add_ccx = no_mask_ccx - saved;
+        let non_add_step_overhead = 256usize + 255 + 255;
+        let replay560 = (interpolated_add_ccx + non_add_step_overhead) * 560;
+        let scaffold_after_div = 642_716usize;
+        let branch_decode_margin = 150_000usize;
+        let projected = replay560 + scaffold_after_div + branch_decode_margin;
+        eprintln!(
+            "partial mask qoffset model: mask_budget={mask_budget}, add_ccx≈{interpolated_add_ccx}, replay560≈{replay560}, projected≈{projected}"
+        );
+        println!("METRIC partial_mask_qoffset_mask_budget={mask_budget}");
+        println!("METRIC partial_mask_qoffset_interpolated_add_ccx={interpolated_add_ccx}");
+        println!("METRIC partial_mask_qoffset_projected_point_add={projected}");
+        assert!(mask_budget < 100);
+        assert!(projected > 2_700_000, "linear partial-mask model would already hit low-qubit SOTA");
+    }
+
+    #[test]
     fn naive_controlled_dirty_qoffset_is_scratch_right_but_toffoli_heavy() {
         let mut b = super::super::B::new();
         let ctrl = b.alloc_qubit();
