@@ -3436,6 +3436,30 @@ mod tests {
         local_count_ccx_for_plusminus_cost(&b.ops[start..])
     }
 
+    fn compare_cost_for_plusminus(width: usize) -> usize {
+        let mut b = super::super::B::new();
+        let a = b.alloc_qubits(width);
+        let c = b.alloc_qubits(width);
+        let flag = b.alloc_qubit();
+        let start = b.ops.len();
+        super::super::with_lt(&mut b, &a, &c, flag, |_b| {});
+        local_count_ccx_for_plusminus_cost(&b.ops[start..])
+    }
+
+    fn cswap_lanes_cost_for_plusminus(widths: &[usize]) -> usize {
+        let mut b = super::super::B::new();
+        let ctrl = b.alloc_qubit();
+        let start = b.ops.len();
+        for &w in widths {
+            let a = b.alloc_qubits(w);
+            let c = b.alloc_qubits(w);
+            for i in 0..w {
+                local_cswap_for_plusminus_cost(&mut b, ctrl, a[i], c[i]);
+            }
+        }
+        local_count_ccx_for_plusminus_cost(&b.ops[start..])
+    }
+
     fn trailing_zero_unary_generator_cost_for_plusminus(width: usize) -> usize {
         // Reversible-ish prefix-zero generator floor.  active[j] means all
         // lower bits were zero; unary[j] = active[j] & !d[j].  We count forward
@@ -3591,6 +3615,51 @@ mod tests {
         println!("METRIC plusminus_unary_generator_projected_p99_toffoli={projected_p99}");
         println!("METRIC plusminus_unary_generator_gap_p99_to_2700k={gap_p99}");
         assert!(gap_p99 < 0, "plus-minus unary generator tax erases SOTA margin");
+    }
+
+    #[test]
+    fn plusminus_ordering_compare_and_swap_tax_still_fits() {
+        // Add the next omitted per-step costs: compare d vs old v to choose the
+        // ordered output, then conditionally swap the denominator lane and the
+        // paired scaled-coefficient lane.  This still omits sign canonicalization
+        // and actual slack-pack moves, but it is the main non-arithmetic control
+        // tax in the plus-minus step.
+        let cmp_ccx = compare_cost_for_plusminus(256);
+        let cswap_ccx = cswap_lanes_cost_for_plusminus(&[256, 257]);
+        let gen_ccx = trailing_zero_unary_generator_cost_for_plusminus(256);
+        let cint_add_ccx = controlled_integer_add_cost_for_plusminus(257);
+        let cshift_ccx = controlled_left_shift_cost_for_plusminus(257);
+        let p = SECP256K1_P;
+        let samples = 8192usize;
+        let mut rng = 0x0ede_6635_c5aa_900du64;
+        let mut one_div = Vec::with_capacity(samples);
+        for _ in 0..samples {
+            let mut x = rand_u256(&mut rng);
+            if x.is_zero() { x = U256::from(1u64); }
+            let ks = plusminus_k_sequence_for_divisor(x, p);
+            let unary: usize = ks.iter().sum();
+            let steps = ks.len();
+            let step_tax = gen_ccx + cmp_ccx + cswap_ccx;
+            one_div.push(2 * (steps * cint_add_ccx + unary * cshift_ccx) + steps * step_tax);
+        }
+        one_div.sort_unstable();
+        let p99 = samples * 99 / 100;
+        let one_div_p99 = one_div[p99];
+        let one_div_max = *one_div.last().unwrap();
+        let two_div_p99 = 2 * one_div_p99;
+        let projected_p99 = 642_716usize + two_div_p99;
+        let gap_p99 = projected_p99 as isize - 2_700_000isize;
+        eprintln!(
+            "plus-minus ordering tax: cmp={cmp_ccx}, cswap={cswap_ccx}, one_div_p99={one_div_p99}, projected_p99={projected_p99}, gap_p99={gap_p99}"
+        );
+        println!("METRIC plusminus_order_cmp_ccx={cmp_ccx}");
+        println!("METRIC plusminus_order_cswap_ccx={cswap_ccx}");
+        println!("METRIC plusminus_order_one_div_p99_ccx={one_div_p99}");
+        println!("METRIC plusminus_order_one_div_max_ccx={one_div_max}");
+        println!("METRIC plusminus_order_two_div_p99_ccx={two_div_p99}");
+        println!("METRIC plusminus_order_projected_p99_toffoli={projected_p99}");
+        println!("METRIC plusminus_order_gap_p99_to_2700k={gap_p99}");
+        assert!(gap_p99 < 0, "plus-minus compare/swap tax erases SOTA margin");
     }
 
     fn smag_shl_for_plusminus_test(x: SignedMagU512ForHalfGcdTest, k: usize) -> SignedMagU512ForHalfGcdTest {
