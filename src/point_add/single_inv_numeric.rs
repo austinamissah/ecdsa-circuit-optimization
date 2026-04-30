@@ -3161,6 +3161,26 @@ mod tests {
     }
 
     #[test]
+    fn plusminus_coeff_offset_den_barrel_budget_still_tight() {
+        // If coefficient offsets delete the signed coefficient barrel shift but
+        // denominators still physically barrel-shift, the step budget improves
+        // by about the signed-barrel primitive cost.  Check whether that alone
+        // is enough before building offset arithmetic.
+        let barrel_step257 = 10_243usize;
+        let signed_coeff_barrel257 = 2_393usize;
+        let coeff_offset_step257 = barrel_step257 - signed_coeff_barrel257;
+        let steps_public = 202usize;
+        let two_div_step_only = 2usize * coeff_offset_step257 * steps_public;
+        let gap = two_div_step_only as isize - 2_700_000isize;
+        eprintln!("plus-minus coeff-offset/den-barrel budget: step257={coeff_offset_step257}, two_div_step_only={two_div_step_only}, gap={gap}");
+        println!("METRIC plusminus_coeff_offset_budget_step257_ccx={coeff_offset_step257}");
+        println!("METRIC plusminus_coeff_offset_budget_steps={steps_public}");
+        println!("METRIC plusminus_coeff_offset_budget_two_div_step_only={two_div_step_only}");
+        println!("METRIC plusminus_coeff_offset_budget_gap_to_2700k={gap}");
+        assert!(gap > 0, "coefficient offsets alone would make physical denominator shifts viable; revisit");
+    }
+
+    #[test]
     fn plusminus_offset_lane_representation_width_pressure() {
         // If physical shifts are too expensive, a natural escape is to keep a
         // per-lane binary exponent/offset and align only when arithmetic needs
