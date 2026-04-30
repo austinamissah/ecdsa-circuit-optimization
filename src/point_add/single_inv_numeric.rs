@@ -3656,6 +3656,21 @@ mod tests {
         }
     }
 
+    fn emit_controlled_right_shift_exact_for_plusminus(
+        b: &mut super::super::B,
+        v: &[super::super::QubitId],
+        ctrl: super::super::QubitId,
+        spill: super::super::QubitId,
+    ) {
+        // Controlled logical right shift on a promised even nonnegative value.
+        // The old low bit lands in spill; valid plus-minus d values have that
+        // bit zero for every active shift, so spill remains clean.
+        local_cswap_for_plusminus_cost(b, ctrl, spill, v[0]);
+        for i in 1..v.len() {
+            local_cswap_for_plusminus_cost(b, ctrl, v[i - 1], v[i]);
+        }
+    }
+
     fn controlled_left_shift_cost_for_plusminus(width: usize) -> usize {
         let mut b = super::super::B::new();
         let v = b.alloc_qubits(width);
@@ -3782,6 +3797,129 @@ mod tests {
         println!("METRIC plusminus_active_chain_circuit_ccx={ccx}");
         println!("METRIC plusminus_active_chain_circuit_peak_q={peak}");
         assert_eq!(ccx, 2 * W, "active-chain generator should cost 2W CCX");
+    }
+
+    #[test]
+    fn plusminus_one_step_output_skeleton_matches_classical() {
+        // Productive one-step skeleton: compute the ordered next denominator
+        // and scaled coefficient lanes into fresh output registers, then clean
+        // all temporary work.  This is still not the final in-place low-scratch
+        // update, but it validates that the real primitives compose into a
+        // phase-clean, non-noop plus-minus step.
+        use sha3::digest::{ExtendableOutput, Update};
+        const W: usize = 16;
+        let mut b = super::super::B::new();
+        let u = b.alloc_qubits(W);
+        let v = b.alloc_qubits(W);
+        let cu = b.alloc_qubits(W);
+        let cv = b.alloc_qubits(W);
+        let d = b.alloc_qubits(W);
+        let dsh = b.alloc_qubits(W);
+        let cd = b.alloc_qubits(W);
+        let cvs = b.alloc_qubits(W);
+        let nu = b.alloc_qubits(W);
+        let nv = b.alloc_qubits(W);
+        let ncu = b.alloc_qubits(W);
+        let ncv = b.alloc_qubits(W);
+        let active = b.alloc_qubits(W + 1);
+        let hist = b.alloc_qubits(W);
+        let spill = b.alloc_qubit();
+        let one = b.alloc_qubit();
+        let flag = b.alloc_qubit();
+        let start = b.ops.len();
+        b.x(one);
+
+        for i in 0..W { b.cx(u[i], d[i]); }
+        super::super::sub_nbit_qq_fast(&mut b, &v, &d); // d = u-v
+        emit_trailing_zero_active_chain_history_for_plusminus(&mut b, &d, &active, &hist);
+
+        for i in 0..W { b.cx(d[i], dsh[i]); }
+        for &h in &hist {
+            emit_controlled_right_shift_exact_for_plusminus(&mut b, &dsh, h, spill);
+        }
+        for i in 0..W { b.cx(cv[i], cvs[i]); }
+        for &h in &hist {
+            emit_controlled_left_shift_nooverflow_for_plusminus(&mut b, &cvs, h, spill);
+        }
+        for i in 0..W { b.cx(cu[i], cd[i]); }
+        emit_controlled_integer_add_for_plusminus(&mut b, &cd, &cv, one, true); // cd = cu-cv
+
+        for i in 0..W {
+            b.cx(dsh[i], nu[i]);
+            b.cx(v[i], nv[i]);
+            b.cx(cd[i], ncu[i]);
+            b.cx(cvs[i], ncv[i]);
+        }
+        super::super::with_lt(&mut b, &dsh, &v, flag, |b| {
+            for i in 0..W {
+                local_cswap_for_plusminus_cost(b, flag, nu[i], nv[i]);
+                local_cswap_for_plusminus_cost(b, flag, ncu[i], ncv[i]);
+            }
+        });
+
+        emit_controlled_integer_add_for_plusminus(&mut b, &cd, &cv, one, false);
+        for i in (0..W).rev() { b.cx(cu[i], cd[i]); }
+        for &h in hist.iter().rev() {
+            emit_controlled_left_shift_nooverflow_inverse_for_plusminus(&mut b, &cvs, h, spill);
+        }
+        for i in (0..W).rev() { b.cx(cv[i], cvs[i]); }
+        for &h in hist.iter().rev() {
+            emit_controlled_left_shift_nooverflow_for_plusminus(&mut b, &dsh, h, spill);
+        }
+        for i in (0..W).rev() { b.cx(d[i], dsh[i]); }
+        emit_trailing_zero_active_chain_history_for_plusminus(&mut b, &d, &active, &hist);
+        super::super::add_nbit_qq_fast(&mut b, &v, &d);
+        for i in (0..W).rev() { b.cx(u[i], d[i]); }
+        b.x(one);
+
+        let ccx = local_count_ccx_for_plusminus_cost(&b.ops[start..]);
+        let peak = b.peak_qubits;
+        let num_qubits = b.next_qubit as usize;
+        let num_bits = b.next_bit as usize;
+        let ops = b.ops;
+        let mask = (1u64 << W) - 1;
+        let cases = [(37u64, 5u64), (91, 27), (128, 64), (201, 77), (255, 127)];
+        for &(uval, vval) in &cases {
+            for cuv in [0u64, 1, 7, 123] {
+                for cvv in [0u64, 3, 11, 15] {
+                    let diff = uval - vval;
+                    let k = diff.trailing_zeros() as usize;
+                    let d_class = diff >> k;
+                    let cd_class = cuv.wrapping_sub(cvv) & mask;
+                    let cvs_class = (cvv << k) & mask;
+                    let (enu, env, encu, encv) = if d_class < vval {
+                        (vval, d_class, cvs_class, cd_class)
+                    } else {
+                        (d_class, vval, cd_class, cvs_class)
+                    };
+                    let mut hasher = sha3::Shake128::default();
+                    hasher.update(b"plusminus-one-step-output-skeleton-v2");
+                    let mut xof = hasher.finalize_xof();
+                    let mut sim = crate::sim::Simulator::new(num_qubits, num_bits, &mut xof);
+                    set_slice_u512_pm(&mut sim, &u, U512::from(uval));
+                    set_slice_u512_pm(&mut sim, &v, U512::from(vval));
+                    set_slice_u512_pm(&mut sim, &cu, U512::from(cuv));
+                    set_slice_u512_pm(&mut sim, &cv, U512::from(cvv));
+                    sim.apply(&ops);
+                    assert_eq!(get_slice_u512_pm(&sim, &nu).as_limbs()[0] & mask, enu & mask, "nu mismatch");
+                    assert_eq!(get_slice_u512_pm(&sim, &nv).as_limbs()[0] & mask, env & mask, "nv mismatch");
+                    assert_eq!(get_slice_u512_pm(&sim, &ncu).as_limbs()[0] & mask, encu & mask, "ncu mismatch u={uval} v={vval} cu={cuv} cv={cvv} k={k}");
+                    assert_eq!(get_slice_u512_pm(&sim, &ncv).as_limbs()[0] & mask, encv & mask, "ncv mismatch");
+                    for (name, reg) in [("d", &d), ("dsh", &dsh), ("cd", &cd), ("cvs", &cvs), ("active", &active), ("hist", &hist)] {
+                        assert_eq!(get_slice_u512_pm(&sim, reg), U512::ZERO, "{name} not clean");
+                    }
+                    assert_eq!(sim.qubit(spill) & 1, 0, "spill not clean");
+                    assert_eq!(sim.qubit(one) & 1, 0, "one not clean");
+                    assert_eq!(sim.qubit(flag) & 1, 0, "flag not clean");
+                    assert_eq!(sim.global_phase() & 1, 0, "unexpected phase");
+                }
+            }
+        }
+        eprintln!("plus-minus one-step output skeleton: width={W}, ccx={ccx}, peak={peak}");
+        println!("METRIC plusminus_step_output_width={W}");
+        println!("METRIC plusminus_step_output_ccx={ccx}");
+        println!("METRIC plusminus_step_output_peak_q={peak}");
+        assert!(ccx > 0 && peak > 0);
     }
 
     #[test]
