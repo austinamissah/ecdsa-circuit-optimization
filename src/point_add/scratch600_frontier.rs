@@ -52,10 +52,10 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
             blocker: "raw stream fits only before boundary/rank/live-parser cost is charged",
         },
         Candidate {
-            name: "plusminus_scaled_slack_solinas_model_unbuilt",
-            scratch_bits: 527,
+            name: "plusminus_scaled_konly_slack_solinas_model_unbuilt",
+            scratch_bits: 517,
             charged_toffoli: None,
-            blocker: "model projects max 2230850 but lacks phase-clean slack packing and variable-S Solinas circuit",
+            blocker: "step/direction/packed-history toy circuits are phase-clean; still lacks production 256-bit envelope and variable-S Solinas circuit",
         },
         Candidate {
             name: "centered_euclid_raw_q_stream_without_parser",
@@ -99,8 +99,8 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     let plusminus_raw_scratch = 564usize;
     let plusminus_unary_scratch_p99 = 640usize;
     let plusminus_parser_over_strict = plusminus_unary_scratch_p99 - STRICT_SCRATCH;
-    let plusminus_scaled_slack_scratch_max = 527usize;
-    let plusminus_scaled_solinas_projected_max = 2_230_850usize;
+    let plusminus_scaled_slack_scratch_max = 517usize;
+    let plusminus_scaled_solinas_projected_max = 2_027_038usize;
     let plusminus_scaled_solinas_gap_max = plusminus_scaled_solinas_projected_max as isize - GOOGLE_LOW_QUBIT_TOFFOLI as isize;
     let halfgcd_matrix_only = 524usize;
     let halfgcd_matrix_tail_raw = 689usize;
