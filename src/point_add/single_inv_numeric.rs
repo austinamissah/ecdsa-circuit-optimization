@@ -14,7 +14,7 @@
 
 #![cfg(test)]
 
-use alloy_primitives::U256;
+use alloy_primitives::{U256, U512};
 
 use super::SECP256K1_P;
 
@@ -2279,6 +2279,50 @@ mod tests {
         n
     }
 
+    fn u512_from_u256_for_halfgcd_test(x: U256) -> U512 {
+        let l = x.as_limbs();
+        U512::from_limbs([l[0], l[1], l[2], l[3], 0, 0, 0, 0])
+    }
+
+    fn u512_bit_len_for_halfgcd_test(x: U512) -> usize {
+        if x.is_zero() { 0 } else { 512 - x.leading_zeros() as usize }
+    }
+
+    #[derive(Clone, Copy)]
+    struct SignedMagU512ForHalfGcdTest {
+        neg: bool,
+        mag: U512,
+    }
+
+    fn smag_for_halfgcd_test(neg: bool, mag: U512) -> SignedMagU512ForHalfGcdTest {
+        SignedMagU512ForHalfGcdTest { neg: neg && !mag.is_zero(), mag }
+    }
+
+    fn signed_add_for_halfgcd_test(
+        a: SignedMagU512ForHalfGcdTest,
+        b: SignedMagU512ForHalfGcdTest,
+    ) -> SignedMagU512ForHalfGcdTest {
+        if a.mag.is_zero() { return b; }
+        if b.mag.is_zero() { return a; }
+        if a.neg == b.neg {
+            smag_for_halfgcd_test(a.neg, a.mag + b.mag)
+        } else if a.mag >= b.mag {
+            smag_for_halfgcd_test(a.neg, a.mag - b.mag)
+        } else {
+            smag_for_halfgcd_test(b.neg, b.mag - a.mag)
+        }
+    }
+
+    fn signed_sub_scaled_for_halfgcd_test(
+        a: SignedMagU512ForHalfGcdTest,
+        q: U256,
+        b: SignedMagU512ForHalfGcdTest,
+    ) -> SignedMagU512ForHalfGcdTest {
+        let prod = smag_for_halfgcd_test(b.neg, b.mag * u512_from_u256_for_halfgcd_test(q));
+        let neg_prod = smag_for_halfgcd_test(!prod.neg, prod.mag);
+        signed_add_for_halfgcd_test(a, neg_prod)
+    }
+
     fn euclid_quotients_for_divisor(x: U256, p: U256) -> Vec<U256> {
         assert!(!x.is_zero());
         let mut u = p;
@@ -2308,6 +2352,87 @@ mod tests {
             s = sub_mod(old_r, (q % p).mul_mod(s, p), p);
         }
         (r, s, qs)
+    }
+
+    #[test]
+    fn half_gcd_matrix_checkpoint_still_has_tail_history_problem() {
+        // Recursive/half-GCD is the principled way to avoid a monolithic
+        // quotient stream: stop Euclid near sqrt(p), store the 2x2 transform
+        // matrix, then recurse on the residual pair.  The first checkpoint is
+        // tantalizing because the matrix entries are only ~128 bits each.  But
+        // it is not a 600-scratch local DIV primitive by itself: the residual
+        // state is another ~256 bits, and even the raw bitlength of the tail
+        // quotient payload puts matrix+tail above 600 before exact parsing,
+        // recursive matrix multiplication, or cleanup is charged.
+        let p = SECP256K1_P;
+        let samples = 2048usize;
+        let mut rng = 0x9e37_79b9_7f4a_7c15u64;
+        let mut matrix_bits = Vec::with_capacity(samples);
+        let mut residual_bits = Vec::with_capacity(samples);
+        let mut matrix_plus_tail_payload = Vec::with_capacity(samples);
+        let mut matrix_plus_residual = Vec::with_capacity(samples);
+        for _ in 0..samples {
+            let mut x = rand_u256(&mut rng);
+            if x.is_zero() { x = U256::from(1u64); }
+            let mut u = p;
+            let mut v = x;
+            let mut a = smag_for_halfgcd_test(false, U512::from(1u64));
+            let mut b = smag_for_halfgcd_test(false, U512::ZERO);
+            let mut c = smag_for_halfgcd_test(false, U512::ZERO);
+            let mut d = smag_for_halfgcd_test(false, U512::from(1u64));
+            while !v.is_zero() && u256_bit_len(u).max(u256_bit_len(v)) > 128 {
+                let q = u / v;
+                let rem = u - q * v;
+                let na = c;
+                let nb = d;
+                let nc = signed_sub_scaled_for_halfgcd_test(a, q, c);
+                let nd = signed_sub_scaled_for_halfgcd_test(b, q, d);
+                u = v;
+                v = rem;
+                a = na;
+                b = nb;
+                c = nc;
+                d = nd;
+            }
+            let mb = [a, b, c, d]
+                .iter()
+                .map(|z| u512_bit_len_for_halfgcd_test(z.mag))
+                .sum::<usize>();
+            let rb = u256_bit_len(u) + u256_bit_len(v);
+            let mut tail_payload = 0usize;
+            let mut tu = u;
+            let mut tv = v;
+            while !tv.is_zero() {
+                let q = tu / tv;
+                tail_payload += u256_bit_len(q);
+                let rem = tu - q * tv;
+                tu = tv;
+                tv = rem;
+            }
+            matrix_bits.push(mb);
+            residual_bits.push(rb);
+            matrix_plus_residual.push(mb + rb);
+            matrix_plus_tail_payload.push(mb + tail_payload);
+        }
+        matrix_bits.sort_unstable();
+        residual_bits.sort_unstable();
+        matrix_plus_residual.sort_unstable();
+        matrix_plus_tail_payload.sort_unstable();
+        let p99 = samples * 99 / 100;
+        let matrix_p99 = matrix_bits[p99];
+        let residual_p99 = residual_bits[p99];
+        let matrix_residual_p99 = matrix_plus_residual[p99];
+        let matrix_tail_p99 = matrix_plus_tail_payload[p99];
+        eprintln!(
+            "half-GCD checkpoint: matrix_p99={matrix_p99}, residual_p99={residual_p99}, matrix+residual_p99={matrix_residual_p99}, matrix+tail_raw_p99={matrix_tail_p99}"
+        );
+        println!("METRIC halfgcd_matrix_bits_p99={matrix_p99}");
+        println!("METRIC halfgcd_residual_bits_p99={residual_p99}");
+        println!("METRIC halfgcd_matrix_residual_bits_p99={matrix_residual_p99}");
+        println!("METRIC halfgcd_matrix_tail_raw_bits_p99={matrix_tail_p99}");
+        assert!(matrix_p99 < 540, "first half-GCD matrix should be compact enough to be tempting");
+        assert!(matrix_residual_p99 > 760, "matrix plus live residual state exceeds 600 scratch");
+        assert!(matrix_tail_p99 > 680, "matrix plus even raw tail payload exceeds 600 scratch");
     }
 
     #[test]

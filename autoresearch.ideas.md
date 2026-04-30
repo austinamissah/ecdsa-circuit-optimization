@@ -1,5 +1,7 @@
 # Autoresearch Ideas Backlog
 
+- **Half-GCD matrix checkpoints are state-interesting but still miss 600 scratch with the tail charged.** `half_gcd_matrix_checkpoint_still_has_tail_history_problem` stops ordinary Euclid near sqrt(p). The first 2×2 transform is compact enough to be tempting (`halfgcd_matrix_bits_p99=524`), but the residual pair is another `256` bits (`matrix+residual_p99=769`) and even matrix plus raw tail quotient payload is `689` bits before self-delimiting/parser/cleanup. Recursive GCD remains an idea only if matrix application and tail cleanup are fused without keeping both objects.
+
 - **In-place variable multiply via measuring the old multiplier is just dense division.** `in_place_variable_multiply_cleanup_is_division_dense` models a hoped-for Strategy-E primitive: compute `t=a*b`, swap/keep `(a,t)`, then MBUC old `b`. The phase correction is `b=t/a`, and toy ANF is nearly full: `inplace_mul_cleanup_degree_n10=18/20`, `density=521064/1048576`. So a schoolbook-cost IMUL still needs a real quotient cleanup primitive; generic MBUC does not provide it.
 
 - **Curve membership itself is a dense oracle.** `curve_membership_oracle_itself_is_dense` measures the ANF of the x-support predicate `x^3+7 is a square`; toy secp-shaped fields give `curve_x_membership_degree_n14=14`, `density=8190/16384`. Therefore using "which predecessor is still on the curve?" as a Kaliski/old-point branch decoder needs a Legendre-symbol-like dense computation, not a free support check.
