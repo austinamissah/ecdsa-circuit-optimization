@@ -6961,6 +6961,63 @@ mod tests {
     }
 
     #[test]
+    fn w4_fixed_matrix_denominator_update_still_spends_selector_slack() {
+        // Next compact-plumbing candidate after the per-bit full-pair replay:
+        // assume the 4-step matrix is already selected for free and apply it as
+        // one scaled fixed-matrix replacement.  This is an optimistic lower
+        // bound for fixed-window denominator plumbing because it ignores QROM /
+        // coefficient selection and still uses old+new buffers.  Even this
+        // spends far more than the 14,964-CCX slack opened by the w=4 lowword
+        // selector oracle, so a viable selector needs a genuinely consumed or
+        // ratio-specific update rather than fixed-matrix pair replacement.
+        const W: usize = 4;
+        const WIDTH: usize = 274;
+        const WINDOWS: usize = 560 / W;
+        let mut costs = Vec::new();
+        let mut max_peak = 0usize;
+        let mut sampler = Sampler::new(b"by-w4-fixed-matrix-den-update-v1", SECP256K1_P);
+        for _ in 0..8 {
+            let x = sampler.next();
+            let mut delta = 1i64;
+            let mut f = SInt::from_u(SECP256K1_P);
+            let mut g = SInt::from_u(x);
+            for _ in 0..WINDOWS {
+                let f_low = low_signed_sint_for_streaming_test(f, W);
+                let g_low = low_signed_sint_for_streaming_test(g, W);
+                let (_, _, _, mtx) = jump_matrix_direct_lowword(W, W, delta, f_low, g_low);
+                let mut b = super::super::B::new();
+                emit_scaled_pair_update_with_cleanup_for_cost(&mut b, mtx, WIDTH, W);
+                costs.push(count_ccx(&b.ops));
+                max_peak = max_peak.max(b.peak_qubits as usize);
+                for _ in 0..W {
+                    divstep_sint_state(&mut delta, &mut f, &mut g);
+                }
+            }
+        }
+        costs.sort_unstable();
+        let mean_window = costs.iter().sum::<usize>() as f64 / costs.len() as f64;
+        let p90_window = costs[(costs.len() * 90) / 100];
+        let max_window = *costs.last().unwrap();
+        let compute_ccx = (mean_window * WINDOWS as f64).round() as usize;
+        let compute_uncompute_ccx = 2 * compute_ccx;
+        let w4_selector_gap_surplus = 14_964usize;
+        let compute_excess = compute_ccx - w4_selector_gap_surplus;
+        let roundtrip_excess = compute_uncompute_ccx - w4_selector_gap_surplus;
+        eprintln!(
+            "BY w4 fixed-matrix denominator update: mean_window={mean_window:.1}, p90={p90_window}, max={max_window}, compute={compute_ccx}, compute_excess={compute_excess}, peak={max_peak}q"
+        );
+        println!("METRIC scratch600_w4_fixed_matrix_mean_window_ccx={mean_window:.3}");
+        println!("METRIC scratch600_w4_fixed_matrix_p90_window_ccx={p90_window}");
+        println!("METRIC scratch600_w4_fixed_matrix_max_window_ccx={max_window}");
+        println!("METRIC scratch600_w4_fixed_matrix_compute_ccx={compute_ccx}");
+        println!("METRIC scratch600_w4_fixed_matrix_compute_uncompute_ccx={compute_uncompute_ccx}");
+        println!("METRIC scratch600_w4_fixed_matrix_compute_excess_ccx={compute_excess}");
+        println!("METRIC scratch600_w4_fixed_matrix_roundtrip_excess_ccx={roundtrip_excess}");
+        println!("METRIC scratch600_w4_fixed_matrix_peak_q={max_peak}");
+        assert!(compute_excess > 250_000, "fixed-matrix w4 denominator update might fit; revisit selector integration");
+    }
+
+    #[test]
     fn lowword_pattern_and_q_oracle_is_still_cheap_and_clean() {
         // Strengthen the lowword oracle into the consumed-window primitive:
         // sign-extend the W-bit low words into a slightly wider local simulator,
