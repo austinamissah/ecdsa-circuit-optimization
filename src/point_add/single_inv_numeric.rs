@@ -2429,6 +2429,109 @@ mod tests {
         smag_for_halfgcd_test(x.neg ^ q_neg, x.mag * q)
     }
 
+    fn usize_bit_len_for_payload_test(x: usize) -> usize {
+        if x == 0 { 1 } else { usize::BITS as usize - x.leading_zeros() as usize }
+    }
+
+    fn plusminus_odd_gcd_payload_for_divisor(x: U256, p: U256) -> (usize, usize, usize) {
+        // A from-scratch non-BY idea: strip powers of two from x, then run an
+        // ordered odd GCD where each step replaces (u>=v) by the ordered pair
+        // {v, (u-v)/2^k}.  Optimistically, the shift counts k are the only
+        // arithmetic payload.  Reversibility still needs the direction bit
+        // telling which ordered output component was v and which was the new
+        // difference; without it the predecessor is often ambiguous.
+        assert!(!x.is_zero());
+        let mut u = u512_from_u256_for_halfgcd_test(p);
+        let mut v = u512_from_u256_for_halfgcd_test(x);
+        let initial_twos = x.trailing_zeros() as usize;
+        v >>= initial_twos;
+        let mut shift_payload = usize_bit_len_for_payload_test(initial_twos);
+        let mut direction_payload = shift_payload;
+        let mut steps = 0usize;
+        if u < v {
+            core::mem::swap(&mut u, &mut v);
+        }
+        while u != v {
+            let mut d = u - v;
+            let k = d.trailing_zeros() as usize;
+            d >>= k;
+            let k_bits = usize_bit_len_for_payload_test(k);
+            shift_payload += k_bits;
+            direction_payload += k_bits;
+            if d != v {
+                direction_payload += 1;
+            }
+            steps += 1;
+            if v >= d {
+                u = v;
+                v = d;
+            } else {
+                u = d;
+            }
+        }
+        assert_eq!(u, U512::from(1u64));
+        (shift_payload, direction_payload, steps)
+    }
+
+    fn plusminus_k_only_reverse_ambiguity_for_toy(p: u16) -> (usize, usize) {
+        use std::collections::BTreeMap;
+        let mut seen: BTreeMap<(u16, u16, u8), u8> = BTreeMap::new();
+        let mut ambiguous: BTreeMap<(u16, u16, u8), bool> = BTreeMap::new();
+        let mut total = 0usize;
+        for x in 1..p {
+            let mut u = p as u32;
+            let mut v = (x as u32) >> x.trailing_zeros();
+            if u < v {
+                core::mem::swap(&mut u, &mut v);
+            }
+            while u != v {
+                let diff = u - v;
+                let k = diff.trailing_zeros();
+                let d = diff >> k;
+                let direction = if v >= d { 1u8 } else { 0u8 };
+                let key = (v.max(d) as u16, v.min(d) as u16, k as u8);
+                if let Some(&old) = seen.get(&key) {
+                    if old != direction {
+                        ambiguous.insert(key, true);
+                    }
+                } else {
+                    seen.insert(key, direction);
+                }
+                total += 1;
+                if v >= d {
+                    u = v;
+                    v = d;
+                } else {
+                    u = d;
+                }
+            }
+        }
+        let mut ambiguous_occurrences = 0usize;
+        for x in 1..p {
+            let mut u = p as u32;
+            let mut v = (x as u32) >> x.trailing_zeros();
+            if u < v {
+                core::mem::swap(&mut u, &mut v);
+            }
+            while u != v {
+                let diff = u - v;
+                let k = diff.trailing_zeros();
+                let d = diff >> k;
+                let key = (v.max(d) as u16, v.min(d) as u16, k as u8);
+                if ambiguous.contains_key(&key) {
+                    ambiguous_occurrences += 1;
+                }
+                if v >= d {
+                    u = v;
+                    v = d;
+                } else {
+                    u = d;
+                }
+            }
+        }
+        (ambiguous_occurrences, total)
+    }
+
     fn centered_euclid_abs_quotients_for_divisor(x: U256, p: U256) -> Vec<U512> {
         let mut u = smag_for_halfgcd_test(false, u512_from_u256_for_halfgcd_test(p));
         let mut v = smag_for_halfgcd_test(false, u512_from_u256_for_halfgcd_test(x));
@@ -2596,6 +2699,53 @@ mod tests {
         assert!(matrix_p99 < 540, "first half-GCD matrix should be compact enough to be tempting");
         assert!(matrix_residual_p99 > 760, "matrix plus live residual state exceeds 600 scratch");
         assert!(matrix_tail_p99 > 680, "matrix plus even raw tail payload exceeds 600 scratch");
+    }
+
+    #[test]
+    fn plusminus_odd_gcd_shift_stream_fits_only_if_direction_is_free() {
+        // Build a non-BY DIV candidate from first principles: keep only odd
+        // residuals and replace (u>=v) by {v, (u-v)/2^k}.  The k stream is much
+        // smaller than binary-GCD branch history and, by itself, would fit the
+        // 600-scratch model.  But the ordered poststate does not say which row
+        // was v and which row was the shifted difference.  One direction bit per
+        // nontrivial step is the exact reversible payload, and that alone moves
+        // the p99 scratch estimate back above 600 before delimiters or phase
+        // cleanup are charged.
+        let p = SECP256K1_P;
+        let samples = 4096usize;
+        let mut rng = 0x9175_6d1f_f00d_cafeu64;
+        let mut shift_payloads = Vec::with_capacity(samples);
+        let mut exact_payloads = Vec::with_capacity(samples);
+        let mut steps = Vec::with_capacity(samples);
+        for _ in 0..samples {
+            let mut x = rand_u256(&mut rng);
+            if x.is_zero() { x = U256::from(1u64); }
+            let (shift_payload, exact_payload, step_count) = plusminus_odd_gcd_payload_for_divisor(x, p);
+            shift_payloads.push(shift_payload);
+            exact_payloads.push(exact_payload);
+            steps.push(step_count);
+        }
+        shift_payloads.sort_unstable();
+        exact_payloads.sort_unstable();
+        steps.sort_unstable();
+        let p99 = samples * 99 / 100;
+        let shift_p99 = shift_payloads[p99];
+        let exact_p99 = exact_payloads[p99];
+        let steps_p99 = steps[p99];
+        let (ambiguous, total) = plusminus_k_only_reverse_ambiguity_for_toy(4093);
+        let ambiguity_frac = ambiguous as f64 / total as f64;
+        eprintln!(
+            "plus-minus odd GCD stream: shift_p99={shift_p99}, exact_p99={exact_p99}, steps_p99={steps_p99}, k-only ambiguity n12={ambiguous}/{total} ({ambiguity_frac:.3})"
+        );
+        println!("METRIC plusminus_shift_payload_p99={shift_p99}");
+        println!("METRIC plusminus_shift_scratch_p99={}", 256 + shift_p99);
+        println!("METRIC plusminus_exact_payload_p99={exact_p99}");
+        println!("METRIC plusminus_exact_scratch_p99={}", 256 + exact_p99);
+        println!("METRIC plusminus_steps_p99={steps_p99}");
+        println!("METRIC plusminus_k_only_ambiguity_frac_n12={ambiguity_frac:.6}");
+        assert!(256 + shift_p99 < 600, "k-only plus-minus stream should be tempting");
+        assert!(ambiguity_frac > 0.25, "k-only reverse should not determine the direction bit");
+        assert!(256 + exact_p99 > 730, "exact direction history should exceed the 600-scratch target");
     }
 
     #[test]
