@@ -3436,6 +3436,31 @@ mod tests {
         local_count_ccx_for_plusminus_cost(&b.ops[start..])
     }
 
+    fn trailing_zero_unary_generator_cost_for_plusminus(width: usize) -> usize {
+        // Reversible-ish prefix-zero generator floor.  active[j] means all
+        // lower bits were zero; unary[j] = active[j] & !d[j].  We count forward
+        // prefix plus a symmetric cleanup pass after unary bits are copied/used.
+        let mut b = super::super::B::new();
+        let d = b.alloc_qubits(width);
+        let active = b.alloc_qubits(width + 1);
+        let unary = b.alloc_qubits(width);
+        b.x(active[0]);
+        let start = b.ops.len();
+        for j in 0..width {
+            b.x(d[j]);
+            b.ccx(active[j], d[j], unary[j]);
+            b.ccx(active[j], d[j], active[j + 1]);
+            b.x(d[j]);
+        }
+        for j in (0..width).rev() {
+            b.x(d[j]);
+            b.ccx(active[j], d[j], active[j + 1]);
+            b.ccx(active[j], d[j], unary[j]);
+            b.x(d[j]);
+        }
+        local_count_ccx_for_plusminus_cost(&b.ops[start..])
+    }
+
     fn controlled_left_shift_cost_for_plusminus(width: usize) -> usize {
         // Cost a reversible controlled left-shift by one with one clean low-bit
         // placeholder.  A production signed representation must prove the top
@@ -3524,6 +3549,48 @@ mod tests {
         println!("METRIC plusminus_scaled_integer_projected_p99_toffoli={projected_p99}");
         println!("METRIC plusminus_scaled_integer_gap_p99_to_2700k={gap_p99}");
         assert!(gap_p99 < 0, "scaled-integer plus-minus floor is not SOTA-shaped before cleanup tax");
+    }
+
+    #[test]
+    fn plusminus_trailing_zero_unary_generator_tax_still_fits() {
+        // Charge a concrete prefix-zero unary k generator for each plus-minus
+        // step.  This is the cost of discovering k from d=u-v, separate from
+        // the scaled coefficient add/shift floor.  Even a forward+cleanup prefix
+        // scan should be much smaller than the modular-control tax if the route
+        // is viable.
+        const WIDTH: usize = 256;
+        let gen_ccx = trailing_zero_unary_generator_cost_for_plusminus(WIDTH);
+        let cint_add_ccx = controlled_integer_add_cost_for_plusminus(257);
+        let cshift_ccx = controlled_left_shift_cost_for_plusminus(257);
+        let p = SECP256K1_P;
+        let samples = 8192usize;
+        let mut rng = 0x7a11_1e20_6635_c0deu64;
+        let mut one_div = Vec::with_capacity(samples);
+        for _ in 0..samples {
+            let mut x = rand_u256(&mut rng);
+            if x.is_zero() { x = U256::from(1u64); }
+            let ks = plusminus_k_sequence_for_divisor(x, p);
+            let unary: usize = ks.iter().sum();
+            let steps = ks.len();
+            one_div.push(2 * (steps * cint_add_ccx + unary * cshift_ccx) + steps * gen_ccx);
+        }
+        one_div.sort_unstable();
+        let p99 = samples * 99 / 100;
+        let one_div_p99 = one_div[p99];
+        let one_div_max = *one_div.last().unwrap();
+        let two_div_p99 = 2 * one_div_p99;
+        let projected_p99 = 642_716usize + two_div_p99;
+        let gap_p99 = projected_p99 as isize - 2_700_000isize;
+        eprintln!(
+            "plus-minus unary generator tax: gen_ccx={gen_ccx}, one_div_p99={one_div_p99}, projected_p99={projected_p99}, gap_p99={gap_p99}"
+        );
+        println!("METRIC plusminus_unary_generator_ccx={gen_ccx}");
+        println!("METRIC plusminus_unary_generator_one_div_p99_ccx={one_div_p99}");
+        println!("METRIC plusminus_unary_generator_one_div_max_ccx={one_div_max}");
+        println!("METRIC plusminus_unary_generator_two_div_p99_ccx={two_div_p99}");
+        println!("METRIC plusminus_unary_generator_projected_p99_toffoli={projected_p99}");
+        println!("METRIC plusminus_unary_generator_gap_p99_to_2700k={gap_p99}");
+        assert!(gap_p99 < 0, "plus-minus unary generator tax erases SOTA margin");
     }
 
     fn smag_shl_for_plusminus_test(x: SignedMagU512ForHalfGcdTest, k: usize) -> SignedMagU512ForHalfGcdTest {
