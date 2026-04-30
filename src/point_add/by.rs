@@ -2731,9 +2731,18 @@ mod tests {
             max_proxy = max_proxy.max(proxy);
         }
         let mean_proxy = total_proxy / samples as f64;
+        let mean_proxy_rounded = mean_proxy.round() as usize;
+        let max_proxy_rounded = max_proxy.round() as usize;
+        let replay_body_projection = 2_645_196usize;
+        let projected_toffoli = replay_body_projection + mean_proxy_rounded;
+        let gap_to_2700k = projected_toffoli as isize - 2_700_000isize;
         eprintln!(
-            "BY ratio serial A-inverse proxy: mean_t2_over2={mean_proxy:.0}, max_t2_over2={max_proxy:.0}"
+            "BY ratio serial A-inverse proxy: mean_t2_over2={mean_proxy:.0}, max_t2_over2={max_proxy:.0}, projected_toffoli={projected_toffoli}, gap={gap_to_2700k}"
         );
+        println!("METRIC scratch600_full_ratio_a_serial_proxy_mean_ccx={mean_proxy_rounded}");
+        println!("METRIC scratch600_full_ratio_a_serial_proxy_max_ccx={max_proxy_rounded}");
+        println!("METRIC scratch600_full_ratio_projected_toffoli={projected_toffoli}");
+        println!("METRIC scratch600_full_ratio_gap_to_2700k={gap_to_2700k}");
         assert!(mean_proxy > 2_000_000.0);
     }
 
