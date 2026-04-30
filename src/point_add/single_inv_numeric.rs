@@ -3071,6 +3071,84 @@ mod tests {
     }
 
     #[test]
+    fn plusminus_offset_lane_representation_width_pressure() {
+        // If physical shifts are too expensive, a natural escape is to keep a
+        // per-lane binary exponent/offset and align only when arithmetic needs
+        // it.  This model tracks the exact plus-minus denominator trace and the
+        // implied raw widths/offset deltas if denominators were stored as
+        // raw*2^-e instead of physically shifted every step.
+        let p = SECP256K1_P;
+        let samples = 8192usize;
+        let mut rng = 0x0ff5_e771_6635_5eedu64;
+        let mut max_raw_widths = Vec::with_capacity(samples);
+        let mut total_aligns = Vec::with_capacity(samples);
+        let mut max_aligns = Vec::with_capacity(samples);
+        for _ in 0..samples {
+            let mut x = rand_u256(&mut rng);
+            if x.is_zero() { x = U256::from(1u64); }
+            let mut u = u512_from_u256_for_halfgcd_test(p);
+            let mut v = u512_from_u256_for_halfgcd_test(x);
+            let initial_twos = x.trailing_zeros() as usize;
+            v >>= initial_twos;
+            let (mut eu, mut ev) = (0usize, 0usize);
+            let mut max_raw = 0usize;
+            let mut total_align = 0usize;
+            let mut max_align = 0usize;
+            if u < v {
+                core::mem::swap(&mut u, &mut v);
+                core::mem::swap(&mut eu, &mut ev);
+            }
+            while u != v {
+                max_raw = max_raw
+                    .max(u512_bit_len_for_halfgcd_test(u) + eu)
+                    .max(u512_bit_len_for_halfgcd_test(v) + ev);
+                let align = eu.abs_diff(ev);
+                total_align += align;
+                max_align = max_align.max(align);
+                let mut d = u - v;
+                let k = d.trailing_zeros() as usize;
+                d >>= k;
+                let e_d = eu.max(ev) + k;
+                if d < v {
+                    u = v;
+                    v = d;
+                    eu = ev;
+                    ev = e_d;
+                } else {
+                    u = d;
+                    eu = e_d;
+                }
+            }
+            max_raw = max_raw
+                .max(u512_bit_len_for_halfgcd_test(u) + eu)
+                .max(u512_bit_len_for_halfgcd_test(v) + ev);
+            max_raw_widths.push(max_raw);
+            total_aligns.push(total_align);
+            max_aligns.push(max_align);
+        }
+        max_raw_widths.sort_unstable();
+        total_aligns.sort_unstable();
+        max_aligns.sort_unstable();
+        let p99 = samples * 99 / 100;
+        let raw_p99 = max_raw_widths[p99];
+        let raw_max = *max_raw_widths.last().unwrap();
+        let total_align_p99 = total_aligns[p99];
+        let total_align_max = *total_aligns.last().unwrap();
+        let max_align_p99 = max_aligns[p99];
+        let max_align_max = *max_aligns.last().unwrap();
+        let over_257_max = raw_max as isize - 257isize;
+        eprintln!("plus-minus offset denominator representation: raw_width_p99={raw_p99}, raw_width_max={raw_max}, over257_max={over_257_max}, total_align_p99={total_align_p99}, total_align_max={total_align_max}, max_align_p99={max_align_p99}, max_align_max={max_align_max}");
+        println!("METRIC plusminus_offset_den_raw_width_p99={raw_p99}");
+        println!("METRIC plusminus_offset_den_raw_width_max={raw_max}");
+        println!("METRIC plusminus_offset_den_over257_max={over_257_max}");
+        println!("METRIC plusminus_offset_den_total_align_p99={total_align_p99}");
+        println!("METRIC plusminus_offset_den_total_align_max={total_align_max}");
+        println!("METRIC plusminus_offset_den_max_align_p99={max_align_p99}");
+        println!("METRIC plusminus_offset_den_max_align_max={max_align_max}");
+        assert!(over_257_max > 0, "offset denominator lanes fit 257 bits; revisit relabel strategy");
+    }
+
+    #[test]
     fn plusminus_barrel_step_budget_kills_naive_physical_integration() {
         // The barrel repair fixes the W^2 bug but still charges two variable
         // shifts plus unary->binary conversion per step.  Before wiring 257-bit
