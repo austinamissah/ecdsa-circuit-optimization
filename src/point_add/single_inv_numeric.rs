@@ -2975,6 +2975,53 @@ mod tests {
     }
 
     #[test]
+    fn plusminus_raw_k_live_x_parser_recompute_is_gate_dead() {
+        // Last live-parser objection for the plus-minus stream: if raw k bits
+        // fit only without delimiters, maybe a parser recomputes the odd-GCD
+        // prefix from the live denominator around each use.  This optimistic
+        // bitlength-width proxy is even larger than for centered Euclid; simple
+        // prefix recomputation is not the missing raw parser.
+        let p = SECP256K1_P;
+        let samples = 1024usize;
+        let mut rng = 0x91a7_600d_11fe_c0deu64;
+        let mut weights = Vec::with_capacity(samples);
+        for _ in 0..samples {
+            let mut x = rand_u256(&mut rng);
+            if x.is_zero() { x = U256::from(1u64); }
+            let mut u = u512_from_u256_for_halfgcd_test(p);
+            let mut v = u512_from_u256_for_halfgcd_test(x);
+            let initial_twos = x.trailing_zeros() as usize;
+            v >>= initial_twos;
+            if u < v {
+                core::mem::swap(&mut u, &mut v);
+            }
+            let mut prefix = usize_bit_len_for_payload_test(initial_twos) * 256usize;
+            let mut total = 0usize;
+            while u != v {
+                let mut d = u - v;
+                let k = d.trailing_zeros() as usize;
+                prefix += usize_bit_len_for_payload_test(k) * u512_bit_len_for_halfgcd_test(u).max(1);
+                total += 2 * prefix;
+                d >>= k;
+                if v >= d {
+                    u = v;
+                    v = d;
+                } else {
+                    u = d;
+                }
+            }
+            weights.push(total);
+        }
+        weights.sort_unstable();
+        let mean = weights.iter().sum::<usize>() as f64 / samples as f64;
+        let p99 = weights[samples * 99 / 100];
+        eprintln!("plus-minus raw-k live-x parser recompute weight: mean={mean:.1}, p99={p99}");
+        println!("METRIC plusminus_kseq_live_recompute_weight_mean={mean:.3}");
+        println!("METRIC plusminus_kseq_live_recompute_weight_p99={p99}");
+        assert!(mean > 8_000_000.0);
+    }
+
+    #[test]
     fn plusminus_raw_k_rank_decoder_is_dense() {
         // The clever rescue for plus-minus is to concatenate raw binary k values
         // and store only a tiny rank among the valid parses.  Information-wise
