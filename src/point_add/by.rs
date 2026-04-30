@@ -6919,6 +6919,48 @@ mod tests {
     }
 
     #[test]
+    fn w4_lowword_selector_naive_full_pair_plumbing_is_too_expensive() {
+        // The w=4 lowword oracle+decoder closes the old selector-margin gap
+        // only if the missing full-denominator/selector state update costs
+        // almost nothing.  Charge the naive exact plumbing: update the signed
+        // full-width denominator pair for the same four divsteps under already
+        // generated controls.  This is the obvious reversible state source for
+        // subsequent lowword windows, and it immediately spends far more than
+        // the ~15k slack created by the w=4 selector oracle.  Therefore the
+        // w=4 result is not an integration plan by itself; it needs a compact
+        // ratio/carry or fixed-matrix state update.
+        const W: usize = 4;
+        const WIDTH: usize = 274;
+        let mut b = super::super::B::new();
+        let f = b.alloc_qubits(WIDTH);
+        let g = b.alloc_qubits(WIDTH);
+        let odd = b.alloc_qubits(W);
+        let a = b.alloc_qubits(W);
+        let start = b.ops.len();
+        for i in 0..W {
+            emit_2adic_denominator_step_with_controls_for_test(&mut b, &f, &g, odd[i], a[i]);
+        }
+        let window_ccx = count_ccx(&b.ops[start..]);
+        let windows = 560 / W;
+        let compute_ccx = window_ccx * windows;
+        let compute_uncompute_ccx = 2 * compute_ccx;
+        let w4_selector_gap_surplus = 14_964usize; // projected 2.685036M is this much under 2.7M.
+        let compute_excess = compute_ccx - w4_selector_gap_surplus;
+        let roundtrip_excess = compute_uncompute_ccx - w4_selector_gap_surplus;
+        eprintln!(
+            "BY w4 naive full-pair plumbing: window_ccx={window_ccx}, windows={windows}, compute={compute_ccx}, compute_uncompute={compute_uncompute_ccx}, compute_excess={compute_excess}, peak={}q",
+            b.peak_qubits
+        );
+        println!("METRIC scratch600_w4_full_pair_window_ccx={window_ccx}");
+        println!("METRIC scratch600_w4_full_pair_compute_ccx={compute_ccx}");
+        println!("METRIC scratch600_w4_full_pair_compute_uncompute_ccx={compute_uncompute_ccx}");
+        println!("METRIC scratch600_w4_full_pair_compute_excess_ccx={compute_excess}");
+        println!("METRIC scratch600_w4_full_pair_roundtrip_excess_ccx={roundtrip_excess}");
+        println!("METRIC scratch600_w4_full_pair_peak_q={}", b.peak_qubits);
+        assert!(compute_excess > 800_000, "naive full-pair plumbing might fit the w4 slack; revisit BY integration");
+    }
+
+    #[test]
     fn lowword_pattern_and_q_oracle_is_still_cheap_and_clean() {
         // Strengthen the lowword oracle into the consumed-window primitive:
         // sign-extend the W-bit low words into a slightly wider local simulator,
