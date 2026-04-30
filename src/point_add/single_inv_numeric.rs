@@ -5122,6 +5122,56 @@ mod tests {
     }
 
     #[test]
+    fn plusminus_scaled_public_lane_envelope_with_direction_bits() {
+        // The in-place circuit integration found that the ordering bit cannot
+        // be uncomputed after swapping the compared lanes unless a reverse
+        // local-recovery circuit is supplied.  Charge one direction bit per
+        // plus-minus step as history and ask whether the public lane slack still
+        // fits the Google 663 scratch envelope.
+        let p = SECP256K1_P;
+        let samples = 8192usize;
+        let mut rng = 0xd1ec_6635_b17d_5eedu64;
+        let mut max_lane_by_step: Vec<[usize; 4]> = Vec::new();
+        let mut max_hist_by_step: Vec<usize> = Vec::new();
+        for _ in 0..samples {
+            let mut x = rand_u256(&mut rng);
+            if x.is_zero() { x = U256::from(1u64); }
+            for (i, (lanes, hist)) in plusminus_scaled_lane_history_trace_for_divisor(x, p).into_iter().enumerate() {
+                if i == max_lane_by_step.len() {
+                    max_lane_by_step.push([0; 4]);
+                    max_hist_by_step.push(0);
+                }
+                for j in 0..4 {
+                    max_lane_by_step[i][j] = max_lane_by_step[i][j].max(lanes[j]);
+                }
+                max_hist_by_step[i] = max_hist_by_step[i].max(hist + i + 1);
+            }
+        }
+        let mut total_deficit = 0isize;
+        let mut worst_step = 0usize;
+        for i in 0..max_lane_by_step.len() {
+            let slack_sum: isize = max_lane_by_step[i].iter().map(|&w| 256isize - w as isize).sum();
+            let d_total = max_hist_by_step[i] as isize - slack_sum;
+            if d_total > total_deficit {
+                total_deficit = d_total;
+                worst_step = i;
+            }
+        }
+        let total_deficit_u = total_deficit.max(0) as usize;
+        let scratch = 512 + total_deficit_u;
+        let over_google = scratch as isize - 663isize;
+        eprintln!(
+            "plus-minus lane slack with direction bits: steps={}, total_deficit={total_deficit_u}, scratch={scratch}, over_google={over_google}, worst_step={worst_step}, hist_dir_at_worst={}",
+            max_lane_by_step.len(), max_hist_by_step[worst_step]
+        );
+        println!("METRIC plusminus_scaled_dir_slack_steps={}", max_lane_by_step.len());
+        println!("METRIC plusminus_scaled_dir_slack_total_deficit={total_deficit_u}");
+        println!("METRIC plusminus_scaled_dir_slack_scratch={scratch}");
+        println!("METRIC plusminus_scaled_dir_slack_over_google_bits={over_google}");
+        assert!(over_google > 0 && over_google < 32, "unexpected direction-bit slack result");
+    }
+
+    #[test]
     fn plusminus_scaled_public_packing_map_moves_are_clifford_only() {
         // Build a deterministic slot map from the lane envelope: at each public
         // step, history bit j lives in the j-th available high slack slot across
