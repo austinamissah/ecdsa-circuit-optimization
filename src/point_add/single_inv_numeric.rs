@@ -3804,6 +3804,62 @@ mod tests {
         assert!(gap_p99 < 0, "Solinas history-carry scale correction does not preserve plus-minus margin");
     }
 
+    #[test]
+    fn plusminus_solinas_scale_stress_max_stays_below_google() {
+        // Larger deterministic stress for the all-in plus-minus cost model:
+        // scaled integer add/shift, unary generator, ordering, and Solinas
+        // history-carry scale correction.  Still not a proof, but checks that
+        // p999/max tails are not close to the 2.7M boundary.
+        let p = SECP256K1_P;
+        let samples = 32_768usize;
+        let mut rng = 0x51a5_6635_2026_0001u64;
+        let mut traces = Vec::with_capacity(samples);
+        let mut max_scale = 0usize;
+        for _ in 0..samples {
+            let mut x = rand_u256(&mut rng);
+            if x.is_zero() { x = U256::from(1u64); }
+            let ks = plusminus_k_sequence_for_divisor(x, p);
+            let unary: usize = ks.iter().sum();
+            let steps = ks.len();
+            max_scale = max_scale.max(unary);
+            traces.push((unary, steps));
+        }
+        let (scale_dp, chunk_dp) = solinas_history_carry_scale_dp_for_plusminus(max_scale);
+        let cmp_ccx = compare_cost_for_plusminus(256);
+        let cswap_ccx = cswap_lanes_cost_for_plusminus(&[256, 257]);
+        let gen_ccx = trailing_zero_unary_generator_cost_for_plusminus(256);
+        let cint_add_ccx = controlled_integer_add_cost_for_plusminus(257);
+        let cshift_ccx = controlled_left_shift_cost_for_plusminus(257);
+        let mut projected = Vec::with_capacity(samples);
+        let mut chunks = Vec::with_capacity(samples);
+        for (unary, steps) in traces {
+            let step_tax = gen_ccx + cmp_ccx + cswap_ccx;
+            let one_div = 2 * (steps * cint_add_ccx + unary * cshift_ccx) + steps * step_tax + scale_dp[unary];
+            projected.push(642_716usize + 2 * one_div);
+            chunks.push(chunk_dp[unary]);
+        }
+        projected.sort_unstable();
+        chunks.sort_unstable();
+        let p99 = samples * 99 / 100;
+        let p999 = samples * 999 / 1000;
+        let projected_p99 = projected[p99];
+        let projected_p999 = projected[p999];
+        let projected_max = *projected.last().unwrap();
+        let gap_max = projected_max as isize - 2_700_000isize;
+        let chunks_max = *chunks.last().unwrap();
+        eprintln!(
+            "plus-minus Solinas all-in stress: samples={samples}, max_scale={max_scale}, projected_p99={projected_p99}, projected_p999={projected_p999}, projected_max={projected_max}, gap_max={gap_max}, chunks_max={chunks_max}"
+        );
+        println!("METRIC plusminus_solinas_stress_samples={samples}");
+        println!("METRIC plusminus_solinas_stress_max_scale={max_scale}");
+        println!("METRIC plusminus_solinas_stress_projected_p99={projected_p99}");
+        println!("METRIC plusminus_solinas_stress_projected_p999={projected_p999}");
+        println!("METRIC plusminus_solinas_stress_projected_max={projected_max}");
+        println!("METRIC plusminus_solinas_stress_gap_max_to_2700k={gap_max}");
+        println!("METRIC plusminus_solinas_stress_chunks_max={chunks_max}");
+        assert!(gap_max < 0, "sample max exceeds Google target in plus-minus Solinas model");
+    }
+
     fn smag_shl_for_plusminus_test(x: SignedMagU512ForHalfGcdTest, k: usize) -> SignedMagU512ForHalfGcdTest {
         smag_for_halfgcd_test(x.neg, x.mag << k)
     }
