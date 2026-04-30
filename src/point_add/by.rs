@@ -951,6 +951,77 @@ mod tests {
         assert!(fail_550 as f64 / samples as f64 <= 0.01, "550-step approximate cutoff exceeded 1% on sample");
     }
 
+    #[test]
+    fn approximate_one_percent_cutoff_does_not_fund_lowword_by_near_miss() {
+        // User-approved approximation budget: up to ~1% classical wrong
+        // outputs may be tolerable, but phase and ancilla cleanup must remain
+        // exact.  A fixed shorter BY cap is compatible with that: the circuit
+        // can still be a clean reversible fixed-length circuit, and the only
+        // failures are non-converged denominators.  Check whether this tolerance
+        // by itself closes the old fully charged scratch600 BY near-miss.
+        let p = SECP256K1_P;
+        let samples = 50_000usize;
+        let mut sampler = Sampler::new(b"by-approx-1pct-budget-v1", p);
+        let mut iters = Vec::with_capacity(samples);
+        for _ in 0..samples {
+            let x = sampler.next();
+            let run = run_divsteps(x, p, safegcd_iters(256));
+            assert!(run.converged);
+            iters.push(run.iters_done);
+        }
+        iters.sort_unstable();
+        let fail_count = |cutoff: usize| -> usize { iters.iter().filter(|&&k| k > cutoff).count() };
+        let fail_ppm = |cutoff: usize| -> usize { fail_count(cutoff) * 1_000_000 / samples };
+        let mut best_cutoff = 560usize;
+        for cutoff in 520usize..=560 {
+            if fail_count(cutoff) * 100 <= samples {
+                best_cutoff = cutoff;
+                break;
+            }
+        }
+        let mut aligned_cutoff = 560usize;
+        for cutoff in (16usize..=560).step_by(16) {
+            if fail_count(cutoff) * 100 <= samples {
+                aligned_cutoff = cutoff;
+                break;
+            }
+        }
+
+        // Fully charged old low-scratch BY accounting decomposes exactly as:
+        // scaffold_after_div + streamed replay + pattern-delta decoder +
+        // lowword pattern oracle = 642716 + 3308*K + 111*K + 372*K.
+        // K=560 reproduces the recorded 2,765,676 near-miss.  The any-cutoff
+        // number grants a partial final window; the aligned number requires
+        // whole 16-step windows.
+        let scaffold_after_div = 642_716i64;
+        let replay_per_step = 3_308i64;
+        let decoder_per_step = 62_160i64 / 560;
+        let lowword_selector_per_step = 208_320i64 / 560;
+        let projected = |k: usize| -> i64 {
+            scaffold_after_div + (replay_per_step + decoder_per_step + lowword_selector_per_step) * k as i64
+        };
+        let best_projected = projected(best_cutoff);
+        let aligned_projected = projected(aligned_cutoff);
+        let best_gap = best_projected - 2_700_000;
+        let aligned_gap = aligned_projected - 2_700_000;
+        println!("METRIC by_approx_1pct_best_cutoff_steps={best_cutoff}");
+        println!("METRIC by_approx_1pct_best_fail_ppm={}", fail_ppm(best_cutoff));
+        println!("METRIC by_approx_1pct_best_projected_gap_ccx={best_gap}");
+        println!("METRIC by_approx_1pct_aligned_cutoff_steps={aligned_cutoff}");
+        println!("METRIC by_approx_1pct_aligned_projected_gap_ccx={aligned_gap}");
+        println!("METRIC by_approx_fail544_ppm={}", fail_ppm(544));
+        println!("METRIC by_approx_fail550_ppm={}", fail_ppm(550));
+        println!("METRIC by_approx_fail560_ppm={}", fail_ppm(560));
+        eprintln!(
+            "BY 1% approximate cutoff budget: best_cutoff={best_cutoff}, fail_ppm={}, projected={best_projected}, gap={best_gap}; aligned_cutoff={aligned_cutoff}, aligned_gap={aligned_gap}; fail544={}ppm fail550={}ppm fail560={}ppm",
+            fail_ppm(best_cutoff),
+            fail_ppm(544),
+            fail_ppm(550),
+            fail_ppm(560)
+        );
+        assert!(fail_ppm(best_cutoff) <= 10_000, "selected cutoff violates 1% classical-mismatch budget");
+    }
+
     fn two_inv_pow(p: U256, iters: usize) -> U256 {
         let two_inv = (p.wrapping_add(U256::from(1))) >> 1;
         let mut acc = U256::from(1);

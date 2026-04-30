@@ -44,7 +44,9 @@ They formalize MBUC for adders and modular arithmetic and report roughly 10--15%
 
 ### Gidney 2025 factoring / truncated residue arithmetic (`arXiv:2505.15917`)
 
-Very relevant philosophically for low-qubit/high-approximation arithmetic, but it relies on approximate modular deviation and masked/truncated residues. Our current benchmark requires exact point-add correctness plus phase/ancilla cleanliness, so this cannot be imported directly. It reinforces the lesson that public low-qubit arithmetic often buys space with approximation or very large Toffoli counts.
+Very relevant philosophically for low-qubit/high-approximation arithmetic. The concrete mechanism is: convert modular exponentiation into residue arithmetic; choose the residue modulus product `L` with small modular deviation; truncate accumulation to `f=O(log log N)` high bits; and use superposition masking so the unmeasured approximation error does not need to be uncomputed. It also highlights two local circuit ideas we already care about: deferring/merging phase-correction tasks, and preferring subtraction-style modular adders where underflow is a live flag.
+
+Direct import caveat: secp256k1 point-add is not period finding, so there is no obvious analogue of the output mask that hides the low/truncated error while still producing a useful table-add result. The user's current tolerance relaxes classical correctness to about `1%` mismatches, but phase cleanliness and ancilla cleanup remain mandatory. Therefore the paper is now actionable mainly as a filter for **clean fixed-circuit approximate controls** (e.g. shorter fixed BY/Kaliski caps or truncated branch generators): classical nonconvergence may be acceptable, but no dirty approximation residue may remain entangled. It is not a recipe for dropping low bits from the affine output or measuring away cleanup garbage.
 
 ### Chevignard-Fouque-Schrottenloher 2026 ePrint 2026/280
 
