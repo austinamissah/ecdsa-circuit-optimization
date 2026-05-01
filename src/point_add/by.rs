@@ -4653,6 +4653,36 @@ mod tests {
     }
 
     #[test]
+    fn by_fixed_window_three_million_budget_still_misses_with_current_arithmetic() {
+        // Relaxing the gate target from 2.7M to 3.0M does not make the known
+        // BY fixed-window denominator object safe.  With two centered 873.6k
+        // replays and the deleted-Kaliski scaffold, the two denominator windows
+        // can spend about 13.4k CCX/window.  The current fixed-window arithmetic
+        // misses even when m/q history is granted for free.
+        let target_3m = 3_000_000.0;
+        let two_replay_scaffold = 285_766.0;
+        let centered_replay = 873_600.0;
+        let windows = 36.0;
+        let budget_per_window = (target_3m - two_replay_scaffold - 2.0 * centered_replay) / (2.0 * windows);
+        let free_mq_mean = 18_138.583;
+        let last_shot_mean = 20_323.5;
+        let free_mq_projected = two_replay_scaffold + 2.0 * centered_replay + 2.0 * windows * free_mq_mean;
+        let last_shot_projected = two_replay_scaffold + 2.0 * centered_replay + 2.0 * windows * last_shot_mean;
+        let free_mq_gap = free_mq_projected - target_3m;
+        let last_shot_gap = last_shot_projected - target_3m;
+        let needed_free_mq_reduction = free_mq_mean - budget_per_window;
+        println!("METRIC by_3m_fixed_window_budget_per_window_ccx={budget_per_window:.3}");
+        println!("METRIC by_3m_free_mq_projected_gap_ccx={free_mq_gap:.3}");
+        println!("METRIC by_3m_last_shot_projected_gap_ccx={last_shot_gap:.3}");
+        println!("METRIC by_3m_free_mq_needed_reduction_per_window_ccx={needed_free_mq_reduction:.3}");
+        eprintln!(
+            "BY 3M fixed-window budget: budget_per_window={budget_per_window:.1}, free_mq_projected={free_mq_projected:.0} gap={free_mq_gap:.0}, last_shot_projected={last_shot_projected:.0} gap={last_shot_gap:.0}"
+        );
+        assert!(free_mq_gap > 300_000.0, "free m/q fixed-window arithmetic is close enough to revisit for 3M");
+        assert!(needed_free_mq_reduction > 4_000.0, "only a small per-window reduction is needed; try optimizing fixed-window arithmetic");
+    }
+
+    #[test]
     fn controlled_dirty_qoffset_adder_small_basis_check() {
         let n = 8usize;
         let mask = (1u64 << n) - 1;

@@ -100,7 +100,8 @@ naive full-pair plumbing excess ~= 903,996 CCX
 fixed-matrix plumbing excess ~= 306,178 CCX
 full-ratio A-inverse projection ~= 9,952,686 CCX
 consumed-denominator reverse ambiguity: w4=48 patterns, w16=589,824 patterns
-last fixed-window denominator object ~= 20,323 CCX/window mean, about 2x target
+last fixed-window denominator object ~= 20,323 CCX/window mean, about 2x 2.7M target
+relaxed 3M fixed-window budget ~= 13,431 CCX/window; free-m/q body still +338,944, last-shot body +496,258
 ```
 
 **BY is not dead in principle**, but it should only be revived for one specific breakthrough:
