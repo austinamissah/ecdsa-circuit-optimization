@@ -8201,6 +8201,48 @@ mod tests {
     }
 
     #[test]
+    fn centered_euclid_current_qbit_primitives_miss_relaxed_3m_budget() {
+        // Correct the restoring-subtract opening against primitives we actually
+        // have.  With a generic barrel, the centered extractor can afford only
+        // about 2.5n CCX per quotient payload bit.  Separate compare+masked-sub
+        // is ~5n, and trial subtract plus controlled add-back is still ~4n with
+        // current quantum-controlled add primitives.  Therefore the route needs
+        // a new fused borrow-exposing subtract; existing adders do not suffice.
+        let payload_p99 = 337usize;
+        let count_p99 = 119usize;
+        let scaffold_after_div = 642_716isize;
+        let per_qbit_replay_ccx = 587usize;
+        let coeff_replay_per_div = payload_p99 * per_qbit_replay_ccx;
+        let barrel_and_scan = count_p99 * (256usize * 8usize + 256usize);
+        let extraction_oneway_budget = (((3_000_000isize - scaffold_after_div) / 2) as isize
+            - coeff_replay_per_div as isize) / 2;
+        let affordable_per_payload_bit = (extraction_oneway_budget - barrel_and_scan as isize) as f64
+            / payload_p99 as f64;
+        let gap_for = |per_payload_bit: usize| -> isize {
+            let oneway = payload_p99 * per_payload_bit + barrel_and_scan;
+            let one_div = coeff_replay_per_div + 2 * oneway;
+            scaffold_after_div + 2 * one_div as isize - 3_000_000isize
+        };
+        let ideal_2n_gap = gap_for(2 * 256);
+        let fused_25n_gap = gap_for((5 * 256) / 2);
+        let compare_masked_3n_gap = gap_for(3 * 256);
+        let restoring_current_4n_gap = gap_for(4 * 256);
+        let compare_masked_current_5n_gap = gap_for(5 * 256);
+        println!("METRIC centered_current_affordable_per_payload_bit_ccx={affordable_per_payload_bit:.3}");
+        println!("METRIC centered_current_ideal_2n_gap_ccx={ideal_2n_gap}");
+        println!("METRIC centered_current_fused_2p5n_gap_ccx={fused_25n_gap}");
+        println!("METRIC centered_current_3n_gap_ccx={compare_masked_3n_gap}");
+        println!("METRIC centered_current_4n_gap_ccx={restoring_current_4n_gap}");
+        println!("METRIC centered_current_5n_gap_ccx={compare_masked_current_5n_gap}");
+        eprintln!(
+            "Centered current qbit primitive budget: affordable_per_bit={affordable_per_payload_bit:.1}, gaps 2n={ideal_2n_gap}, 2.5n={fused_25n_gap}, 3n={compare_masked_3n_gap}, 4n={restoring_current_4n_gap}, 5n={compare_masked_current_5n_gap}"
+        );
+        assert!(ideal_2n_gap < 0, "even ideal 2n restoring subtract misses; demote centered extractor");
+        assert!(compare_masked_3n_gap > 0, "3n qbit primitive fits; existing compare/sub floor may suffice");
+        assert!(restoring_current_4n_gap > 0 && compare_masked_current_5n_gap > 0, "current qbit primitives unexpectedly fit");
+    }
+
+    #[test]
     fn euclid_quotient_stream_entropy_also_exceeds_scratch600() {
         // Follow-up to the raw-payload quotient-stream DIV test.  The tempting
         // objection is that a clever prefix/arithmetic code could pack the
