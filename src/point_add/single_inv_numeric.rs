@@ -2678,6 +2678,88 @@ mod tests {
         assert!(gap > 0, "denominator-shift-only lower bound would fit; revisit unordered signed recurrence");
     }
 
+    fn bounded_quotient_no_shift_steps_for_test(x: U256, p: U256, qmax: usize) -> usize {
+        // Denominator-shift-free Euclid fallback: replace repeated binary
+        // shifts by bounded quotient subtraction, u <- u - q v with q<=qmax.
+        // This keeps denominators unshifted but moves the hard information into
+        // a q-history/parser stream.  It is intentionally optimistic: no cost
+        // is charged for computing q coherently, only for storing enough q bits
+        // to reverse the variable subtraction stream.
+        assert!(qmax >= 1);
+        let mut u = u512_from_u256_for_halfgcd_test(p);
+        let mut v = u512_from_u256_for_halfgcd_test(x);
+        if u < v {
+            core::mem::swap(&mut u, &mut v);
+        }
+        let mut steps = 0usize;
+        while v != U512::ZERO && v != U512::from(1u64) {
+            let mut q = 1usize;
+            for cand in (1..=qmax).rev() {
+                if v * U512::from(cand as u64) <= u {
+                    q = cand;
+                    break;
+                }
+            }
+            u -= v * U512::from(q as u64);
+            if u == U512::ZERO {
+                break;
+            }
+            if u < v {
+                core::mem::swap(&mut u, &mut v);
+            }
+            steps += 1;
+            if steps >= 20_000 {
+                break;
+            }
+        }
+        steps
+    }
+
+    #[test]
+    fn denominator_shift_free_bounded_quotient_needs_too_much_history() {
+        // Hardest-piece-first check for a denominator-shift-free DIV recurrence:
+        // if we avoid all denominator halvings by using only bounded quotient
+        // subtracts, the shift cost is gone but every step needs a reversible
+        // q/history parser.  Even this optimistic model (no q computation cost,
+        // no controlled multiply cost, no cleanup beyond storing q) exceeds the
+        // scratch budget for useful q bounds.
+        let p = SECP256K1_P;
+        let samples = 2048usize;
+        let qmaxes = [1usize, 3, 7, 15];
+        let mut rng = 0x5eed_51f7_d171_0001u64;
+        let mut all_steps: Vec<Vec<usize>> = qmaxes.iter().map(|_| Vec::with_capacity(samples)).collect();
+        while all_steps[0].len() < samples {
+            let x = rand_u256(&mut rng);
+            if x.is_zero() { continue; }
+            for (j, &qmax) in qmaxes.iter().enumerate() {
+                let steps = bounded_quotient_no_shift_steps_for_test(x, p, qmax);
+                all_steps[j].push(steps);
+            }
+        }
+        let mut metrics = Vec::new();
+        for (j, &qmax) in qmaxes.iter().enumerate() {
+            all_steps[j].sort_unstable();
+            let p90 = all_steps[j][samples * 90 / 100];
+            let p99 = all_steps[j][samples * 99 / 100];
+            let max = *all_steps[j].last().unwrap();
+            let qbits = usize_bit_len_for_payload_test(qmax);
+            let scratch_p99 = 256 + p99 * qbits;
+            let scratch_p90 = 256 + p90 * qbits;
+            metrics.push((qmax, qbits, p90, p99, max, scratch_p90, scratch_p99));
+        }
+        let q15 = metrics.iter().find(|&&(q, _, _, _, _, _, _)| q == 15).unwrap();
+        let q7 = metrics.iter().find(|&&(q, _, _, _, _, _, _)| q == 7).unwrap();
+        println!("METRIC bounded_no_shift_q7_p99_steps={}", q7.3);
+        println!("METRIC bounded_no_shift_q7_scratch_p99={}", q7.6);
+        println!("METRIC bounded_no_shift_q15_p90_steps={}", q15.2);
+        println!("METRIC bounded_no_shift_q15_p99_steps={}", q15.3);
+        println!("METRIC bounded_no_shift_q15_max_steps={}", q15.4);
+        println!("METRIC bounded_no_shift_q15_scratch_p90={}", q15.5);
+        println!("METRIC bounded_no_shift_q15_scratch_p99={}", q15.6);
+        eprintln!("bounded no-shift quotient metrics: {metrics:?}");
+        assert!(q15.6 > 663, "bounded quotient history unexpectedly fits Google scratch; build parser next");
+    }
+
     fn plusminus_odd_gcd_payload_for_divisor(x: U256, p: U256) -> (usize, usize, usize) {
         // A from-scratch non-BY idea: strip powers of two from x, then run an
         // ordered odd GCD where each step replaces (u>=v) by the ordered pair

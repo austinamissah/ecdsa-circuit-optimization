@@ -188,7 +188,9 @@ Ranked by current plausibility:
 
 ### 1. New denominator-shift-free DIV recurrence
 
-This is the best way to salvage the lessons from plus-minus without carrying its dead denominator cost. Requirements:
+This is the best way to salvage the lessons from plus-minus without carrying its dead denominator cost. First explicit probe after the BY demotion is negative: bounded-quotient subtractive Euclid (`u <- u - qv`, `q <= 15`) avoids physical denominator shifts but explodes the reversible history/parser channel. Even with quotient computation free, q-history alone gives p90/p99 scratch `1608/6276` bits and max-step cap hits `20000`; `q <= 7` has p99 scratch `9514`. So “no shifts by using tiny quotients” is not the needed recurrence. A viable recurrence must avoid both physical denominator shifts and long per-step quotient history.
+
+Requirements:
 
 ```text
 persistent scratch <= 600--663 bits
