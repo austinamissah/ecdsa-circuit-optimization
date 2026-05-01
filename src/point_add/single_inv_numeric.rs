@@ -8069,6 +8069,76 @@ mod tests {
     }
 
     #[test]
+    fn centered_euclid_fixed_k_public_shift_slots_are_not_enough() {
+        // Possible escape from variable-offset alignment: store each quotient in
+        // a fixed K-bit slot, so the K compare/subtract shifts are public and no
+        // barrel/offset mux is needed.  This trades alignment for many unused
+        // q-bit slots.  The budget/failure tradeoff is bad: K small enough to
+        // fit 3M misses many samples; K large enough to cover quotient tails is
+        // over budget even before cleanup details.
+        let p = SECP256K1_P;
+        let samples = 32_768usize;
+        let mut rng = 0x2800_f17e_5107_0001u64;
+        let ks = [4usize, 5, 6, 8, 10, 12];
+        let mut fail = [0usize; 6];
+        let mut counts = Vec::with_capacity(samples);
+        let mut max_qbits_seen = 0usize;
+        for _ in 0..samples {
+            let mut x = rand_u256(&mut rng);
+            if x.is_zero() { x = U256::from(1u64); }
+            let qs = centered_euclid_abs_quotients_for_divisor(x, p);
+            counts.push(qs.len());
+            let sample_max_qbits = qs
+                .iter()
+                .map(|q| u512_bit_len_for_halfgcd_test(*q).max(1))
+                .max()
+                .unwrap_or(1);
+            max_qbits_seen = max_qbits_seen.max(sample_max_qbits);
+            for (i, &k) in ks.iter().enumerate() {
+                if sample_max_qbits > k {
+                    fail[i] += 1;
+                }
+            }
+        }
+        counts.sort_unstable();
+        let count_p99 = counts[samples * 99 / 100];
+        let count_p999 = counts[samples * 999 / 1000];
+        let count_max = *counts.last().unwrap();
+        let c_records = count_p999;
+        let scaffold_after_div = 642_716isize;
+        let per_qbit_replay_ccx = 587usize;
+        let compare_sub_per_slot = 3usize * 256usize;
+        let per_record_boundary_floor = 256usize;
+        let mut best_exactish_k = 0usize;
+        let mut best_exactish_gap = isize::MAX;
+        for (i, &k) in ks.iter().enumerate() {
+            let qslots = c_records * k;
+            let coeff = qslots * per_qbit_replay_ccx;
+            let extraction_oneway = qslots * compare_sub_per_slot + c_records * per_record_boundary_floor;
+            let pointadd = scaffold_after_div + 2 * (coeff as isize + 2 * extraction_oneway as isize);
+            let gap = pointadd - 3_000_000isize;
+            let fail_ppm = fail[i] * 1_000_000usize / samples;
+            println!("METRIC centered_fixedk{k}_fail_ppm={fail_ppm}");
+            println!("METRIC centered_fixedk{k}_gap_to_3m_ccx={gap}");
+            if fail_ppm == 0 && gap < best_exactish_gap {
+                best_exactish_gap = gap;
+                best_exactish_k = k;
+            }
+        }
+        println!("METRIC centered_fixedk_count_p99={count_p99}");
+        println!("METRIC centered_fixedk_count_p999={count_p999}");
+        println!("METRIC centered_fixedk_count_max={count_max}");
+        println!("METRIC centered_fixedk_max_qbits_seen={max_qbits_seen}");
+        println!("METRIC centered_fixedk_best_zero_fail_k={best_exactish_k}");
+        println!("METRIC centered_fixedk_best_zero_fail_gap_ccx={best_exactish_gap}");
+        eprintln!(
+            "Centered fixed-K slots: count_p99={count_p99}, count_p999={count_p999}, count_max={count_max}, max_qbits={max_qbits_seen}, best_zero_fail_k={best_exactish_k}, best_zero_fail_gap={best_exactish_gap}, fail={fail:?}"
+        );
+        assert!(fail[0] > samples / 100, "K=4 fixed slots are accurate enough; revisit public-shift extraction");
+        assert!(best_exactish_gap > 0, "a zero-fail fixed-K slot plan fits 3M; prototype it");
+    }
+
+    #[test]
     fn euclid_quotient_stream_entropy_also_exceeds_scratch600() {
         // Follow-up to the raw-payload quotient-stream DIV test.  The tempting
         // objection is that a clever prefix/arithmetic code could pack the
