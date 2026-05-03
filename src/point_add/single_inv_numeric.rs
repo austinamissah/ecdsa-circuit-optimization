@@ -4525,6 +4525,504 @@ mod tests {
     }
 
     #[test]
+    fn half_gcd_second_column_fixed_depth_prefix_tradeoff_probe() {
+        // Try replacing the data-dependent "stop when residuals fit in 128
+        // bits" prefix with a public fixed-depth prefix.  This removes the
+        // large active-control tax from the width-threshold halt, but it may
+        // grow the second column and the coefficient decoder enough to lose the
+        // low-qubit or average-gate margin.
+        const SCAFFOLD_AFTER_DIV: usize = 642_716;
+        const TAIL_REPLAY_PER_BIT_CCX: usize = 587;
+        const TARGET: f64 = 2_700_000.0;
+        const GOOGLE_LOW_QUBIT_SCRATCH: usize = 663;
+        const DEPTHS: [usize; 8] = [64, 80, 92, 104, 120, 136, 152, 168];
+
+        struct FixedDepthRows {
+            depth: usize,
+            scratch: Vec<usize>,
+            base: Vec<isize>,
+            exact: Vec<isize>,
+            noscan: Vec<isize>,
+            exact_tail_floor: Vec<isize>,
+            noscan_tail_floor: Vec<isize>,
+            exact_tail_logbarrel: Vec<isize>,
+            noscan_tail_logbarrel: Vec<isize>,
+            prefix_steps: Vec<usize>,
+            tail_bits: Vec<usize>,
+            tail_count: Vec<usize>,
+            tail_extract_floor: Vec<usize>,
+            tail_logbarrel_floor: Vec<usize>,
+            first64_base: isize,
+            first64_exact: isize,
+            first64_noscan: isize,
+            first64_exact_tail_floor: isize,
+            first64_noscan_tail_floor: isize,
+            first64_exact_tail_logbarrel: isize,
+            first64_noscan_tail_logbarrel: isize,
+            early_gcd_samples: usize,
+        }
+
+        let p = SECP256K1_P;
+        let samples = 4096usize;
+        let mut rng = 0x5ec0_0001_f1c0_d901u64;
+        let exact_barrel_bits = 8usize;
+        let entry_stored_bits = |z: SignedMagU512ForHalfGcdTest| {
+            u512_bit_len_for_halfgcd_test(z.mag) + (!z.mag.is_zero()) as usize
+        };
+        let mut rows: Vec<FixedDepthRows> = DEPTHS
+            .iter()
+            .map(|&depth| FixedDepthRows {
+                depth,
+                scratch: Vec::with_capacity(samples),
+                base: Vec::with_capacity(samples),
+                exact: Vec::with_capacity(samples),
+                noscan: Vec::with_capacity(samples),
+                exact_tail_floor: Vec::with_capacity(samples),
+                noscan_tail_floor: Vec::with_capacity(samples),
+                exact_tail_logbarrel: Vec::with_capacity(samples),
+                noscan_tail_logbarrel: Vec::with_capacity(samples),
+                prefix_steps: Vec::with_capacity(samples),
+                tail_bits: Vec::with_capacity(samples),
+                tail_count: Vec::with_capacity(samples),
+                tail_extract_floor: Vec::with_capacity(samples),
+                tail_logbarrel_floor: Vec::with_capacity(samples),
+                first64_base: 0,
+                first64_exact: 0,
+                first64_noscan: 0,
+                first64_exact_tail_floor: 0,
+                first64_noscan_tail_floor: 0,
+                first64_exact_tail_logbarrel: 0,
+                first64_noscan_tail_logbarrel: 0,
+                early_gcd_samples: 0,
+            })
+            .collect();
+
+        for sample_idx in 0..samples {
+            let mut x = rand_u256(&mut rng);
+            if x.is_zero() {
+                x = U256::from(1u64);
+            }
+            for row in &mut rows {
+                let mut u = p;
+                let mut v = x;
+                let mut b = smag_for_halfgcd_test(false, U512::ZERO);
+                let mut d = smag_for_halfgcd_test(false, U512::from(1u64));
+                let mut residual_digit_width = 0usize;
+                let mut coeff_digit_width = 0usize;
+                let mut final_fix_width = 0usize;
+                let mut residual_width_sum = 0usize;
+                let mut coeff_width_sum = 0usize;
+                let mut decoder_digit = 0usize;
+                let mut decoder_final_fix = 0usize;
+                let mut decoder_width_sum = 0usize;
+                let mut prefix_steps = 0usize;
+                let mut peak_scratch = entry_stored_bits(b)
+                    + entry_stored_bits(d)
+                    + u256_bit_len(u)
+                    + u256_bit_len(v);
+
+                while prefix_steps < row.depth && !v.is_zero() {
+                    let q = u / v;
+                    let (digits, prefinal_rem, prefinal_q) =
+                        nonrestoring_prefinal_signed_digits_for_centered_test(
+                            u512_from_u256_for_halfgcd_test(u),
+                            u512_from_u256_for_halfgcd_test(v),
+                        );
+                    let final_negative = prefinal_rem.neg && !prefinal_rem.mag.is_zero();
+                    let floor_q = if final_negative {
+                        prefinal_q - U512::from(1u64)
+                    } else {
+                        prefinal_q
+                    };
+                    assert_eq!(floor_q, u512_from_u256_for_halfgcd_test(q));
+                    let width = u256_bit_len(u).max(u256_bit_len(v)).max(1);
+                    let coeff_width = u512_bit_len_for_halfgcd_test(b.mag)
+                        .max(u512_bit_len_for_halfgcd_test(d.mag))
+                        .max(1)
+                        + 1;
+                    residual_digit_width += digits.len() * width.saturating_sub(1);
+                    final_fix_width += (2 * width).saturating_sub(1)
+                        + (2 * coeff_width).saturating_sub(1);
+                    residual_width_sum += width;
+                    coeff_width_sum += coeff_width;
+
+                    let mut coeff_acc = b;
+                    for &(digit_neg, sh) in &digits {
+                        let term = signed_mul_mag_for_halfgcd_test(
+                            d,
+                            digit_neg,
+                            U512::from(1u64) << sh,
+                        );
+                        let next = signed_add_for_halfgcd_test(
+                            coeff_acc,
+                            signed_neg_for_halfgcd_test(term),
+                        );
+                        let op_width = u512_bit_len_for_halfgcd_test(coeff_acc.mag)
+                            .max(u512_bit_len_for_halfgcd_test(term.mag))
+                            .max(u512_bit_len_for_halfgcd_test(next.mag))
+                            .max(1)
+                            + 1;
+                        coeff_digit_width += op_width.saturating_sub(1);
+                        coeff_acc = next;
+                    }
+                    if final_negative {
+                        coeff_acc = signed_add_for_halfgcd_test(coeff_acc, d);
+                    }
+
+                    let rem = u - q * v;
+                    let nb = d;
+                    let nd = signed_sub_scaled_for_halfgcd_test(b, q, d);
+                    assert_eq!(coeff_acc, nd, "fixed-depth second-column replay mismatch");
+
+                    let numer = if b.mag.is_zero() {
+                        nd.mag
+                    } else {
+                        nd.mag - U512::from(1u64)
+                    };
+                    let denom = nb.mag;
+                    assert!(!denom.is_zero(), "fixed-depth coefficient denominator vanished");
+                    assert_eq!(
+                        numer / denom,
+                        u512_from_u256_for_halfgcd_test(q),
+                        "fixed-depth coefficient reverse quotient formula mismatch"
+                    );
+                    let (decoder_digits, decoder_prefinal_rem, decoder_prefinal_q) =
+                        nonrestoring_prefinal_signed_digits_for_centered_test(numer, denom);
+                    let decoder_final_negative =
+                        decoder_prefinal_rem.neg && !decoder_prefinal_rem.mag.is_zero();
+                    let decoder_floor_q = if decoder_final_negative {
+                        decoder_prefinal_q - U512::from(1u64)
+                    } else {
+                        decoder_prefinal_q
+                    };
+                    assert_eq!(decoder_floor_q, u512_from_u256_for_halfgcd_test(q));
+                    let decoder_width = u512_bit_len_for_halfgcd_test(numer)
+                        .max(u512_bit_len_for_halfgcd_test(denom))
+                        .max(1);
+                    decoder_digit += decoder_digits.len() * decoder_width.saturating_sub(1);
+                    decoder_final_fix += (2 * decoder_width).saturating_sub(1);
+                    decoder_width_sum += decoder_width;
+
+                    u = v;
+                    v = rem;
+                    b = nb;
+                    d = nd;
+                    prefix_steps += 1;
+                    peak_scratch = peak_scratch.max(
+                        entry_stored_bits(b)
+                            + entry_stored_bits(d)
+                            + u256_bit_len(u)
+                            + u256_bit_len(v),
+                    );
+                }
+                row.early_gcd_samples += v.is_zero() as usize;
+
+                let mut tail_payload = 0usize;
+                let mut tail_extract_floor = 0usize;
+                let mut tail_logbarrel_floor = 0usize;
+                let mut tail_count = 0usize;
+                let mut tu = u;
+                let mut tv = v;
+                let col_bits = entry_stored_bits(b) + entry_stored_bits(d);
+                while !tv.is_zero() {
+                    let q = tu / tv;
+                    let q_bits = u256_bit_len(q);
+                    let tail_width = u256_bit_len(tu).max(u256_bit_len(tv)).max(1);
+                    tail_payload += q_bits;
+                    tail_extract_floor += q_bits * 3 * tail_width + tail_width;
+                    tail_logbarrel_floor += tail_width * exact_barrel_bits;
+                    tail_count += 1;
+                    let rem = tu - q * tv;
+                    tu = tv;
+                    tv = rem;
+                    peak_scratch = peak_scratch.max(
+                        col_bits + u256_bit_len(tu) + u256_bit_len(tv) + tail_payload,
+                    );
+                }
+                assert_eq!(tu, U256::from(1u64), "fixed-depth tail replay did not finish at gcd 1");
+
+                let exact_extraction = residual_digit_width
+                    + coeff_digit_width
+                    + final_fix_width
+                    + (residual_width_sum + coeff_width_sum) * (exact_barrel_bits + 1);
+                let app = halfgcd_signed_two_coeff_apply_cost_for_test(b, d);
+                let replay = tail_payload * TAIL_REPLAY_PER_BIT_CCX;
+                let base = SCAFFOLD_AFTER_DIV as isize
+                    + 2 * (app + replay + 2 * exact_extraction) as isize;
+                let decoder_noscan = (decoder_digit + decoder_final_fix) as isize;
+                let decoder_exact =
+                    (decoder_digit
+                        + decoder_final_fix
+                        + decoder_width_sum * (exact_barrel_bits + 1)) as isize;
+                let exact = base + 4 * decoder_exact;
+                let noscan = base + 4 * decoder_noscan;
+                let exact_with_tail_floor = exact + 4 * tail_extract_floor as isize;
+                let noscan_with_tail_floor = noscan + 4 * tail_extract_floor as isize;
+                let exact_with_tail_logbarrel =
+                    exact_with_tail_floor + 4 * tail_logbarrel_floor as isize;
+                let noscan_with_tail_logbarrel =
+                    noscan_with_tail_floor + 4 * tail_logbarrel_floor as isize;
+
+                if sample_idx < 64 {
+                    row.first64_base += base;
+                    row.first64_exact += exact;
+                    row.first64_noscan += noscan;
+                    row.first64_exact_tail_floor += exact_with_tail_floor;
+                    row.first64_noscan_tail_floor += noscan_with_tail_floor;
+                    row.first64_exact_tail_logbarrel += exact_with_tail_logbarrel;
+                    row.first64_noscan_tail_logbarrel += noscan_with_tail_logbarrel;
+                }
+                row.scratch.push(peak_scratch);
+                row.base.push(base);
+                row.exact.push(exact);
+                row.noscan.push(noscan);
+                row.exact_tail_floor.push(exact_with_tail_floor);
+                row.noscan_tail_floor.push(noscan_with_tail_floor);
+                row.exact_tail_logbarrel.push(exact_with_tail_logbarrel);
+                row.noscan_tail_logbarrel.push(noscan_with_tail_logbarrel);
+                row.prefix_steps.push(prefix_steps);
+                row.tail_bits.push(tail_payload);
+                row.tail_count.push(tail_count);
+                row.tail_extract_floor.push(tail_extract_floor);
+                row.tail_logbarrel_floor.push(tail_logbarrel_floor);
+            }
+        }
+
+        let mean = |values: &[isize]| -> f64 {
+            values.iter().map(|&v| v as f64).sum::<f64>() / values.len() as f64
+        };
+        let p99_usize = |values: &mut Vec<usize>| -> usize {
+            values.sort_unstable();
+            values[values.len() * 99 / 100]
+        };
+        let p99_isize = |values: &mut Vec<isize>| -> isize {
+            values.sort_unstable();
+            values[values.len() * 99 / 100]
+        };
+
+        let mut best_exact_mean = f64::INFINITY;
+        let mut best_exact_depth = 0usize;
+        let mut best_exact_scratch = 0usize;
+        let mut best_noscan_mean = f64::INFINITY;
+        let mut best_noscan_depth = 0usize;
+        let mut best_noscan_scratch = 0usize;
+        let mut exact_fitting_rows = 0usize;
+        let mut noscan_fitting_rows = 0usize;
+        let mut exact_tail_floor_fitting_rows = 0usize;
+        let mut noscan_tail_floor_fitting_rows = 0usize;
+        let mut exact_tail_logbarrel_fitting_rows = 0usize;
+        let mut noscan_tail_logbarrel_fitting_rows = 0usize;
+        for row in &mut rows {
+            let base_mean = mean(&row.base);
+            let exact_mean = mean(&row.exact);
+            let noscan_mean = mean(&row.noscan);
+            let exact_tail_floor_mean = mean(&row.exact_tail_floor);
+            let noscan_tail_floor_mean = mean(&row.noscan_tail_floor);
+            let exact_tail_logbarrel_mean = mean(&row.exact_tail_logbarrel);
+            let noscan_tail_logbarrel_mean = mean(&row.noscan_tail_logbarrel);
+            let base_first64 = row.first64_base as f64 / 64.0;
+            let exact_first64 = row.first64_exact as f64 / 64.0;
+            let noscan_first64 = row.first64_noscan as f64 / 64.0;
+            let exact_tail_floor_first64 = row.first64_exact_tail_floor as f64 / 64.0;
+            let noscan_tail_floor_first64 = row.first64_noscan_tail_floor as f64 / 64.0;
+            let exact_tail_logbarrel_first64 =
+                row.first64_exact_tail_logbarrel as f64 / 64.0;
+            let noscan_tail_logbarrel_first64 =
+                row.first64_noscan_tail_logbarrel as f64 / 64.0;
+            let scratch_p99 = p99_usize(&mut row.scratch);
+            let prefix_steps_p99 = p99_usize(&mut row.prefix_steps);
+            let tail_bits_p99 = p99_usize(&mut row.tail_bits);
+            let tail_count_p99 = p99_usize(&mut row.tail_count);
+            let tail_extract_floor_p99 = p99_usize(&mut row.tail_extract_floor);
+            let tail_logbarrel_floor_p99 = p99_usize(&mut row.tail_logbarrel_floor);
+            let exact_p99 = p99_isize(&mut row.exact);
+            let noscan_p99 = p99_isize(&mut row.noscan);
+            let exact_tail_floor_p99 = p99_isize(&mut row.exact_tail_floor);
+            let noscan_tail_floor_p99 = p99_isize(&mut row.noscan_tail_floor);
+            let exact_tail_logbarrel_p99 = p99_isize(&mut row.exact_tail_logbarrel);
+            let noscan_tail_logbarrel_p99 = p99_isize(&mut row.noscan_tail_logbarrel);
+            if scratch_p99 <= GOOGLE_LOW_QUBIT_SCRATCH && exact_mean < best_exact_mean {
+                best_exact_mean = exact_mean;
+                best_exact_depth = row.depth;
+                best_exact_scratch = scratch_p99;
+            }
+            if scratch_p99 <= GOOGLE_LOW_QUBIT_SCRATCH && noscan_mean < best_noscan_mean {
+                best_noscan_mean = noscan_mean;
+                best_noscan_depth = row.depth;
+                best_noscan_scratch = scratch_p99;
+            }
+            exact_fitting_rows +=
+                (scratch_p99 <= GOOGLE_LOW_QUBIT_SCRATCH && exact_mean < TARGET) as usize;
+            noscan_fitting_rows +=
+                (scratch_p99 <= GOOGLE_LOW_QUBIT_SCRATCH && noscan_mean < TARGET) as usize;
+            exact_tail_floor_fitting_rows +=
+                (scratch_p99 <= GOOGLE_LOW_QUBIT_SCRATCH && exact_tail_floor_mean < TARGET)
+                    as usize;
+            noscan_tail_floor_fitting_rows +=
+                (scratch_p99 <= GOOGLE_LOW_QUBIT_SCRATCH && noscan_tail_floor_mean < TARGET)
+                    as usize;
+            exact_tail_logbarrel_fitting_rows +=
+                (scratch_p99 <= GOOGLE_LOW_QUBIT_SCRATCH && exact_tail_logbarrel_mean < TARGET)
+                    as usize;
+            noscan_tail_logbarrel_fitting_rows +=
+                (scratch_p99 <= GOOGLE_LOW_QUBIT_SCRATCH
+                    && noscan_tail_logbarrel_mean < TARGET) as usize;
+            println!(
+                "METRIC halfgcd_second_col_fixed_depth_d{}_scratch_p99={scratch_p99}",
+                row.depth
+            );
+            println!(
+                "METRIC halfgcd_second_col_fixed_depth_d{}_prefix_steps_p99={prefix_steps_p99}",
+                row.depth
+            );
+            println!(
+                "METRIC halfgcd_second_col_fixed_depth_d{}_tail_bits_p99={tail_bits_p99}",
+                row.depth
+            );
+            println!(
+                "METRIC halfgcd_second_col_fixed_depth_d{}_tail_count_p99={tail_count_p99}",
+                row.depth
+            );
+            println!(
+                "METRIC halfgcd_second_col_fixed_depth_d{}_tail_extract_floor_p99={tail_extract_floor_p99}",
+                row.depth
+            );
+            println!(
+                "METRIC halfgcd_second_col_fixed_depth_d{}_tail_logbarrel_floor_p99={tail_logbarrel_floor_p99}",
+                row.depth
+            );
+            println!(
+                "METRIC halfgcd_second_col_fixed_depth_d{}_base_mean={base_mean:.3}",
+                row.depth
+            );
+            println!(
+                "METRIC halfgcd_second_col_fixed_depth_d{}_base_first64={base_first64:.3}",
+                row.depth
+            );
+            println!(
+                "METRIC halfgcd_second_col_fixed_depth_d{}_exact_mean={exact_mean:.3}",
+                row.depth
+            );
+            println!(
+                "METRIC halfgcd_second_col_fixed_depth_d{}_exact_first64={exact_first64:.3}",
+                row.depth
+            );
+            println!(
+                "METRIC halfgcd_second_col_fixed_depth_d{}_exact_p99={exact_p99}",
+                row.depth
+            );
+            println!(
+                "METRIC halfgcd_second_col_fixed_depth_d{}_noscan_mean={noscan_mean:.3}",
+                row.depth
+            );
+            println!(
+                "METRIC halfgcd_second_col_fixed_depth_d{}_noscan_first64={noscan_first64:.3}",
+                row.depth
+            );
+            println!(
+                "METRIC halfgcd_second_col_fixed_depth_d{}_noscan_p99={noscan_p99}",
+                row.depth
+            );
+            println!(
+                "METRIC halfgcd_second_col_fixed_depth_d{}_exact_tail_floor_mean={exact_tail_floor_mean:.3}",
+                row.depth
+            );
+            println!(
+                "METRIC halfgcd_second_col_fixed_depth_d{}_exact_tail_floor_first64={exact_tail_floor_first64:.3}",
+                row.depth
+            );
+            println!(
+                "METRIC halfgcd_second_col_fixed_depth_d{}_exact_tail_floor_p99={exact_tail_floor_p99}",
+                row.depth
+            );
+            println!(
+                "METRIC halfgcd_second_col_fixed_depth_d{}_noscan_tail_floor_mean={noscan_tail_floor_mean:.3}",
+                row.depth
+            );
+            println!(
+                "METRIC halfgcd_second_col_fixed_depth_d{}_noscan_tail_floor_first64={noscan_tail_floor_first64:.3}",
+                row.depth
+            );
+            println!(
+                "METRIC halfgcd_second_col_fixed_depth_d{}_noscan_tail_floor_p99={noscan_tail_floor_p99}",
+                row.depth
+            );
+            println!(
+                "METRIC halfgcd_second_col_fixed_depth_d{}_exact_tail_logbarrel_mean={exact_tail_logbarrel_mean:.3}",
+                row.depth
+            );
+            println!(
+                "METRIC halfgcd_second_col_fixed_depth_d{}_exact_tail_logbarrel_first64={exact_tail_logbarrel_first64:.3}",
+                row.depth
+            );
+            println!(
+                "METRIC halfgcd_second_col_fixed_depth_d{}_exact_tail_logbarrel_p99={exact_tail_logbarrel_p99}",
+                row.depth
+            );
+            println!(
+                "METRIC halfgcd_second_col_fixed_depth_d{}_noscan_tail_logbarrel_mean={noscan_tail_logbarrel_mean:.3}",
+                row.depth
+            );
+            println!(
+                "METRIC halfgcd_second_col_fixed_depth_d{}_noscan_tail_logbarrel_first64={noscan_tail_logbarrel_first64:.3}",
+                row.depth
+            );
+            println!(
+                "METRIC halfgcd_second_col_fixed_depth_d{}_noscan_tail_logbarrel_p99={noscan_tail_logbarrel_p99}",
+                row.depth
+            );
+            println!(
+                "METRIC halfgcd_second_col_fixed_depth_d{}_early_gcd_samples={}",
+                row.depth, row.early_gcd_samples
+            );
+            eprintln!(
+                "half-GCD fixed-depth d{}: scratch_p99={scratch_p99}, exact_tail_floor_mean={exact_tail_floor_mean:.1}, exact_tail_logbarrel_mean={exact_tail_logbarrel_mean:.1}, noscan_tail_logbarrel_mean={noscan_tail_logbarrel_mean:.1}, exact_tail_floor_p99={exact_tail_floor_p99}, exact_tail_logbarrel_p99={exact_tail_logbarrel_p99}, tail_bits_p99={tail_bits_p99}, tail_count_p99={tail_count_p99}, tail_floor_p99={tail_extract_floor_p99}, tail_barrel_p99={tail_logbarrel_floor_p99}, early_gcd={}",
+                row.depth, row.early_gcd_samples
+            );
+        }
+        println!("METRIC halfgcd_second_col_fixed_depth_exact_fitting_rows={exact_fitting_rows}");
+        println!("METRIC halfgcd_second_col_fixed_depth_noscan_fitting_rows={noscan_fitting_rows}");
+        println!(
+            "METRIC halfgcd_second_col_fixed_depth_exact_tail_floor_fitting_rows={exact_tail_floor_fitting_rows}"
+        );
+        println!(
+            "METRIC halfgcd_second_col_fixed_depth_noscan_tail_floor_fitting_rows={noscan_tail_floor_fitting_rows}"
+        );
+        println!(
+            "METRIC halfgcd_second_col_fixed_depth_exact_tail_logbarrel_fitting_rows={exact_tail_logbarrel_fitting_rows}"
+        );
+        println!(
+            "METRIC halfgcd_second_col_fixed_depth_noscan_tail_logbarrel_fitting_rows={noscan_tail_logbarrel_fitting_rows}"
+        );
+        println!("METRIC halfgcd_second_col_fixed_depth_best_exact_depth={best_exact_depth}");
+        println!(
+            "METRIC halfgcd_second_col_fixed_depth_best_exact_mean={best_exact_mean:.3}"
+        );
+        println!("METRIC halfgcd_second_col_fixed_depth_best_exact_scratch={best_exact_scratch}");
+        println!("METRIC halfgcd_second_col_fixed_depth_best_noscan_depth={best_noscan_depth}");
+        println!(
+            "METRIC halfgcd_second_col_fixed_depth_best_noscan_mean={best_noscan_mean:.3}"
+        );
+        println!("METRIC halfgcd_second_col_fixed_depth_best_noscan_scratch={best_noscan_scratch}");
+        assert!(
+            exact_fitting_rows > 0,
+            "fixed-depth exact coefficient cleanup no longer has an average/scratch lower-bound opening"
+        );
+        assert!(
+            exact_tail_floor_fitting_rows > 0,
+            "fixed-depth route no longer fits after a packed tail-extraction floor"
+        );
+        assert_eq!(
+            exact_tail_logbarrel_fitting_rows, 0,
+            "fixed-depth route still fits after generic tail log-barrel alignment; promote this half-GCD route"
+        );
+        assert!(
+            noscan_fitting_rows > 0,
+            "scan-free fixed-depth lower bound no longer has an average/scratch opening"
+        );
+    }
+
+    #[test]
     fn half_gcd_second_column_prefix_step_toy_cleans_history() {
         // Circuit-reality check for the average-gate half-GCD route: one
         // ordinary floor-division prefix step, with second-column update
