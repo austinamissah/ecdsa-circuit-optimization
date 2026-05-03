@@ -112,6 +112,12 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
             blocker: "raw sign-normalized digits fit, but exact cneg p99 is 2792914; norm signs have dense MBU parity and exact toy reverse collisions",
         },
         Candidate {
+            name: "direct_centered_restoring_final_raw_digits",
+            scratch_bits: 618,
+            charged_toffoli: None,
+            blocker: "restoring-final model is under 2.7M and phase-clean in toy, but production extractor/reverse cleanup and exact packing are not wired",
+        },
+        Candidate {
             name: "direct_centered_signnorm_rank_compressed_signs",
             scratch_bits: 765,
             charged_toffoli: None,
@@ -207,6 +213,28 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     let direct_signnorm_reverse_collisions_n14 = 2_658usize;
     let direct_signnorm_reverse_states_n14 = 64_178usize;
     let direct_signnorm_reverse_total_steps_n14 = 89_008usize;
+    let direct_restoring_final_coeff_width_p99 = 47_654usize;
+    let direct_restoring_final_digit_payload_p99 = 362usize;
+    let direct_restoring_final_raw_digit_scratch_p99 = 256usize + direct_restoring_final_digit_payload_p99;
+    let direct_restoring_final_raw_digit_over_strict =
+        direct_restoring_final_raw_digit_scratch_p99 as isize - STRICT_SCRATCH as isize;
+    let direct_restoring_final_raw_digit_gap_google =
+        direct_restoring_final_raw_digit_scratch_p99 as isize - GOOGLE_LOW_QUBIT_SCRATCH as isize;
+    let direct_restoring_final_no_unit_digits_p99 = 69usize;
+    let direct_restoring_final_count_p99 = 118usize;
+    let direct_restoring_final_select1x_p99 = 2_423_946usize;
+    let direct_restoring_final_select2x_p99 = 2_531_042usize;
+    let direct_restoring_final_select3x_p99 = 2_638_012usize;
+    let direct_restoring_final_select1x_gap =
+        direct_restoring_final_select1x_p99 as isize - GOOGLE_LOW_QUBIT_TOFFOLI as isize;
+    let direct_restoring_final_select2x_gap =
+        direct_restoring_final_select2x_p99 as isize - GOOGLE_LOW_QUBIT_TOFFOLI as isize;
+    let direct_restoring_final_select3x_gap =
+        direct_restoring_final_select3x_p99 as isize - GOOGLE_LOW_QUBIT_TOFFOLI as isize;
+    let direct_restoring_final_toy_ccx = 306usize;
+    let direct_restoring_final_toy_peak_q = 85usize;
+    let direct_restoring_final_toy_neg2_cases = 10_120usize;
+    let direct_restoring_final_toy_zero_final_cases = 10_010usize;
     let plusminus_raw_scratch = 564usize;
     let plusminus_unary_scratch_p99 = 640usize;
     let plusminus_parser_over_strict = plusminus_unary_scratch_p99 - STRICT_SCRATCH;
@@ -356,6 +384,23 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     println!("METRIC scratch600_direct_signnorm_reverse_collisions_n14={direct_signnorm_reverse_collisions_n14}");
     println!("METRIC scratch600_direct_signnorm_reverse_states_n14={direct_signnorm_reverse_states_n14}");
     println!("METRIC scratch600_direct_signnorm_reverse_total_steps_n14={direct_signnorm_reverse_total_steps_n14}");
+    println!("METRIC scratch600_direct_restoring_final_coeff_width_p99={direct_restoring_final_coeff_width_p99}");
+    println!("METRIC scratch600_direct_restoring_final_digit_payload_p99={direct_restoring_final_digit_payload_p99}");
+    println!("METRIC scratch600_direct_restoring_final_raw_digit_scratch_p99={direct_restoring_final_raw_digit_scratch_p99}");
+    println!("METRIC scratch600_direct_restoring_final_raw_digit_over_strict_bits={direct_restoring_final_raw_digit_over_strict}");
+    println!("METRIC scratch600_direct_restoring_final_raw_digit_gap_google_bits={direct_restoring_final_raw_digit_gap_google}");
+    println!("METRIC scratch600_direct_restoring_final_no_unit_digits_p99={direct_restoring_final_no_unit_digits_p99}");
+    println!("METRIC scratch600_direct_restoring_final_count_p99={direct_restoring_final_count_p99}");
+    println!("METRIC scratch600_direct_restoring_final_select1x_p99={direct_restoring_final_select1x_p99}");
+    println!("METRIC scratch600_direct_restoring_final_select2x_p99={direct_restoring_final_select2x_p99}");
+    println!("METRIC scratch600_direct_restoring_final_select3x_p99={direct_restoring_final_select3x_p99}");
+    println!("METRIC scratch600_direct_restoring_final_select1x_gap_to_2700k={direct_restoring_final_select1x_gap}");
+    println!("METRIC scratch600_direct_restoring_final_select2x_gap_to_2700k={direct_restoring_final_select2x_gap}");
+    println!("METRIC scratch600_direct_restoring_final_select3x_gap_to_2700k={direct_restoring_final_select3x_gap}");
+    println!("METRIC scratch600_direct_restoring_final_toy_ccx={direct_restoring_final_toy_ccx}");
+    println!("METRIC scratch600_direct_restoring_final_toy_peak_q={direct_restoring_final_toy_peak_q}");
+    println!("METRIC scratch600_direct_restoring_final_toy_neg2_cases={direct_restoring_final_toy_neg2_cases}");
+    println!("METRIC scratch600_direct_restoring_final_toy_zero_final_cases={direct_restoring_final_toy_zero_final_cases}");
     println!("METRIC scratch600_plusminus_raw_scratch_bits={plusminus_raw_scratch}");
     println!("METRIC scratch600_plusminus_unary_scratch_p99={plusminus_unary_scratch_p99}");
     println!("METRIC scratch600_plusminus_parser_over_strict_bits={plusminus_parser_over_strict}");
@@ -474,6 +519,17 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
             && direct_signnorm_reverse_states_n14 > 60_000
             && direct_signnorm_reverse_total_steps_n14 > 80_000,
         "normalization signs may be reverse-recoverable now; revisit sign-normalized direct route"
+    );
+    assert!(
+        direct_restoring_final_raw_digit_over_strict > 0
+            && direct_restoring_final_raw_digit_gap_google <= 0,
+        "restoring-final direct route scratch state changed; update the Google-scratch ledger"
+    );
+    assert!(
+        direct_restoring_final_select3x_gap < 0
+            && direct_restoring_final_toy_neg2_cases > 0
+            && direct_restoring_final_toy_zero_final_cases > 0,
+        "restoring-final direct route lost its modeled low-qubit margin or toy coverage"
     );
     assert!(halfgcd_tail_over_google > 0, "half-GCD checkpoint must be fused before it fits");
     assert!(
