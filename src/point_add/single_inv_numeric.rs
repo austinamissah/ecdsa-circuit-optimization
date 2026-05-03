@@ -10886,6 +10886,8 @@ mod tests {
         let mut raw_digit_scratches = Vec::with_capacity(samples);
         let mut normflag_scratches = Vec::with_capacity(samples);
         let mut stepflag_scratches = Vec::with_capacity(samples);
+        let mut ambiguous_norm_counts = Vec::with_capacity(samples);
+        let mut ambiguous_norm_scratches = Vec::with_capacity(samples);
         let mut norm_once_sum = 0i128;
         let mut norm_split_sum = 0i128;
         let mut exact_norm_once_sum = 0i128;
@@ -10911,6 +10913,7 @@ mod tests {
             let mut norm_coeff_cost = 0usize;
             let mut exact_norm_rem_cost = 0usize;
             let mut exact_norm_coeff_cost = 0usize;
+            let mut ambiguous_norm_count = 0usize;
             while !v.is_zero() {
                 let public_bound = direct_centered_public_width_bound_for_step(n, count);
                 let adjusted = u + (v >> 1usize);
@@ -10952,6 +10955,18 @@ mod tests {
                 } else {
                     smag_for_halfgcd_test(true, qv - u)
                 };
+                if !r_signed.mag.is_zero() {
+                    let plus_u = qv + r_signed.mag;
+                    let plus_q = (plus_u + (v >> 1usize)) / v;
+                    let plus_valid = plus_u >= v && plus_q == q_direct;
+                    let minus_valid = if qv >= r_signed.mag {
+                        let minus_u = qv - r_signed.mag;
+                        minus_u >= v && (minus_u + (v >> 1usize)) / v == q_direct
+                    } else {
+                        false
+                    };
+                    ambiguous_norm_count += (plus_valid && minus_valid) as usize;
+                }
                 let next_v = r_signed.mag;
                 if r_signed.neg && !r_signed.mag.is_zero() {
                     norm_count += 1;
@@ -11032,6 +11047,8 @@ mod tests {
             raw_digit_scratches.push(n + digit_payload);
             normflag_scratches.push(n + digit_payload + norm_count);
             stepflag_scratches.push(n + digit_payload + count);
+            ambiguous_norm_counts.push(ambiguous_norm_count);
+            ambiguous_norm_scratches.push(n + digit_payload + ambiguous_norm_count);
         }
         base_inline_3x.sort_unstable();
         norm_once_static.sort_unstable();
@@ -11050,6 +11067,8 @@ mod tests {
         raw_digit_scratches.sort_unstable();
         normflag_scratches.sort_unstable();
         stepflag_scratches.sort_unstable();
+        ambiguous_norm_counts.sort_unstable();
+        ambiguous_norm_scratches.sort_unstable();
         let p99 = samples * 99 / 100;
         let base_p99 = base_inline_3x[p99];
         let norm_once_p99 = norm_once_static[p99];
@@ -11069,6 +11088,10 @@ mod tests {
         let stepflag_scratch_p99 = stepflag_scratches[p99];
         let stepflag_scratch_max = *stepflag_scratches.last().unwrap();
         let stepflag_scratch_gap_google = stepflag_scratch_p99 as isize - 663isize;
+        let ambiguous_norm_count_p99 = ambiguous_norm_counts[p99];
+        let ambiguous_norm_count_max = *ambiguous_norm_counts.last().unwrap();
+        let ambiguous_norm_scratch_p99 = ambiguous_norm_scratches[p99];
+        let ambiguous_norm_scratch_gap_google = ambiguous_norm_scratch_p99 as isize - 663isize;
         let norm_cost_p99 = norm_costs_static[p99];
         let norm_rem_p99 = norm_rem_costs[p99];
         let norm_coeff_p99 = norm_coeff_costs[p99];
@@ -11113,6 +11136,10 @@ mod tests {
         println!("METRIC centered_direct_signnorm_stepflag_scratch_p99={stepflag_scratch_p99}");
         println!("METRIC centered_direct_signnorm_stepflag_scratch_max={stepflag_scratch_max}");
         println!("METRIC centered_direct_signnorm_stepflag_scratch_gap_google={stepflag_scratch_gap_google}");
+        println!("METRIC centered_direct_signnorm_ambiguous_norm_count_p99={ambiguous_norm_count_p99}");
+        println!("METRIC centered_direct_signnorm_ambiguous_norm_count_max={ambiguous_norm_count_max}");
+        println!("METRIC centered_direct_signnorm_ambiguous_norm_scratch_p99={ambiguous_norm_scratch_p99}");
+        println!("METRIC centered_direct_signnorm_ambiguous_norm_scratch_gap_google={ambiguous_norm_scratch_gap_google}");
         println!("METRIC centered_direct_signnorm_cost_p99={norm_cost_p99}");
         println!("METRIC centered_direct_signnorm_rem_cost_p99={norm_rem_p99}");
         println!("METRIC centered_direct_signnorm_coeff_cost_p99={norm_coeff_p99}");
@@ -11144,7 +11171,7 @@ mod tests {
         println!("METRIC centered_direct_signnorm_exact_once_first64_gap_to_2700k={exact_norm_once_first64_gap}");
         println!("METRIC centered_direct_signnorm_exact_split_first64_gap_to_2700k={exact_norm_split_first64_gap}");
         eprintln!(
-            "Direct-centered sign-normalized inline budget: cneg257={cneg257}, cneg258={cneg258}, exact_cneg257={exact_cneg257}, exact_cneg258={exact_cneg258}, base3x_p99={base_p99}, count_p99={count_p99}, digit_payload_p99={digit_payload_p99}, norm_count_p99={norm_count_p99}, norm_count_max={norm_count_max}, normflag_scratch_p99={normflag_scratch_p99}, stepflag_scratch_p99={stepflag_scratch_p99}, norm_cost_p99={norm_cost_p99}, rem_p99={norm_rem_p99}, coeff_p99={norm_coeff_p99}, once_p99={norm_once_p99}, split_p99={norm_split_p99}, once_gap={norm_once_gap}, split_gap={norm_split_gap}, split_mean={norm_split_mean}, split_first64={norm_split_first64}, exact_split_p99={exact_norm_split_p99}, exact_split_gap={exact_norm_split_gap}, exact_split_mean={exact_norm_split_mean}, exact_split_first64={exact_norm_split_first64}"
+            "Direct-centered sign-normalized inline budget: cneg257={cneg257}, cneg258={cneg258}, exact_cneg257={exact_cneg257}, exact_cneg258={exact_cneg258}, base3x_p99={base_p99}, count_p99={count_p99}, digit_payload_p99={digit_payload_p99}, norm_count_p99={norm_count_p99}, norm_count_max={norm_count_max}, ambiguous_norm_count_p99={ambiguous_norm_count_p99}, normflag_scratch_p99={normflag_scratch_p99}, stepflag_scratch_p99={stepflag_scratch_p99}, ambiguous_norm_scratch_p99={ambiguous_norm_scratch_p99}, norm_cost_p99={norm_cost_p99}, rem_p99={norm_rem_p99}, coeff_p99={norm_coeff_p99}, once_p99={norm_once_p99}, split_p99={norm_split_p99}, once_gap={norm_once_gap}, split_gap={norm_split_gap}, split_mean={norm_split_mean}, split_first64={norm_split_first64}, exact_split_p99={exact_norm_split_p99}, exact_split_gap={exact_norm_split_gap}, exact_split_mean={exact_norm_split_mean}, exact_split_first64={exact_norm_split_first64}"
         );
         assert!(norm_count_p99 > 0, "sign normalization never fired on sampled traces");
         assert!(norm_once_gap < 0, "single-pass sign normalization budget stopped fitting");
@@ -11179,6 +11206,10 @@ mod tests {
         assert!(
             stepflag_scratch_gap_google > 0,
             "uncompressed normalization flags fit Google scratch; promote signnorm implementation"
+        );
+        assert!(
+            ambiguous_norm_scratch_gap_google > 0,
+            "locally ambiguous normalization signs fit Google scratch; promote signnorm compression"
         );
     }
 
