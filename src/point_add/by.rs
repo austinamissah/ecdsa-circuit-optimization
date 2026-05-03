@@ -5471,6 +5471,67 @@ mod tests {
     }
 
     #[test]
+    fn endomorphism_y_denominators_do_not_share_branch_stream() {
+        // The j=0 endomorphism identity rewrites the input slope as
+        //   lambda = ((beta*Px-Qx)(beta^2*Px-Qx))/(Py+Qy).
+        // Applying the same identity to the output subtraction uses denominator
+        // Ry-Qy.  If these y-denominator branch streams were correlated, this
+        // could be a real control-sharing escape from the two-denominator BY
+        // obstruction.  Sample the exact branch cases directly before granting
+        // any selector reuse budget.
+        let curve = secp_curve_for_strategy_e_share_test();
+        let p = SECP256K1_P;
+        let iters = 576usize;
+        let target_samples = 256usize;
+        let mut rng = 0x0e5d_0d15_c0fe_0001u64;
+        let mut samples = 0usize;
+        let mut odd_counts = [[0usize; 2]; 2];
+        let mut case_counts = [[0usize; 3]; 3];
+        let mut odd_match = 0usize;
+        let mut case_match = 0usize;
+        while samples < target_samples {
+            let k1 = rand_scalar_for_strategy_e_share_test(&mut rng, curve.order);
+            let k2 = rand_scalar_for_strategy_e_share_test(&mut rng, curve.order);
+            let (px, py) = curve.mul(curve.gx, curve.gy, k1);
+            let (qx, qy) = curve.mul(curve.gx, curve.gy, k2);
+            if (px.is_zero() && py.is_zero()) || (qx.is_zero() && qy.is_zero()) || px == qx {
+                continue;
+            }
+            let (rx, ry) = curve.add(px, py, qx, qy);
+            if rx.is_zero() && ry.is_zero() { continue; }
+            let in_y_den = addm(py, qy, p);
+            let out_y_den = subm(ry, qy, p);
+            if in_y_den.is_zero() || out_y_den.is_zero() { continue; }
+            let a = by_branch_cases_for_strategy_e_share_test(in_y_den, p, iters);
+            let b = by_branch_cases_for_strategy_e_share_test(out_y_den, p, iters);
+            for i in 0..iters {
+                let oa = (a[i] != 0) as usize;
+                let ob = (b[i] != 0) as usize;
+                odd_counts[oa][ob] += 1;
+                case_counts[a[i] as usize][b[i] as usize] += 1;
+                if oa == ob { odd_match += 1; }
+                if a[i] == b[i] { case_match += 1; }
+            }
+            samples += 1;
+        }
+        let total = samples * iters;
+        let odd_match_ppm = odd_match * 1_000_000usize / total;
+        let case_match_ppm = case_match * 1_000_000usize / total;
+        let odd_mi_millibits = mutual_information_millibits_for_strategy_e_share_test::<2>(odd_counts);
+        let case_mi_millibits = mutual_information_millibits_for_strategy_e_share_test::<3>(case_counts);
+        println!("METRIC endomorphism_y_branch_share_samples={samples}");
+        println!("METRIC endomorphism_y_branch_odd_match_ppm={odd_match_ppm}");
+        println!("METRIC endomorphism_y_branch_case_match_ppm={case_match_ppm}");
+        println!("METRIC endomorphism_y_branch_odd_mi_millibits={odd_mi_millibits:.3}");
+        println!("METRIC endomorphism_y_branch_case_mi_millibits={case_mi_millibits:.3}");
+        eprintln!(
+            "Endomorphism y-denominator branch sharing probe: samples={samples}, odd_match_ppm={odd_match_ppm}, case_match_ppm={case_match_ppm}, odd_mi_millibits={odd_mi_millibits:.3}, case_mi_millibits={case_mi_millibits:.3}, odd_counts={odd_counts:?}, case_counts={case_counts:?}"
+        );
+        assert!(odd_mi_millibits < 10.0, "endomorphism y-denominator odd controls show exploitable correlation; investigate sharing");
+        assert!(case_mi_millibits < 10.0, "endomorphism y-denominator branch cases show exploitable correlation; investigate sharing");
+    }
+
+    #[test]
     fn partial_mask_controlled_qoffset_linear_tradeoff_just_misses_600q_target() {
         // First-order model after the masked-borrow primitive: full mask gives
         // good gates but 766q scratch with compressed history; no mask gives

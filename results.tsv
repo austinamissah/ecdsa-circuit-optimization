@@ -1299,3 +1299,4 @@ timestamp	commit	toffoli	clifford	qubits	ops	correct	notes
 1777754909	40f1779	4082842.000	24254362.184	2713	30509434	FAIL	rsmall259 p2_400 bulk378 probe | PHASE GARBAGE: global_phase = 0x0000020000000000 across 64 live shots (must be 0)
 1777754909	40f1779	4082910.000	24253195.839	2713	30513852	OK	default rsmall259 p2_400 bulk377 promoted verify
 1777764077	40f1779	4082910.000	24253195.839	2713	30513852	OK	default rsmall259 p2_400 bulk377 fresh verify
+1777765885	4d59f7f	4082910.000	24253195.839	2713	30513852	OK	endomorphism y-den branch sharing guardrail default verify
