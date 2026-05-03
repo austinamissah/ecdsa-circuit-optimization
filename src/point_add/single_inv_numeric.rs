@@ -8942,6 +8942,7 @@ mod tests {
         coeff_v: &[super::super::QubitId],
         digit_hist: &[super::super::QubitId],
         final_negative: super::super::QubitId,
+        q_neg: bool,
         centered_remainder: bool,
     ) {
         assert_eq!(digit_hist.len(), 6);
@@ -8966,12 +8967,18 @@ mod tests {
                 &shifted_v,
                 digit_hist[sh],
             );
+            if q_neg {
+                b.x(digit_hist[sh]);
+            }
             emit_fused_sign_controlled_addsub_digit_for_centered_test(
                 b,
                 coeff_acc,
                 &shifted_cv,
                 digit_hist[sh],
             );
+            if q_neg {
+                b.x(digit_hist[sh]);
+            }
             if sh != 0 {
                 emit_shift_right_1_nooverflow_for_centered_test(b, &shifted_v);
                 emit_arithmetic_shift_right_1_exact_for_centered_test(b, &shifted_cv);
@@ -9002,7 +9009,7 @@ mod tests {
             coeff_acc,
             &shifted_cv,
             final_negative,
-            false,
+            q_neg,
         );
         for i in (0..coeff_v.len()).rev() {
             b.cx(coeff_v[i], shifted_cv[i]);
@@ -9327,6 +9334,7 @@ mod tests {
             &digit_hist,
             final_negative,
             false,
+            false,
         );
         let ccx = local_count_ccx_for_plusminus_cost(&b.ops[start..]);
         let peak = b.peak_qubits;
@@ -9433,6 +9441,7 @@ mod tests {
             &coeff_v,
             &digit_hist,
             final_negative,
+            false,
             true,
         );
         let ccx = local_count_ccx_for_plusminus_cost(&b.ops[start..]);
@@ -9521,6 +9530,134 @@ mod tests {
             "Centered direct inline coefficient centered-step toy: ccx={ccx}, peak={peak}, expected_ccx={expected_ccx}"
         );
         assert_eq!(ccx, expected_ccx, "centered inline coefficient toy cost drifted");
+    }
+
+    #[test]
+    fn direct_centered_nonrestoring_inline_coeff_negative_q_naive_toggle_is_phase_dirty() {
+        // The signed Euclid recurrence can flip the quotient sign from the
+        // denominator/remainder signs.  With q_neg=true the same magnitude digit
+        // stream must update coefficients as cu -= (-q)*cv = cu + q*cv, while
+        // leaving the magnitude-division remainder/history unchanged.  The
+        // naive implementation below toggles the digit control around the same
+        // fused add/sub primitive; it preserves basis-state semantics but is not
+        // phase-clean on negative two's-complement coefficient addends.
+        use sha3::digest::{ExtendableOutput, Update};
+
+        const REM_W: usize = 11;
+        const DIV_W: usize = 4;
+        const COEFF_W: usize = 8;
+        const DIGITS: usize = 6;
+        let mut b = super::super::B::new();
+        let rem = b.alloc_qubits(REM_W);
+        let divisor = b.alloc_qubits(DIV_W);
+        let coeff_acc = b.alloc_qubits(COEFF_W);
+        let coeff_v = b.alloc_qubits(COEFF_W);
+        let digit_hist = b.alloc_qubits(DIGITS);
+        let final_negative = b.alloc_qubit();
+        let start = b.ops.len();
+        emit_toy_direct_centered_nonrestoring_inline_coeff_for_centered_test(
+            &mut b,
+            &rem,
+            &divisor,
+            &coeff_acc,
+            &coeff_v,
+            &digit_hist,
+            final_negative,
+            true,
+            true,
+        );
+        let ccx = local_count_ccx_for_plusminus_cost(&b.ops[start..]);
+        let peak = b.peak_qubits;
+        let num_qubits = b.next_qubit as usize;
+        let num_bits = b.next_bit as usize;
+        let ops = b.ops;
+        let rem_mask = (1u64 << REM_W) - 1;
+        let coeff_mask = (1u64 << COEFF_W) - 1;
+        let mut phase_dirty_cases = 0usize;
+        let raw_from_i64 = |x: i64| -> u64 {
+            ((x as i128) & ((1i128 << COEFF_W) - 1)) as u64
+        };
+        let i64_from_raw = |raw: u64, width: usize| -> i64 {
+            let mask = (1u64 << width) - 1;
+            let raw = raw & mask;
+            if (raw & (1u64 << (width - 1))) != 0 {
+                raw as i64 - (1i64 << width)
+            } else {
+                raw as i64
+            }
+        };
+        for d in 1u64..(1u64 << DIV_W) {
+            for n in 0u64..49u64 {
+                for cu0 in -5i64..=5i64 {
+                    for cv0 in -2i64..=2i64 {
+                        let adjusted = n + (d >> 1);
+                        let expected_q = (adjusted / d) as i64;
+                        let expected_rem = n as i64 - expected_q * d as i64;
+                        let expected_coeff = cu0 + expected_q * cv0;
+                        assert!(
+                            (-128..128).contains(&expected_coeff),
+                            "toy coefficient fixture overflowed"
+                        );
+                        let mut hasher = sha3::Shake128::default();
+                        hasher.update(b"direct-centered-inline-coeff-negative-q-toy-v1");
+                        let mut xof = hasher.finalize_xof();
+                        let mut sim = crate::sim::Simulator::new(num_qubits, num_bits, &mut xof);
+                        set_slice_u512_pm(&mut sim, &rem, U512::from(adjusted));
+                        set_slice_u512_pm(&mut sim, &divisor, U512::from(d));
+                        set_slice_u512_pm(&mut sim, &coeff_acc, U512::from(raw_from_i64(cu0)));
+                        set_slice_u512_pm(&mut sim, &coeff_v, U512::from(raw_from_i64(cv0)));
+                        sim.apply(&ops);
+
+                        let rem_out = i64_from_raw(
+                            get_slice_u512_pm(&sim, &rem).as_limbs()[0] & rem_mask,
+                            REM_W,
+                        );
+                        let div_out = get_slice_u512_pm(&sim, &divisor).as_limbs()[0] & ((1u64 << DIV_W) - 1);
+                        let coeff_out = i64_from_raw(
+                            get_slice_u512_pm(&sim, &coeff_acc).as_limbs()[0] & coeff_mask,
+                            COEFF_W,
+                        );
+                        let coeff_v_out = i64_from_raw(
+                            get_slice_u512_pm(&sim, &coeff_v).as_limbs()[0] & coeff_mask,
+                            COEFF_W,
+                        );
+                        let hist = get_slice_u512_pm(&sim, &digit_hist).as_limbs()[0];
+                        let mut q = 0i64;
+                        for sh in 0..DIGITS {
+                            if ((hist >> sh) & 1) == 0 {
+                                q += 1i64 << sh;
+                            } else {
+                                q -= 1i64 << sh;
+                            }
+                        }
+                        if (sim.qubit(final_negative) & 1) != 0 {
+                            q -= 1;
+                        }
+                        assert_eq!(rem_out, expected_rem, "centered remainder mismatch n={n} d={d}");
+                        assert_eq!(q, expected_q, "quotient magnitude mismatch n={n} d={d}");
+                        assert_eq!(coeff_out, expected_coeff, "coeff mismatch n={n} d={d} cu0={cu0} cv0={cv0}");
+                        assert_eq!(coeff_v_out, cv0, "coeff_v changed n={n} d={d} cv0={cv0}");
+                        assert_eq!(div_out, d, "divisor changed n={n} d={d}");
+                        phase_dirty_cases += ((sim.global_phase() & 1) != 0) as usize;
+                    }
+                }
+            }
+        }
+
+        let expected_ccx = DIGITS * ((REM_W - 1) + (COEFF_W - 1))
+            + centered_final_half_fix_cost_for_centered_test(REM_W)
+            + (2 * COEFF_W - 1);
+        println!("METRIC centered_direct_inline_coeff_negative_q_naive_ccx={ccx}");
+        println!("METRIC centered_direct_inline_coeff_negative_q_naive_peak_q={peak}");
+        println!("METRIC centered_direct_inline_coeff_negative_q_naive_phase_dirty_cases={phase_dirty_cases}");
+        eprintln!(
+            "Centered direct inline coefficient negative-q naive toggle: ccx={ccx}, peak={peak}, expected_ccx={expected_ccx}, phase_dirty_cases={phase_dirty_cases}"
+        );
+        assert_eq!(ccx, expected_ccx, "negative-q inline coefficient toy cost drifted");
+        assert!(
+            phase_dirty_cases > 0,
+            "naive q_neg digit-control toggle unexpectedly became phase-clean"
+        );
     }
 
     #[test]
