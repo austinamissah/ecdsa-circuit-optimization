@@ -13396,6 +13396,31 @@ mod tests {
     }
 
     #[test]
+    fn direct_centered_signnorm_reverse_image_still_needs_norm_signs() {
+        // Stronger than local ambiguity: even on the exact toy image, the
+        // reverse-visible state (public step, next denominator magnitude, next
+        // remainder magnitude, and quotient magnitude) is reached with both
+        // normalization signs.  So reverse cleanup cannot simply recover the
+        // sign from adjacent magnitudes plus quotient history.
+        let cases = [(8usize, 251u16), (10, 1021), (12, 4093), (14, 16381)];
+        for &(n, p) in &cases {
+            let (collisions, total_steps, states, max_mult) =
+                direct_centered_signnorm_reverse_image_collision_stats(p);
+            eprintln!(
+                "direct-centered signnorm reverse image collisions: n={n}, collisions={collisions}, states={states}, total_steps={total_steps}, max_mult={max_mult}"
+            );
+            if n == 14 {
+                println!("METRIC centered_direct_signnorm_reverse_collisions_n14={collisions}");
+                println!("METRIC centered_direct_signnorm_reverse_states_n14={states}");
+                println!("METRIC centered_direct_signnorm_reverse_total_steps_n14={total_steps}");
+                println!("METRIC centered_direct_signnorm_reverse_max_mult_n14={max_mult}");
+            }
+            assert!(collisions > 0, "normalization signs became recoverable on exact toy image");
+            assert_eq!(max_mult, 2, "normalization sign image multiplicity changed");
+        }
+    }
+
+    #[test]
     fn euclid_quotient_stream_entropy_also_exceeds_scratch600() {
         // Follow-up to the raw-payload quotient-stream DIV test.  The tempting
         // objection is that a clever prefix/arithmetic code could pack the
@@ -13757,6 +13782,41 @@ mod tests {
             .max()
             .unwrap_or(0);
         (degree, density, max_norm_count)
+    }
+
+    fn direct_centered_signnorm_reverse_image_collision_stats(
+        p: u16,
+    ) -> (usize, usize, usize, usize) {
+        use std::collections::BTreeMap;
+        let mut image: BTreeMap<(usize, i128, i128, i128), u8> = BTreeMap::new();
+        let mut total_steps = 0usize;
+        for x in 1..p {
+            let mut u = p as i128;
+            let mut v = x as i128;
+            let mut step = 0usize;
+            while v != 0 {
+                let adjusted = u + (v >> 1);
+                let q = adjusted / v;
+                let rem = u - q * v;
+                let sign = (rem < 0) as u8;
+                let next_v = rem.abs();
+                if next_v != 0 {
+                    let entry = image.entry((step, v, next_v, q)).or_insert(0);
+                    *entry |= 1u8 << sign;
+                    total_steps += 1;
+                }
+                u = v;
+                v = next_v;
+                step += 1;
+            }
+        }
+        let collisions = image.values().filter(|&&mask| mask == 0b11).count();
+        let max_mult = image
+            .values()
+            .map(|mask| mask.count_ones() as usize)
+            .max()
+            .unwrap_or(0);
+        (collisions, total_steps, image.len(), max_mult)
     }
 
     fn euclid_quotient_payload_parity_anf_stats(n: usize, p: u16) -> (usize, usize) {
