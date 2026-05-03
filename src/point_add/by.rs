@@ -8505,6 +8505,172 @@ mod tests {
         assert!(peak < 300, "pattern+q oracle unexpectedly wide");
     }
 
+    fn emit_consumed_high_cleanup_row_for_cost(
+        b: &mut super::super::B,
+        coeff0: i128,
+        src0: &[super::super::QubitId],
+        coeff1: i128,
+        src1: &[super::super::QubitId],
+        old_high: &[super::super::QubitId],
+        w: usize,
+    ) {
+        let z_width = old_high.len() + w;
+        let z = b.alloc_qubits(z_width);
+        add_signed_coeff_times_for_cost(b, coeff0, src0, &z);
+        add_signed_coeff_times_for_cost(b, coeff1, src1, &z);
+        super::super::add_nbit_const_fast(b, &z, U256::from(1u64 << (w - 1)));
+        let z_high = z[w..].to_vec();
+        super::super::sub_nbit_qq_fast(b, &z_high, old_high);
+        super::super::sub_nbit_const_fast(b, &z, U256::from(1u64 << (w - 1)));
+        add_signed_coeff_times_for_cost(b, -coeff1, src1, &z);
+        add_signed_coeff_times_for_cost(b, -coeff0, src0, &z);
+        b.free_vec(&z);
+    }
+
+    fn emit_consumed_high_pair_update_with_q_for_cost(
+        b: &mut super::super::B,
+        mtx: TransitionMatrix,
+        high_width: usize,
+        w: usize,
+        q_bits: usize,
+    ) {
+        assert!(high_width > 0);
+        let h0 = b.alloc_qubits(high_width);
+        let h1 = b.alloc_qubits(high_width);
+        let q0 = b.alloc_qubits(q_bits);
+        let q1 = b.alloc_qubits(q_bits);
+        let y0 = b.alloc_qubits(high_width);
+        let y1 = b.alloc_qubits(high_width);
+
+        add_signed_coeff_times_for_cost(b, mtx.m00, &h0, &y0);
+        add_signed_coeff_times_for_cost(b, mtx.m01, &h1, &y0);
+        add_signed_shifted_term_for_cost(b, &q0, &y0, 0, false);
+        add_signed_coeff_times_for_cost(b, mtx.m10, &h0, &y1);
+        add_signed_coeff_times_for_cost(b, mtx.m11, &h1, &y1);
+        add_signed_shifted_term_for_cost(b, &q1, &y1, 0, false);
+
+        let sgn = det_sign_pow2(mtx, w);
+        emit_consumed_high_cleanup_row_for_cost(
+            b,
+            sgn * mtx.m11,
+            &y0,
+            -sgn * mtx.m01,
+            &y1,
+            &h0,
+            w,
+        );
+        emit_consumed_high_cleanup_row_for_cost(
+            b,
+            -sgn * mtx.m10,
+            &y0,
+            sgn * mtx.m00,
+            &y1,
+            &h1,
+            w,
+        );
+
+        let _ = (h0, h1, q0, q1, y0, y1);
+    }
+
+    #[test]
+    fn consumed_high_state_window_update_spends_the_selector_margin() {
+        // The consumed-lowword identity avoids preserving the low W bits, but
+        // the rolling high state still needs a reversible update:
+        //
+        //   high' = P·high + q,  q = (P·low)/2^W.
+        //
+        // To clean old high, reconstruct old = s·adj(P)·high' and drop the
+        // balanced low W bits.  This charges that high-state body separately
+        // from the modular qoffset replay.  It is intentionally optimistic:
+        // matrix selection and final q-history cleanup are still uncharged.
+        const W: usize = 16;
+        const TOTAL_BITS: usize = 35 * W;
+        const QBITS: usize = 18;
+        const SAMPLES: usize = 4;
+        let mut sampler = Sampler::new(b"by-consumed-high-state-update-v1", SECP256K1_P);
+        let mut sample_costs = Vec::with_capacity(SAMPLES);
+        let mut sample_peaks = Vec::with_capacity(SAMPLES);
+        for _ in 0..SAMPLES {
+            let x = sampler.next();
+            let mut delta = 1i64;
+            let mut f = SInt::from_u(SECP256K1_P);
+            let mut g = SInt::from_u(x);
+            let mut sample_ccx = 0usize;
+            let mut sample_peak = 0usize;
+            for win in 0..35 {
+                let high_width = TOTAL_BITS - (win + 1) * W;
+                let f_low = low_signed_sint_for_streaming_test(f, W);
+                let g_low = low_signed_sint_for_streaming_test(g, W);
+                let (_, _, _, mtx) = jump_matrix_direct_lowword(W, W, delta, f_low, g_low);
+                if high_width > 0 {
+                    let mut b = super::super::B::new();
+                    emit_consumed_high_pair_update_with_q_for_cost(&mut b, mtx, high_width, W, QBITS);
+                    sample_ccx += count_ccx(&b.ops);
+                    sample_peak = sample_peak.max(b.peak_qubits as usize);
+                }
+                for _ in 0..W {
+                    divstep_sint_state(&mut delta, &mut f, &mut g);
+                }
+            }
+            sample_costs.push(sample_ccx);
+            sample_peaks.push(sample_peak);
+        }
+        sample_costs.sort_unstable();
+        sample_peaks.sort_unstable();
+        let mean_compute = sample_costs.iter().sum::<usize>() as f64 / SAMPLES as f64;
+        let max_compute = sample_costs[SAMPLES - 1];
+        let max_peak = sample_peaks[SAMPLES - 1];
+
+        let mut bq = super::super::B::new();
+        let f = bq.alloc_qubits(34);
+        let g = bq.alloc_qubits(34);
+        let delta = bq.alloc_qubits(10);
+        let pattern_tmp = bq.alloc_qubits(W);
+        let a_tmp = bq.alloc_qubits(W);
+        let pattern_hist = bq.alloc_qubits(W);
+        let q0_hist = bq.alloc_qubits(34);
+        let q1_hist = bq.alloc_qubits(34);
+        for i in 0..W {
+            emit_signed_by_branch_step_for_test(&mut bq, &f, &g, &delta, pattern_tmp[i], a_tmp[i]);
+        }
+        for i in 0..W {
+            bq.cx(pattern_tmp[i], pattern_hist[i]);
+        }
+        for i in 0..34 {
+            bq.cx(f[i], q0_hist[i]);
+            bq.cx(g[i], q1_hist[i]);
+        }
+        for i in (0..W).rev() {
+            emit_signed_by_branch_step_reverse_for_test(&mut bq, &f, &g, &delta, pattern_tmp[i], a_tmp[i]);
+        }
+        let q_oracle_window = count_ccx(&bq.ops);
+        let q_oracle_total = q_oracle_window * 35;
+        let optimistic_compute_uncompute = (2.0 * mean_compute).round() as usize;
+        let streamed_replay_body_with_allowance = 2_645_196usize;
+        let selector_allowance = 150_000usize;
+        let decoder_total = 62_160usize;
+        let optimistic_pointadd = streamed_replay_body_with_allowance - selector_allowance
+            + decoder_total
+            + q_oracle_total
+            + optimistic_compute_uncompute;
+        let optimistic_gap = optimistic_pointadd as isize - 2_700_000isize;
+        println!("METRIC by_consumed_high_update_mean_compute_ccx={mean_compute:.3}");
+        println!("METRIC by_consumed_high_update_max_compute_ccx={max_compute}");
+        println!("METRIC by_consumed_high_update_compute_uncompute_ccx={optimistic_compute_uncompute}");
+        println!("METRIC by_consumed_high_update_max_peak_q={max_peak}");
+        println!("METRIC by_consumed_high_q_oracle_window_ccx={q_oracle_window}");
+        println!("METRIC by_consumed_high_q_oracle_total_ccx={q_oracle_total}");
+        println!("METRIC by_consumed_high_optimistic_pointadd_toffoli={optimistic_pointadd}");
+        println!("METRIC by_consumed_high_optimistic_gap_to_2700k={optimistic_gap}");
+        eprintln!(
+            "BY consumed high-state update: mean_compute={mean_compute:.0}, max_compute={max_compute}, compute_uncompute={optimistic_compute_uncompute}, q_oracle_total={q_oracle_total}, optimistic_pointadd={optimistic_pointadd}, gap={optimistic_gap}, max_peak={max_peak}q"
+        );
+        assert!(
+            optimistic_gap > 300_000,
+            "consumed high-state update may fit the BY selector margin; revisit integration"
+        );
+    }
+
     #[test]
     fn by_denominator_branch_history_self_cleans_on_reverse() {
         // This is the constructive counterpart to the dead compute/copy/uncompute
