@@ -8627,6 +8627,38 @@ mod tests {
         (digits, rem.mag, final_negative)
     }
 
+    fn nonrestoring_floor_signed_digits_for_centered_test(n: U512, d: U512) -> Vec<(bool, usize)> {
+        assert!(!d.is_zero());
+        if n.is_zero() {
+            return vec![(false, 0)];
+        }
+        let top = u512_bit_len_for_halfgcd_test(n).saturating_sub(u512_bit_len_for_halfgcd_test(d));
+        let mut rem = smag_for_halfgcd_test(false, n);
+        let mut q = smag_for_halfgcd_test(false, U512::ZERO);
+        let mut digits = Vec::with_capacity(top + 2);
+        for sh in (0..=top).rev() {
+            let digit_neg = rem.neg;
+            let term = smag_for_halfgcd_test(false, d << sh);
+            let qterm = smag_for_halfgcd_test(false, U512::from(1u64) << sh);
+            if digit_neg {
+                rem = signed_add_for_halfgcd_test(rem, term);
+                q = signed_add_for_halfgcd_test(q, signed_neg_for_halfgcd_test(qterm));
+            } else {
+                rem = signed_add_for_halfgcd_test(rem, signed_neg_for_halfgcd_test(term));
+                q = signed_add_for_halfgcd_test(q, qterm);
+            }
+            digits.push((digit_neg, sh));
+        }
+        if rem.neg && !rem.mag.is_zero() {
+            rem = signed_add_for_halfgcd_test(rem, smag_for_halfgcd_test(false, d));
+            q = signed_add_for_halfgcd_test(q, smag_for_halfgcd_test(true, U512::from(1u64)));
+            digits.push((true, 0));
+        }
+        assert!(!rem.neg && rem.mag < d);
+        assert!(!q.neg && q.mag == n / d, "non-restoring signed digits mismatch");
+        digits
+    }
+
     fn direct_centered_public_width_bound_for_step(n: usize, step: usize) -> usize {
         n.saturating_sub(step / 2).max(1)
     }
@@ -9570,6 +9602,146 @@ mod tests {
         assert!(saved_static_width_slots > 3000, "public width taper no longer saves enough static positions");
         assert!(gap_to_3m < 0, "public width taper does not close the relaxed exact-barrel inactive-tax gap");
         assert!(gap_to_2700k > 0, "public width taper alone reaches the low-qubit target; promote to implementation");
+    }
+
+    #[test]
+    fn direct_centered_inline_signed_coeff_replay_has_narrow_static_opening() {
+        // The direct-centered ledgers have charged quotient/control extraction
+        // separately from a `587`-CCX per signed digit coefficient replay.  A
+        // more structural extended-Euclid circuit would update the Bezout
+        // coefficient pair inline with the same non-restoring signed digits.
+        // This probe measures the signed-integer coefficient widths needed by
+        // that idea and compares 1x/2x/3x width-cost replay models against the
+        // current `587` charge.
+        let p = SECP256K1_P;
+        let samples = 32_768usize;
+        let mut rng = 0x2800_d1ce_c0ef_0001u64;
+        let n = 256usize;
+        let mut current_pointadds = Vec::with_capacity(samples);
+        let mut inline_1x_pointadds = Vec::with_capacity(samples);
+        let mut inline_2x_pointadds = Vec::with_capacity(samples);
+        let mut inline_3x_pointadds = Vec::with_capacity(samples);
+        let mut coeff_width_costs = Vec::with_capacity(samples);
+        let mut max_coeff_bits = Vec::with_capacity(samples);
+        for _ in 0..samples {
+            let mut x = rand_u256(&mut rng);
+            if x.is_zero() { x = U256::from(1u64); }
+            let mut u = smag_for_halfgcd_test(false, u512_from_u256_for_halfgcd_test(p));
+            let mut v = smag_for_halfgcd_test(false, u512_from_u256_for_halfgcd_test(x));
+            let mut coeff_u = smag_for_halfgcd_test(false, U512::ZERO);
+            let mut coeff_v = smag_for_halfgcd_test(false, U512::from(1u64));
+            let (mut digit_payload, mut digit_width_cost, mut count, mut final_count) =
+                (0usize, 0usize, 0usize, 0usize);
+            let mut coeff_width_cost = 0usize;
+            let mut max_coeff_bit_len = 1usize;
+            while !v.mag.is_zero() {
+                let public_bound = direct_centered_public_width_bound_for_step(n, count);
+                let adjusted = u.mag + (v.mag >> 1usize);
+                let q_direct = adjusted / v.mag;
+                let (digits, _rem, final_negative) =
+                    nonrestoring_floor_digits_for_centered_test(adjusted, v.mag);
+                let signed_digits = nonrestoring_floor_signed_digits_for_centered_test(adjusted, v.mag);
+                assert_eq!(
+                    signed_digits.len(),
+                    digits + final_negative as usize,
+                    "signed digit helper disagrees with final-fix accounting"
+                );
+                digit_payload += digits;
+                digit_width_cost += digits * public_bound;
+                final_count += final_negative as usize;
+
+                let q_neg = u.neg ^ v.neg;
+                let mut coeff_acc = coeff_u;
+                for &(digit_neg, sh) in &signed_digits {
+                    let term = signed_mul_mag_for_halfgcd_test(
+                        coeff_v,
+                        q_neg ^ digit_neg,
+                        U512::from(1u64) << sh,
+                    );
+                    let before = coeff_acc;
+                    coeff_acc = signed_add_for_halfgcd_test(
+                        coeff_acc,
+                        signed_neg_for_halfgcd_test(term),
+                    );
+                    let op_mag_bits = u512_bit_len_for_halfgcd_test(before.mag)
+                        .max(u512_bit_len_for_halfgcd_test(term.mag))
+                        .max(u512_bit_len_for_halfgcd_test(coeff_acc.mag));
+                    let op_width_with_sign = op_mag_bits.max(1) + 1;
+                    coeff_width_cost += op_width_with_sign;
+                    max_coeff_bit_len = max_coeff_bit_len.max(op_width_with_sign);
+                }
+                let qv_coeff = signed_mul_mag_for_halfgcd_test(coeff_v, q_neg, q_direct);
+                let coeff_direct = signed_add_for_halfgcd_test(
+                    coeff_u,
+                    signed_neg_for_halfgcd_test(qv_coeff),
+                );
+                assert_eq!(coeff_acc, coeff_direct, "signed digit coefficient replay mismatch");
+                coeff_u = coeff_v;
+                coeff_v = coeff_acc;
+
+                count += 1;
+                let qv = signed_mul_mag_for_halfgcd_test(v, q_neg, q_direct);
+                let r = signed_add_for_halfgcd_test(u, signed_neg_for_halfgcd_test(qv));
+                u = v;
+                v = r;
+            }
+            let public_width_sum = (0..count)
+                .map(|step| direct_centered_public_width_bound_for_step(n, step))
+                .sum::<usize>();
+            let final_fix_tapered = (0..count)
+                .map(|step| 2usize * direct_centered_public_width_bound_for_step(n, step) - 1usize)
+                .sum::<usize>();
+            let inactive_positions_tapered = public_width_sum - digit_payload;
+            let barrel_and_scan_tapered = public_width_sum * (8usize + 1usize);
+            let extraction_oneway = digit_width_cost
+                + barrel_and_scan_tapered
+                + final_fix_tapered
+                + inactive_positions_tapered;
+            let current_replay_per_div = (digit_payload + final_count) * 587usize;
+            let current_pointadd = 642_716isize
+                + 2 * (current_replay_per_div + 2 * extraction_oneway) as isize;
+            let inline_pointadd = |factor: usize| -> isize {
+                let replay_per_div = coeff_width_cost * factor;
+                642_716isize + 2 * (replay_per_div + 2 * extraction_oneway) as isize
+            };
+            current_pointadds.push(current_pointadd);
+            inline_1x_pointadds.push(inline_pointadd(1));
+            inline_2x_pointadds.push(inline_pointadd(2));
+            inline_3x_pointadds.push(inline_pointadd(3));
+            coeff_width_costs.push(coeff_width_cost);
+            max_coeff_bits.push(max_coeff_bit_len);
+        }
+        current_pointadds.sort_unstable();
+        inline_1x_pointadds.sort_unstable();
+        inline_2x_pointadds.sort_unstable();
+        inline_3x_pointadds.sort_unstable();
+        coeff_width_costs.sort_unstable();
+        max_coeff_bits.sort_unstable();
+        let p99 = samples * 99 / 100;
+        let current_p99 = current_pointadds[p99];
+        let inline_1x_p99 = inline_1x_pointadds[p99];
+        let inline_2x_p99 = inline_2x_pointadds[p99];
+        let inline_3x_p99 = inline_3x_pointadds[p99];
+        let coeff_width_cost_p99 = coeff_width_costs[p99];
+        let max_coeff_bits_p99 = max_coeff_bits[p99];
+        let max_coeff_bits_max = *max_coeff_bits.last().unwrap();
+        let inline_2x_gap = inline_2x_p99 - 2_700_000isize;
+        let inline_3x_gap = inline_3x_p99 - 2_700_000isize;
+        println!("METRIC centered_direct_inline_coeff_current_p99={current_p99}");
+        println!("METRIC centered_direct_inline_coeff_width_cost_p99={coeff_width_cost_p99}");
+        println!("METRIC centered_direct_inline_coeff_max_bits_p99={max_coeff_bits_p99}");
+        println!("METRIC centered_direct_inline_coeff_max_bits_max={max_coeff_bits_max}");
+        println!("METRIC centered_direct_inline_coeff_1x_p99={inline_1x_p99}");
+        println!("METRIC centered_direct_inline_coeff_2x_p99={inline_2x_p99}");
+        println!("METRIC centered_direct_inline_coeff_3x_p99={inline_3x_p99}");
+        println!("METRIC centered_direct_inline_coeff_2x_gap_to_2700k={inline_2x_gap}");
+        println!("METRIC centered_direct_inline_coeff_3x_gap_to_2700k={inline_3x_gap}");
+        eprintln!(
+            "Direct-centered inline signed coeff replay: current_p99={current_p99}, coeff_width_p99={coeff_width_cost_p99}, max_coeff_bits_p99={max_coeff_bits_p99}, max_coeff_bits_max={max_coeff_bits_max}, inline_1x={inline_1x_p99}, inline_2x={inline_2x_p99}, inline_3x={inline_3x_p99}, gap2x={inline_2x_gap}, gap3x={inline_3x_gap}"
+        );
+        assert!(current_p99 > 2_700_000, "baseline replay charge no longer explains the static gap");
+        assert!(inline_1x_p99 < current_p99, "inline coefficient width model is not a replay improvement");
+        assert!(inline_3x_gap < 0, "even 3x-width inline coefficient replay misses the low-qubit target");
     }
 
     #[test]

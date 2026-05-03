@@ -1827,6 +1827,20 @@ production hard pieces are unchanged: packed active digit loop, exact boundary
 cleanup, signed final correction, phase-clean quotient controls, and
 denominator reverse.
 
+New static opening: do not store quotient digits and replay them through the
+`587`-CCX coefficient channel.  `direct_centered_inline_signed_coeff_replay_has_narrow_static_opening`
+tracks the signed Bezout coefficient pair inline with the same non-restoring
+signed digits.  Across 32,768 secp samples the coefficient magnitude needs only
+258 signed bits (p99 and max), with p99 coefficient width-cost `60,936`.
+Replacing the old replay charge by 1x/2x/3x that width-cost gives p99 point-add
+`2,406,434` / `2,527,252` / `2,647,342`; even the 3x model is `52,658` below
+2.7M.  The existing fused signed add/sub primitive costs `width-1` Toffoli
+(`ccx257=256`) and is phase-clean, so this is the first direct-centered static
+ledger that clears the low-qubit metric without relying on classical
+data-dependent execution.  Remaining hard pieces are now an integrated
+extended extractor, exact shifted two's-complement coefficient views, boundary
+cleanup, and reverse.
+
 Follow-up: the barrel mechanics are not the blocker if the parser can expose
 alignment metadata as phase-clean classical bits.  `direct_centered_classical_alignment_metadata_would_remove_barrel_blocker`
 uses bit-controlled swaps and measures `0` barrel Toffoli in the toy shifter.
