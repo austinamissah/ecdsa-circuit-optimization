@@ -1788,6 +1788,15 @@ the gap from `+44,252` to `-922,404`.  The remaining hard question is whether
 those alignment bits can be produced classically without a dense measurement
 phase correction or a static quantum scan.
 
+Follow-up: generic measurement cleanup is also not that primitive.
+`direct_centered_alignment_metadata_mbu_is_dense_too` computes a representative
+toy-field ANF for the parity of direct-centered non-restoring alignment counts.
+At `n=14` it reports degree `14` and density `8132/16384`, with max alignment
+`13`.  So measuring alignment metadata and paying a generic MBUC/kickback phase
+falls into the same dense-oracle trap as measuring quotient payloads.  The
+opening, if any, needs a structural phase-clean parser or a genuinely classical
+rare-path decision, not post-measurement cleanup of dense alignment bits.
+
 ## 6. Post-BY ground-up attempt: Strategy E slope-coordinate map
 
 New non-BY candidate: make the slope the live y-coordinate and avoid an

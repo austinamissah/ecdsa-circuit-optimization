@@ -9312,6 +9312,38 @@ mod tests {
     }
 
     #[test]
+    fn direct_centered_alignment_metadata_mbu_is_dense_too() {
+        // The previous ledger shows that classically-known alignment bits would
+        // remove the Toffoli cost of the full barrel.  Measuring those bits is
+        // not automatically cheap, though: a representative parity of the
+        // direct-centered non-restoring alignment counts is already high-degree
+        // and dense on toy fields, so a generic MBUC phase cleanup is not the
+        // missing parser primitive.
+        let cases = [
+            (8usize, 251u16, 0b101usize),
+            (10usize, 1021u16, 0b101usize),
+            (12usize, 4093u16, 0b1011usize),
+            (14usize, 16381u16, 0b1011usize),
+        ];
+        for &(n, p, mask) in &cases {
+            let (degree, density, max_alignment) =
+                direct_centered_alignment_metadata_parity_anf_stats(n, p, mask);
+            let table = 1usize << n;
+            eprintln!(
+                "direct-centered alignment metadata parity ANF: n={n}, mask={mask:#b}, degree={degree}, density={density}/{table}, max_alignment={max_alignment}"
+            );
+            if n == 14 {
+                println!("METRIC centered_direct_alignment_mbu_degree_n14={degree}");
+                println!("METRIC centered_direct_alignment_mbu_density_n14={density}");
+                println!("METRIC centered_direct_alignment_max_alignment_n14={max_alignment}");
+            }
+            assert!(max_alignment + 1 >= n, "toy field stopped exercising wide alignment metadata");
+            assert!(degree + 1 >= n, "alignment metadata parity unexpectedly low degree");
+            assert!(density > table / 4, "alignment metadata parity unexpectedly sparse");
+        }
+    }
+
+    #[test]
     fn euclid_quotient_stream_entropy_also_exceeds_scratch600() {
         // Follow-up to the raw-payload quotient-stream DIV test.  The tempting
         // objection is that a clever prefix/arithmetic code could pack the
@@ -9462,6 +9494,57 @@ mod tests {
             .max()
             .unwrap_or(0);
         (degree, density)
+    }
+
+    fn direct_centered_alignment_metadata_parity_anf_stats(
+        n: usize,
+        p: u16,
+        alignment_mask: usize,
+    ) -> (usize, usize, usize) {
+        let size = 1usize << n;
+        let mut anf = vec![0u8; size];
+        let mut max_alignment = 0usize;
+        for x in 1..p {
+            let mut u = p as i128;
+            let mut v = x as i128;
+            let mut parity = 0u8;
+            while v != 0 {
+                let abs_u = u.unsigned_abs();
+                let abs_v = v.unsigned_abs();
+                let adjusted = abs_u + (abs_v >> 1);
+                let digits = if adjusted == 0 {
+                    1
+                } else {
+                    let n_bits = 128usize - adjusted.leading_zeros() as usize;
+                    let d_bits = 128usize - abs_v.leading_zeros() as usize;
+                    n_bits.saturating_sub(d_bits) + 1
+                };
+                let alignment = digits.saturating_sub(1);
+                max_alignment = max_alignment.max(alignment);
+                parity ^= ((alignment & alignment_mask).count_ones() as u8) & 1;
+                let q_mag = adjusted / abs_v;
+                let q_signed = if (u < 0) ^ (v < 0) { -(q_mag as i128) } else { q_mag as i128 };
+                let rem = u - q_signed * v;
+                u = v;
+                v = rem;
+            }
+            anf[x as usize] = parity;
+        }
+        for bit in 0..n {
+            for idx in 0..size {
+                if (idx & (1usize << bit)) != 0 {
+                    anf[idx] ^= anf[idx ^ (1usize << bit)];
+                }
+            }
+        }
+        let density = anf.iter().filter(|&&c| c != 0).count();
+        let degree = anf
+            .iter()
+            .enumerate()
+            .filter_map(|(i, &c)| if c != 0 { Some(i.count_ones() as usize) } else { None })
+            .max()
+            .unwrap_or(0);
+        (degree, density, max_alignment)
     }
 
     fn euclid_quotient_payload_parity_anf_stats(n: usize, p: u16) -> (usize, usize) {
