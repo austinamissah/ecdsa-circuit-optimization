@@ -106,6 +106,12 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
             blocker: "matrix alone fits, but matrix+residual/tail exceeds scratch",
         },
         Candidate {
+            name: "halfgcd_det_compressed_matrix_tail_payload",
+            scratch_bits: 564,
+            charged_toffoli: None,
+            blocker: "determinant-compressed matrix+tail payload fits, but omitted-entry recovery is a 262x128-bit division and tail parser/cleanup are uncharged",
+        },
+        Candidate {
             name: "folded_kaliski_one_pair_plus_required_sidecar",
             scratch_bits: 512 + 255,
             charged_toffoli: Some(4_089_274),
@@ -161,6 +167,11 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     let halfgcd_matrix_only = 524usize;
     let halfgcd_matrix_tail_raw = 689usize;
     let halfgcd_tail_over_google = halfgcd_matrix_tail_raw - GOOGLE_LOW_QUBIT_SCRATCH;
+    let halfgcd_det_compressed_tail = 564usize;
+    let halfgcd_det_compressed_tail_gap =
+        halfgcd_det_compressed_tail as isize - GOOGLE_LOW_QUBIT_SCRATCH as isize;
+    let halfgcd_det_recovery_num_bits_p99 = 262usize;
+    let halfgcd_det_recovery_den_bits_p99 = 128usize;
 
     eprintln!("\nScratch-600 architecture frontier:");
     for c in candidates {
@@ -212,6 +223,10 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     println!("METRIC scratch600_halfgcd_matrix_only_bits={halfgcd_matrix_only}");
     println!("METRIC scratch600_halfgcd_matrix_tail_raw_bits={halfgcd_matrix_tail_raw}");
     println!("METRIC scratch600_halfgcd_tail_over_google_bits={halfgcd_tail_over_google}");
+    println!("METRIC scratch600_halfgcd_det_compressed_tail_bits={halfgcd_det_compressed_tail}");
+    println!("METRIC scratch600_halfgcd_det_compressed_tail_gap_google={halfgcd_det_compressed_tail_gap}");
+    println!("METRIC scratch600_halfgcd_det_recovery_num_bits_p99={halfgcd_det_recovery_num_bits_p99}");
+    println!("METRIC scratch600_halfgcd_det_recovery_den_bits_p99={halfgcd_det_recovery_den_bits_p99}");
 
     assert!(best_state <= STRICT_SCRATCH, "at least some state shapes fit");
     assert!(streamed_gap_to_google > 0, "no fully charged <=600-scratch row should be counted as solved yet");
@@ -226,4 +241,8 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
         "phase-clean exact sign normalization should not be counted as p99 low-qubit solved"
     );
     assert!(halfgcd_tail_over_google > 0, "half-GCD checkpoint must be fused before it fits");
+    assert!(
+        halfgcd_det_compressed_tail_gap < 0 && halfgcd_det_recovery_num_bits_p99 > 256,
+        "half-GCD determinant compression state changed; update recovery/parser blocker"
+    );
 }

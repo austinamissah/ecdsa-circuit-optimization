@@ -3246,6 +3246,131 @@ mod tests {
     }
 
     #[test]
+    fn half_gcd_determinant_compressed_matrix_reopens_tail_payload_only() {
+        // A half-GCD checkpoint matrix is unimodular, so determinant ±1 lets
+        // one matrix entry be recovered from the other three.  This prices the
+        // most generous scratch version: dynamically omit the entry that gives
+        // the smallest recoverable three-entry payload, then append the raw tail
+        // quotient payload.  This does not charge the hard reversible recovery
+        // division or tail parser; it only checks whether the payload obstacle
+        // is structural or just a determinant-compression miss.
+        let p = SECP256K1_P;
+        let samples = 2048usize;
+        let mut rng = 0xd37e_2d0c_5a7e_0001u64;
+        let mut four_entry_tail = Vec::with_capacity(samples);
+        let mut best_fixed_tail = [Vec::with_capacity(samples), Vec::with_capacity(samples),
+            Vec::with_capacity(samples), Vec::with_capacity(samples)];
+        let mut dynamic_tail = Vec::with_capacity(samples);
+        let mut recovery_num_bits = Vec::with_capacity(samples);
+        let mut recovery_den_bits = Vec::with_capacity(samples);
+        for _ in 0..samples {
+            let mut x = rand_u256(&mut rng);
+            if x.is_zero() { x = U256::from(1u64); }
+            let mut u = p;
+            let mut v = x;
+            let mut a = smag_for_halfgcd_test(false, U512::from(1u64));
+            let mut b = smag_for_halfgcd_test(false, U512::ZERO);
+            let mut c = smag_for_halfgcd_test(false, U512::ZERO);
+            let mut d = smag_for_halfgcd_test(false, U512::from(1u64));
+            while !v.is_zero() && u256_bit_len(u).max(u256_bit_len(v)) > 128 {
+                let q = u / v;
+                let rem = u - q * v;
+                let na = c;
+                let nb = d;
+                let nc = signed_sub_scaled_for_halfgcd_test(a, q, c);
+                let nd = signed_sub_scaled_for_halfgcd_test(b, q, d);
+                u = v;
+                v = rem;
+                a = na;
+                b = nb;
+                c = nc;
+                d = nd;
+            }
+            let entries = [a, b, c, d];
+            let entry_mag_bits = |z: SignedMagU512ForHalfGcdTest| {
+                u512_bit_len_for_halfgcd_test(z.mag)
+            };
+            let entry_stored_bits = |z: SignedMagU512ForHalfGcdTest| {
+                entry_mag_bits(z) + (!z.mag.is_zero()) as usize
+            };
+            let four_bits = entries.iter().map(|&z| entry_mag_bits(z)).sum::<usize>();
+            let mut tail_payload = 0usize;
+            let mut tu = u;
+            let mut tv = v;
+            while !tv.is_zero() {
+                let q = tu / tv;
+                tail_payload += u256_bit_len(q);
+                let rem = tu - q * tv;
+                tu = tv;
+                tv = rem;
+            }
+            four_entry_tail.push(four_bits + tail_payload);
+
+            let products = [
+                (b.mag, c.mag, d.mag), // recover a = (det + b*c) / d
+                (a.mag, d.mag, c.mag), // recover b = (a*d - det) / c
+                (a.mag, d.mag, b.mag), // recover c = (a*d - det) / b
+                (b.mag, c.mag, a.mag), // recover d = (det + b*c) / a
+            ];
+            let mut best: Option<(usize, usize, usize)> = None;
+            for omit in 0..4 {
+                let stored = (0..4)
+                    .filter(|&i| i != omit)
+                    .map(|i| entry_stored_bits(entries[i]))
+                    .sum::<usize>()
+                    + 3; // omitted-entry selector plus determinant sign.
+                let payload = stored + tail_payload;
+                best_fixed_tail[omit].push(payload);
+                let (lhs, rhs, denom) = products[omit];
+                if !denom.is_zero() {
+                    let num_bits = u512_bit_len_for_halfgcd_test(lhs * rhs + U512::from(1u64));
+                    let den_bits = u512_bit_len_for_halfgcd_test(denom);
+                    match best {
+                        Some((old_payload, _, _)) if old_payload <= payload => {}
+                        _ => best = Some((payload, num_bits, den_bits)),
+                    }
+                }
+            }
+            let (payload, num_bits, den_bits) =
+                best.expect("at least one determinant recovery denominator should be nonzero");
+            dynamic_tail.push(payload);
+            recovery_num_bits.push(num_bits);
+            recovery_den_bits.push(den_bits);
+        }
+        four_entry_tail.sort_unstable();
+        for tails in &mut best_fixed_tail {
+            tails.sort_unstable();
+        }
+        dynamic_tail.sort_unstable();
+        recovery_num_bits.sort_unstable();
+        recovery_den_bits.sort_unstable();
+        let p99 = samples * 99 / 100;
+        let four_tail_p99 = four_entry_tail[p99];
+        let fixed_tail_p99 = [
+            best_fixed_tail[0][p99],
+            best_fixed_tail[1][p99],
+            best_fixed_tail[2][p99],
+            best_fixed_tail[3][p99],
+        ];
+        let fixed_best_p99 = *fixed_tail_p99.iter().min().unwrap();
+        let dynamic_tail_p99 = dynamic_tail[p99];
+        let dynamic_tail_gap_google = dynamic_tail_p99 as isize - 663isize;
+        let recovery_num_p99 = recovery_num_bits[p99];
+        let recovery_den_p99 = recovery_den_bits[p99];
+        eprintln!(
+            "half-GCD determinant compression: four_tail_p99={four_tail_p99}, fixed_tail_p99={fixed_tail_p99:?}, dynamic_tail_p99={dynamic_tail_p99}, gap_google={dynamic_tail_gap_google}, recovery_num_p99={recovery_num_p99}, recovery_den_p99={recovery_den_p99}"
+        );
+        println!("METRIC halfgcd_det_compress_four_tail_p99={four_tail_p99}");
+        println!("METRIC halfgcd_det_compress_fixed_best_tail_p99={fixed_best_p99}");
+        println!("METRIC halfgcd_det_compress_dynamic_tail_p99={dynamic_tail_p99}");
+        println!("METRIC halfgcd_det_compress_dynamic_gap_google={dynamic_tail_gap_google}");
+        println!("METRIC halfgcd_det_compress_recovery_num_bits_p99={recovery_num_p99}");
+        println!("METRIC halfgcd_det_compress_recovery_den_bits_p99={recovery_den_p99}");
+        assert!(dynamic_tail_gap_google < 0, "determinant compression does not fit half-GCD tail payload");
+        assert!(recovery_num_p99 > 200, "determinant recovery is small enough to synthesize immediately");
+    }
+
+    #[test]
     fn plusminus_exponent_only_denominator_normalization_is_not_exact() {
         // Maybe normalization can be controlled by the stored offset exponent
         // without a dense bitlength oracle.  Test the best public threshold on
