@@ -11094,15 +11094,15 @@ mod tests {
     }
 
     #[test]
-    fn half_gcd_full_block_endpoint_dp_choice_has_sampled_lookahead12_horizon() {
+    fn half_gcd_full_block_endpoint_dp_choice_has_65k_lookahead12_horizon() {
         // The local endpoint DP is a useful structural decoder only if it can
         // be turned into a small phase-clean parser.  Test the optimistic
         // short-lookahead version directly: given the current carry/seen state,
         // fixed outgoing endpoint, and the next k local bit-pairs, does the
-        // traced DP choice become a function of that local window?  On the secp
-        // sample, k=12 clears the observed collisions while k=8 does not.  Exact
-        // small toys still need the full toy block, so this is only a parser
-        // horizon lead, not a production proof.
+        // traced DP choice become a function of that local window?  On the 65k
+        // secp sample, k=12 clears the observed collisions while k=8 does not.
+        // Exact small toys still need the full toy block, so this is only a
+        // parser horizon lead, not a production proof.
         use std::collections::{BTreeMap, BTreeSet};
 
         #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -11406,7 +11406,7 @@ mod tests {
 
         const DEPTH: usize = 64;
         const BLOCK: usize = 32;
-        const SAMPLES: usize = 4096;
+        const SAMPLES: usize = 65_536;
         const SAMPLE_LOOKAHEADS: [usize; 8] = [0, 2, 4, 6, 8, 12, 16, 32];
         let mut sample_maps = vec![BTreeMap::new(); SAMPLE_LOOKAHEADS.len()];
         let mut sample_collisions = vec![BTreeSet::new(); SAMPLE_LOOKAHEADS.len()];
@@ -11545,7 +11545,8 @@ mod tests {
             );
         }
         eprintln!(
-            "half-GCD endpoint DP lookahead: sample_choices={sample_choices}, sample_k16_collisions={}, sample_k32_collisions={}, toy_k4_collisions={}, toy_k5_collisions={}",
+            "half-GCD endpoint DP lookahead: sample_choices={sample_choices}, sample_k12_collisions={}, sample_k16_collisions={}, sample_k32_collisions={}, toy_k4_collisions={}, toy_k5_collisions={}",
+            sample_collisions[5].len(),
             sample_collisions[6].len(),
             sample_collisions[7].len(),
             toy_collisions[4].len(),
@@ -11563,6 +11564,11 @@ mod tests {
         assert!(
             sample_collisions[4].len() > 0,
             "8-bit local lookahead now determines sampled endpoint DP choices; build the short-window parser"
+        );
+        assert_eq!(
+            sample_collisions[5].len(),
+            0,
+            "12-bit local lookahead no longer determines sampled endpoint DP choices"
         );
         assert_eq!(
             sample_collisions[7].len(),
