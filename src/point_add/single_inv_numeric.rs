@@ -9172,6 +9172,85 @@ mod tests {
     }
 
     #[test]
+    fn half_gcd_second_column_pair_active_source_still_misses() {
+        // The joint signed-binary active charge is pessimistic if each
+        // coefficient digit carries its own active source bit.  Grant the best
+        // plausible sharing: one pair-active bit per occupied slot, while still
+        // keeping individual sign/magnitude source bits.  If even that lower
+        // bound misses, the active predicate problem needs a deeper recoder
+        // than slot-level sharing.
+        const SAMPLES: usize = 4096;
+        const DEPTH: usize = 64;
+        const FIELD_BITS: usize = 256;
+        const ACTIVE_CHARGED_POINTADD_MEAN: f64 = 2_756_331.0;
+        const TARGET: f64 = 2_700_000.0;
+
+        let p = SECP256K1_P;
+        let mut rng = 0x5ec0_0001_d7ba_0064u64;
+        let mut original_active_sources = Vec::with_capacity(SAMPLES);
+        let mut pair_active_sources = Vec::with_capacity(SAMPLES);
+        let mut savings = Vec::with_capacity(SAMPLES);
+        let mut occupied_rows = Vec::with_capacity(SAMPLES);
+        let mut digit_rows = Vec::with_capacity(SAMPLES);
+        for _ in 0..SAMPLES {
+            let mut x = rand_u256(&mut rng);
+            if x.is_zero() {
+                x = U256::from(1u64);
+            }
+            let (b, d) = halfgcd_second_column_after_fixed_depth_for_test(x, p, DEPTH);
+            let (_app, _compact_source, active_source, _table_row_floor, occupied, digits) =
+                halfgcd_signed_two_coeff_apply_active_charged_joint_window_floor_for_test(
+                    b, d, 2,
+                );
+            let pair_active_source = 2 * FIELD_BITS * occupied;
+            assert!(
+                pair_active_source <= active_source,
+                "pair-active sharing unexpectedly costs more than per-digit active source"
+            );
+            original_active_sources.push(active_source);
+            pair_active_sources.push(pair_active_source);
+            savings.push(active_source - pair_active_source);
+            occupied_rows.push(occupied);
+            digit_rows.push(digits);
+        }
+
+        let mean_usize = |rows: &[usize]| -> f64 {
+            rows.iter().map(|&v| v as f64).sum::<f64>() / rows.len() as f64
+        };
+        let min_usize = |rows: &[usize]| -> usize { *rows.iter().min().unwrap() };
+        let max_usize = |rows: &[usize]| -> usize { *rows.iter().max().unwrap() };
+        let original_active_mean = mean_usize(&original_active_sources);
+        let pair_active_mean = mean_usize(&pair_active_sources);
+        let saving_mean = mean_usize(&savings);
+        let saving_min = min_usize(&savings);
+        let saving_max = max_usize(&savings);
+        let occupied_mean = mean_usize(&occupied_rows);
+        let digit_mean = mean_usize(&digit_rows);
+        let projected_pointadd_mean = ACTIVE_CHARGED_POINTADD_MEAN - 2.0 * saving_mean;
+        println!("METRIC halfgcd_fixed_depth64_pair_active_original_source_mean={original_active_mean:.3}");
+        println!("METRIC halfgcd_fixed_depth64_pair_active_source_mean={pair_active_mean:.3}");
+        println!("METRIC halfgcd_fixed_depth64_pair_active_saving_mean={saving_mean:.3}");
+        println!("METRIC halfgcd_fixed_depth64_pair_active_saving_min={saving_min}");
+        println!("METRIC halfgcd_fixed_depth64_pair_active_saving_max={saving_max}");
+        println!("METRIC halfgcd_fixed_depth64_pair_active_occupied_mean={occupied_mean:.3}");
+        println!("METRIC halfgcd_fixed_depth64_pair_active_digits_mean={digit_mean:.3}");
+        println!(
+            "METRIC halfgcd_fixed_depth64_pair_active_projected_pointadd_mean={projected_pointadd_mean:.3}"
+        );
+        println!(
+            "METRIC halfgcd_fixed_depth64_pair_active_projected_gap_to_2700k={:.3}",
+            projected_pointadd_mean - TARGET
+        );
+        eprintln!(
+            "half-GCD pair-active source floor: active={original_active_mean:.1}, pair={pair_active_mean:.1}, saving={saving_mean:.1} [{saving_min},{saving_max}], projected_pointadd={projected_pointadd_mean:.1}, occupied={occupied_mean:.1}, digits={digit_mean:.1}"
+        );
+        assert!(
+            projected_pointadd_mean > TARGET,
+            "pair-active source sharing now clears 2.7M; build a slot-active recoder"
+        );
+    }
+
+    #[test]
     fn half_gcd_second_column_fixed_depth_tail_bounded_barrel_needs_fallback() {
         // The sampled fixed-depth ledger only saw tail quotient widths that fit
         // a 5-bit selector.  Probe the full-domain failure mode directly:

@@ -274,6 +274,12 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
             blocker: "joint static-window scan improves to w6 average 2749506 (+49506) under the exact bit-product floor; sparse signed wNAF recoding lowers the source-product floor to 2748271 (+48271), but still needs selector/recoder cost below 86824 one-way instead of 99575; free-active compact NAF w2 would clear at 2691392, but the omitted active/zero predicate is 38097 one-way against 4304 slack; joint signed-binary DP improves the free-active floor to 2679431, but the active predicate is still 38450 one-way against 10285 slack and charging it raises the row to 2756331; reoptimizing signed-binary with active cost in the DP objective still lands at 2756331 (+56331), so this is not just a recoding-objective artifact; active-only toy parity is dense at n14 (wNAF degree 14, 8322/16384; joint signed-binary degree 13, 8194/16384), every live active bit remains high-degree and dense (wNAF min degree 13, 5698/16384; joint min degree 13, 5332/16384), and active support is 29/30 slots; table-only w4 would be 2559198 before data application, but row-controlled source products make the best table-source floor w2 average 3956644, generic cleanup is dense at n14 (plain 8194/16384, wNAF 8162/16384), and exact toy support leaves 27/28 coefficient bit positions live",
         },
         Candidate {
+            name: "halfgcd_second_column_pair_active_source_floor",
+            scratch_bits: 515,
+            charged_toffoli: Some(2_738_013),
+            blocker: "granting ideal one-active-bit-per-occupied-slot sharing lowers the active source from 38119 to 28960 one-way, saving 9159 per coefficient application, but still projects 2738013 mean (+38013) before computing and cleaning the pair-active predicate",
+        },
+        Candidate {
             name: "halfgcd_second_column_zero_row_id_noactive_floor",
             scratch_bits: 515,
             charged_toffoli: Some(2_831_471),
@@ -1989,6 +1995,15 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
         56_563usize;
     let halfgcd_second_col_fixed_depth64_active_charged_joint_window_digits_mean_milli =
         74_451usize;
+    let halfgcd_second_col_fixed_depth64_pair_active_mean = 2_738_013usize;
+    let halfgcd_second_col_fixed_depth64_pair_active_gap =
+        halfgcd_second_col_fixed_depth64_pair_active_mean as isize
+            - GOOGLE_LOW_QUBIT_TOFFOLI as isize;
+    let halfgcd_second_col_fixed_depth64_pair_active_original_source_mean = 38_119usize;
+    let halfgcd_second_col_fixed_depth64_pair_active_source_mean = 28_960usize;
+    let halfgcd_second_col_fixed_depth64_pair_active_saving_mean = 9_159usize;
+    let halfgcd_second_col_fixed_depth64_pair_active_occupied_mean_milli = 56_563usize;
+    let halfgcd_second_col_fixed_depth64_pair_active_digits_mean_milli = 74_451usize;
     let halfgcd_second_col_joint_signed_binary_active_degree_n14 = 13usize;
     let halfgcd_second_col_joint_signed_binary_active_density_n14 = 8_194usize;
     let halfgcd_second_col_joint_signed_binary_active_positions_n14 = 15usize;
@@ -3390,6 +3405,13 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_active_charged_joint_window_table_row_mean={halfgcd_second_col_fixed_depth64_active_charged_joint_window_table_row_mean}");
     println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_active_charged_joint_window_occupied_mean_milli={halfgcd_second_col_fixed_depth64_active_charged_joint_window_occupied_mean_milli}");
     println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_active_charged_joint_window_digits_mean_milli={halfgcd_second_col_fixed_depth64_active_charged_joint_window_digits_mean_milli}");
+    println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_pair_active_mean={halfgcd_second_col_fixed_depth64_pair_active_mean}");
+    println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_pair_active_gap_to_2700k={halfgcd_second_col_fixed_depth64_pair_active_gap}");
+    println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_pair_active_original_source_mean={halfgcd_second_col_fixed_depth64_pair_active_original_source_mean}");
+    println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_pair_active_source_mean={halfgcd_second_col_fixed_depth64_pair_active_source_mean}");
+    println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_pair_active_saving_mean={halfgcd_second_col_fixed_depth64_pair_active_saving_mean}");
+    println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_pair_active_occupied_mean_milli={halfgcd_second_col_fixed_depth64_pair_active_occupied_mean_milli}");
+    println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_pair_active_digits_mean_milli={halfgcd_second_col_fixed_depth64_pair_active_digits_mean_milli}");
     println!("METRIC scratch600_halfgcd_second_col_joint_signed_binary_active_degree_n14={halfgcd_second_col_joint_signed_binary_active_degree_n14}");
     println!("METRIC scratch600_halfgcd_second_col_joint_signed_binary_active_density_n14={halfgcd_second_col_joint_signed_binary_active_density_n14}");
     println!("METRIC scratch600_halfgcd_second_col_joint_signed_binary_active_positions_n14={halfgcd_second_col_joint_signed_binary_active_positions_n14}");
@@ -4846,6 +4868,15 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
             && halfgcd_second_col_fixed_depth64_active_charged_joint_window_compact_source_mean
                 == halfgcd_second_col_fixed_depth64_active_charged_joint_window_active_source_mean,
         "active-charged joint-window recoding now changes the half-GCD near-miss; revisit application recoding"
+    );
+    assert!(
+        halfgcd_second_col_fixed_depth64_pair_active_mean > GOOGLE_LOW_QUBIT_TOFFOLI
+            && halfgcd_second_col_fixed_depth64_pair_active_mean
+                < halfgcd_second_col_fixed_depth64_active_charged_joint_window_mean
+            && halfgcd_second_col_fixed_depth64_pair_active_saving_mean > 9_000
+            && halfgcd_second_col_fixed_depth64_pair_active_source_mean
+                < halfgcd_second_col_fixed_depth64_pair_active_original_source_mean,
+        "pair-active source sharing now clears half-GCD; build slot-active recoder"
     );
     assert!(
         halfgcd_second_col_joint_signed_binary_active_degree_n14 + 1 >= 14
