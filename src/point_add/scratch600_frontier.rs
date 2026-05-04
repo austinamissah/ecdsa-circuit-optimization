@@ -127,7 +127,7 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
             name: "direct_centered_restoring_final_stored_alignment",
             scratch_bits: 602,
             charged_toffoli: None,
-            blocker: "restoring-final select1 now has phase-clean toy cleanup; stored alignment+branch decoder averages 2645270 with raw variable metadata p99 602, but delimited/gamma/length-rank metadata is 719/809/748, modal public-length correction is 706, and q/digit/joint predictors still need 695/686/681, so exact packed parser/cleanup is unbuilt",
+            blocker: "restoring-final select1 has phase-clean toy cleanup; stored alignment+branch decoder averages 2645270 with raw variable metadata p99 602 and ideal global/step entropy p99 627/622, but delimited/gamma/length-rank metadata is 719/809/748 and no exact reversible entropy/range parser is built",
         },
         Candidate {
             name: "direct_centered_signnorm_rank_compressed_signs",
@@ -362,6 +362,14 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     let direct_restoring_final_coeff_decoder_alignment_degree_n14 = 13usize;
     let direct_restoring_final_coeff_decoder_alignment_density_n14 = 8_278usize;
     let direct_restoring_final_coeff_decoder_alignment_max_n14 = 13usize;
+    let direct_restoring_final_align_entropy_variable_scratch_p99 = 602usize;
+    let direct_restoring_final_align_entropy_variable_scratch_max = 620usize;
+    let direct_restoring_final_align_entropy_global_scratch_p99 = 627usize;
+    let direct_restoring_final_align_entropy_global_scratch_max = 650usize;
+    let direct_restoring_final_align_entropy_step_scratch_p99 = 622usize;
+    let direct_restoring_final_align_entropy_step_scratch_max = 640usize;
+    let direct_restoring_final_align_entropy_branch_count_p99 = 117usize;
+    let direct_restoring_final_align_entropy_branch_count_max = 125usize;
     let plusminus_raw_scratch = 564usize;
     let plusminus_unary_scratch_p99 = 640usize;
     let plusminus_parser_over_strict = plusminus_unary_scratch_p99 - STRICT_SCRATCH;
@@ -758,6 +766,14 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     println!("METRIC scratch600_direct_restoring_final_coeff_decoder_alignment_degree_n14={direct_restoring_final_coeff_decoder_alignment_degree_n14}");
     println!("METRIC scratch600_direct_restoring_final_coeff_decoder_alignment_density_n14={direct_restoring_final_coeff_decoder_alignment_density_n14}");
     println!("METRIC scratch600_direct_restoring_final_coeff_decoder_alignment_max_n14={direct_restoring_final_coeff_decoder_alignment_max_n14}");
+    println!("METRIC scratch600_direct_restoring_final_align_entropy_variable_scratch_p99={direct_restoring_final_align_entropy_variable_scratch_p99}");
+    println!("METRIC scratch600_direct_restoring_final_align_entropy_variable_scratch_max={direct_restoring_final_align_entropy_variable_scratch_max}");
+    println!("METRIC scratch600_direct_restoring_final_align_entropy_global_scratch_p99={direct_restoring_final_align_entropy_global_scratch_p99}");
+    println!("METRIC scratch600_direct_restoring_final_align_entropy_global_scratch_max={direct_restoring_final_align_entropy_global_scratch_max}");
+    println!("METRIC scratch600_direct_restoring_final_align_entropy_step_scratch_p99={direct_restoring_final_align_entropy_step_scratch_p99}");
+    println!("METRIC scratch600_direct_restoring_final_align_entropy_step_scratch_max={direct_restoring_final_align_entropy_step_scratch_max}");
+    println!("METRIC scratch600_direct_restoring_final_align_entropy_branch_count_p99={direct_restoring_final_align_entropy_branch_count_p99}");
+    println!("METRIC scratch600_direct_restoring_final_align_entropy_branch_count_max={direct_restoring_final_align_entropy_branch_count_max}");
     println!("METRIC scratch600_plusminus_raw_scratch_bits={plusminus_raw_scratch}");
     println!("METRIC scratch600_plusminus_unary_scratch_p99={plusminus_unary_scratch_p99}");
     println!("METRIC scratch600_plusminus_parser_over_strict_bits={plusminus_parser_over_strict}");
@@ -1110,6 +1126,22 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
             && direct_restoring_final_coeff_decoder_alignment_density_n14 > (1usize << 14) / 4
             && direct_restoring_final_coeff_decoder_alignment_max_n14 + 1 >= 14,
         "restoring-final coefficient decoder alignment metadata stopped looking dense"
+    );
+    assert!(
+        direct_restoring_final_align_entropy_variable_scratch_p99 <= GOOGLE_LOW_QUBIT_SCRATCH
+            && direct_restoring_final_align_entropy_variable_scratch_max
+                <= GOOGLE_LOW_QUBIT_SCRATCH
+            && direct_restoring_final_align_entropy_global_scratch_p99
+                <= GOOGLE_LOW_QUBIT_SCRATCH
+            && direct_restoring_final_align_entropy_global_scratch_max
+                <= GOOGLE_LOW_QUBIT_SCRATCH
+            && direct_restoring_final_align_entropy_step_scratch_p99
+                <= GOOGLE_LOW_QUBIT_SCRATCH
+            && direct_restoring_final_align_entropy_step_scratch_max
+                <= GOOGLE_LOW_QUBIT_SCRATCH
+            && direct_restoring_final_align_entropy_branch_count_p99
+                == direct_restoring_final_stored_align_branch_count_p99,
+        "restoring-final ideal metadata entropy no longer fits; demote the parser route"
     );
     assert!(halfgcd_tail_over_google > 0, "half-GCD checkpoint must be fused before it fits");
     assert!(

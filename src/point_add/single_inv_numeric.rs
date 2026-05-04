@@ -19174,6 +19174,177 @@ mod tests {
     }
 
     #[test]
+    fn direct_centered_restoring_final_alignment_entropy_code_budget_probe() {
+        // Lower-bound the remaining packed-parser problem for the
+        // restoring-final coefficient decoder.  The variable alignment stream
+        // fits only if the parser can recover symbol boundaries.  Here we give
+        // it an ideal arithmetic code with public step-conditioned models for
+        // alignment values and branch bits.  This is not a circuit; it decides
+        // whether an exact parser is still worth attempting.
+        use std::collections::BTreeMap;
+
+        let p = SECP256K1_P;
+        let samples = 8192usize;
+        const MAX_STEPS: usize = 260;
+        const GOOGLE_SCRATCH: f64 = 663.0;
+        let mut rng = 0xd1ce_c0ef_a119_2001u64;
+        let trace_alignment_metadata = |rng: &mut u64| -> (Vec<usize>, Vec<(usize, bool)>, usize) {
+            let mut x = rand_u256(rng);
+            if x.is_zero() {
+                x = U256::from(1u64);
+            }
+            let mut u = smag_for_halfgcd_test(false, u512_from_u256_for_halfgcd_test(p));
+            let mut v = smag_for_halfgcd_test(false, u512_from_u256_for_halfgcd_test(x));
+            let mut coeff_u = smag_for_halfgcd_test(false, U512::ZERO);
+            let mut coeff_v = smag_for_halfgcd_test(false, U512::from(1u64));
+            let mut alignments = Vec::new();
+            let mut branches = Vec::new();
+            let mut variable_bits = 0usize;
+            while !v.mag.is_zero() {
+                let adjusted = u.mag + (v.mag >> 1usize);
+                let q_direct = adjusted / v.mag;
+                let q_neg = u.neg ^ v.neg;
+                let qv = signed_mul_mag_for_halfgcd_test(v, q_neg, q_direct);
+                let next_v = signed_add_for_halfgcd_test(u, signed_neg_for_halfgcd_test(qv));
+                let qv_coeff = signed_mul_mag_for_halfgcd_test(coeff_v, q_neg, q_direct);
+                let next_coeff_v = signed_add_for_halfgcd_test(
+                    coeff_u,
+                    signed_neg_for_halfgcd_test(qv_coeff),
+                );
+                let denom = coeff_v.mag;
+                assert!(!denom.is_zero(), "restoring-final coefficient denominator vanished");
+                let low_numer = if coeff_u.mag.is_zero() {
+                    next_coeff_v.mag
+                } else {
+                    assert!(
+                        !next_coeff_v.mag.is_zero(),
+                        "restoring-final adjusted coefficient numerator underflow"
+                    );
+                    next_coeff_v.mag - U512::from(1u64)
+                };
+                let high_numer = if coeff_u.mag.is_zero() {
+                    low_numer
+                } else {
+                    next_coeff_v.mag + denom - U512::from(1u64)
+                };
+                let low_q = low_numer / denom;
+                let high_q = high_numer / denom;
+                let high_branch = q_direct != low_q;
+                let numer = if high_branch {
+                    assert_eq!(
+                        q_direct, high_q,
+                        "restoring-final coefficient reverse quotient candidates missed"
+                    );
+                    high_numer
+                } else {
+                    low_numer
+                };
+                if low_q != high_q {
+                    branches.push((alignments.len(), high_branch));
+                }
+                let alignment = u512_bit_len_for_halfgcd_test(numer)
+                    .saturating_sub(u512_bit_len_for_halfgcd_test(denom));
+                variable_bits += usize_bit_len_for_payload_test(alignment);
+                alignments.push(alignment);
+
+                u = v;
+                v = next_v;
+                coeff_u = coeff_v;
+                coeff_v = next_coeff_v;
+            }
+            assert_eq!(u.mag, U512::from(1u64), "restoring-final trace ended at non-unit gcd");
+            (alignments, branches, variable_bits)
+        };
+
+        let mut traces = Vec::with_capacity(samples);
+        let mut align_global = BTreeMap::<usize, usize>::new();
+        let mut align_by_step = vec![BTreeMap::<usize, usize>::new(); MAX_STEPS];
+        let mut branch_global = [0usize; 2];
+        let mut branch_by_step = [[0usize; 2]; MAX_STEPS];
+        let mut align_global_total = 0usize;
+        for _ in 0..samples {
+            let (alignments, branches, variable_bits) = trace_alignment_metadata(&mut rng);
+            assert!(alignments.len() < MAX_STEPS, "trace exceeded alignment entropy table");
+            for (step, &alignment) in alignments.iter().enumerate() {
+                *align_global.entry(alignment).or_insert(0) += 1;
+                *align_by_step[step].entry(alignment).or_insert(0) += 1;
+                align_global_total += 1;
+            }
+            for &(step, branch) in &branches {
+                let bit = branch as usize;
+                branch_global[bit] += 1;
+                branch_by_step[step][bit] += 1;
+            }
+            traces.push((alignments, branches, variable_bits));
+        }
+
+        let code_len = |freq: usize, total: usize| -> f64 {
+            assert!(freq > 0 && total > 0, "entropy model missing a seen symbol");
+            (total as f64).log2() - (freq as f64).log2()
+        };
+        let mut variable_scratches = Vec::with_capacity(samples);
+        let mut global_entropy_scratches = Vec::with_capacity(samples);
+        let mut step_entropy_scratches = Vec::with_capacity(samples);
+        let mut branch_counts = Vec::with_capacity(samples);
+        for (alignments, branches, variable_bits) in &traces {
+            let variable_scratch = 256usize + *variable_bits + branches.len();
+            let mut global_bits = 0.0f64;
+            let mut step_bits = 0.0f64;
+            for (step, &alignment) in alignments.iter().enumerate() {
+                global_bits += code_len(*align_global.get(&alignment).unwrap(), align_global_total);
+                let step_total = align_by_step[step].values().sum::<usize>();
+                step_bits += code_len(*align_by_step[step].get(&alignment).unwrap(), step_total);
+            }
+            let branch_total = branch_global.iter().sum::<usize>();
+            for &(step, branch) in branches {
+                let bit = branch as usize;
+                global_bits += code_len(branch_global[bit], branch_total);
+                let step_branch_total = branch_by_step[step].iter().sum::<usize>();
+                step_bits += code_len(branch_by_step[step][bit], step_branch_total);
+            }
+            variable_scratches.push(variable_scratch);
+            global_entropy_scratches.push(256.0 + global_bits.ceil());
+            step_entropy_scratches.push(256.0 + step_bits.ceil());
+            branch_counts.push(branches.len());
+        }
+        let p99_usize = |rows: &mut Vec<usize>| -> usize {
+            rows.sort_unstable();
+            rows[rows.len() * 99 / 100]
+        };
+        let p99_f64 = |rows: &mut Vec<f64>| -> f64 {
+            rows.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            rows[rows.len() * 99 / 100]
+        };
+        let variable_p99 = p99_usize(&mut variable_scratches);
+        let variable_max = *variable_scratches.last().unwrap();
+        let branch_count_p99 = p99_usize(&mut branch_counts);
+        let branch_count_max = *branch_counts.last().unwrap();
+        let global_entropy_p99 = p99_f64(&mut global_entropy_scratches);
+        let global_entropy_max = *global_entropy_scratches.last().unwrap();
+        let step_entropy_p99 = p99_f64(&mut step_entropy_scratches);
+        let step_entropy_max = *step_entropy_scratches.last().unwrap();
+        eprintln!(
+            "Direct-centered restoring-final alignment entropy code: variable_p99={variable_p99}, global_entropy_p99={global_entropy_p99:.1}, step_entropy_p99={step_entropy_p99:.1}, branch_count_p99={branch_count_p99}"
+        );
+        println!("METRIC centered_direct_restoring_final_align_entropy_variable_scratch_p99={variable_p99}");
+        println!("METRIC centered_direct_restoring_final_align_entropy_variable_scratch_max={variable_max}");
+        println!("METRIC centered_direct_restoring_final_align_entropy_global_scratch_p99={global_entropy_p99:.3}");
+        println!("METRIC centered_direct_restoring_final_align_entropy_global_scratch_max={global_entropy_max:.3}");
+        println!("METRIC centered_direct_restoring_final_align_entropy_step_scratch_p99={step_entropy_p99:.3}");
+        println!("METRIC centered_direct_restoring_final_align_entropy_step_scratch_max={step_entropy_max:.3}");
+        println!("METRIC centered_direct_restoring_final_align_entropy_branch_count_p99={branch_count_p99}");
+        println!("METRIC centered_direct_restoring_final_align_entropy_branch_count_max={branch_count_max}");
+        assert!(
+            variable_p99 <= 663,
+            "raw variable alignment metadata stopped fitting the Google scratch target"
+        );
+        assert!(
+            global_entropy_p99 <= GOOGLE_SCRATCH && step_entropy_p99 <= GOOGLE_SCRATCH,
+            "even an ideal alignment metadata entropy code misses Google scratch; demote restoring-final parser route"
+        );
+    }
+
+    #[test]
     fn direct_centered_signnorm_normalization_sign_mbu_is_dense_too() {
         // The sign-normalized direct-centered route keeps quotient signs on the
         // phase-clean q_neg=false path by recording when the centered remainder
