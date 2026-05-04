@@ -9821,6 +9821,170 @@ mod tests {
     }
 
     #[test]
+    fn half_gcd_full_block_pattern_exact_support_outgrows_samples() {
+        // The sampled full-block pattern code clears 2.7M only if the observed
+        // block-pattern support can be promoted to an exact scalable decoder.
+        // Attack that premise directly on toy fields: train on the same kind
+        // of sparse random support set, then exhaust the full denominator
+        // domain.  If exact support adds unseen block patterns, the secp row
+        // cannot be promoted by sample confidence alone.  If exact toy support
+        // also remains compact, the right next step is a structural decoder or
+        // proof, not demotion.
+        use std::collections::{BTreeSet, BTreeMap};
+
+        let ceil_log2 = |x: usize| -> usize {
+            if x <= 1 {
+                0
+            } else {
+                usize::BITS as usize - (x - 1).leading_zeros() as usize
+            }
+        };
+        let collect_support = |traces: &[Vec<u128>]| {
+            let mut support = Vec::<BTreeSet<u128>>::new();
+            for trace in traces {
+                if support.len() < trace.len() {
+                    support.resize_with(trace.len(), BTreeSet::new);
+                }
+                for (block_idx, &pattern) in trace.iter().enumerate() {
+                    if pattern != 0 {
+                        support[block_idx].insert(pattern);
+                    }
+                }
+            }
+            support
+        };
+        let support_stats = |support: &[BTreeSet<u128>]| -> (usize, usize, usize) {
+            let max_patterns = support.iter().map(BTreeSet::len).max().unwrap_or(0);
+            let total_patterns = support.iter().map(BTreeSet::len).sum::<usize>();
+            let max_bits = support.iter().map(|set| ceil_log2(set.len())).max().unwrap_or(0);
+            (max_patterns, total_patterns, max_bits)
+        };
+
+        let cases = [
+            (10usize, 1021u32, 2usize, 128usize),
+            (12usize, 4093u32, 3usize, 256usize),
+            (14usize, 16381u32, 4usize, 512usize),
+            (16usize, 65521u32, 4usize, 1024usize),
+            (17usize, 65537u32, 5usize, 2048usize),
+        ];
+        let mut cases_with_missing = 0usize;
+        let mut largest_missing_patterns = 0usize;
+        let mut largest_exact_max_patterns = 0usize;
+        let mut largest_exact_max_bits = 0usize;
+        for &(n, p_small, block, train_target) in &cases {
+            let p = U256::from(p_small as u64);
+            let depth = (n / 4).max(1);
+            let domain_traces = (1..p_small)
+                .map(|x| {
+                    let (b, d) =
+                        halfgcd_second_column_after_fixed_depth_for_test(U256::from(x as u64), p, depth);
+                    let (_, _, _, _, _, _, _, digit_patterns) =
+                        halfgcd_signed_two_coeff_apply_block_active_trace_for_test(b, d, block);
+                    digit_patterns
+                })
+                .collect::<Vec<_>>();
+            let mut train_indices = BTreeSet::new();
+            let mut state = (p_small as u64) ^ 0x5ec0_b10c_f011_c0deu64;
+            while train_indices.len() < train_target.min(domain_traces.len()) {
+                state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
+                train_indices.insert((state as usize) % domain_traces.len());
+            }
+            let train_traces = train_indices
+                .iter()
+                .map(|&idx| domain_traces[idx].clone())
+                .collect::<Vec<_>>();
+
+            let train_support = collect_support(&train_traces);
+            let exact_support = collect_support(&domain_traces);
+            let (train_max_patterns, train_total_patterns, train_max_bits) =
+                support_stats(&train_support);
+            let (exact_max_patterns, exact_total_patterns, exact_max_bits) =
+                support_stats(&exact_support);
+
+            let mut missing_by_block = BTreeMap::<usize, usize>::new();
+            for (block_idx, exact) in exact_support.iter().enumerate() {
+                let train = train_support.get(block_idx);
+                let missing = exact
+                    .iter()
+                    .filter(|pattern| train.map_or(true, |seen| !seen.contains(pattern)))
+                    .count();
+                if missing != 0 {
+                    missing_by_block.insert(block_idx, missing);
+                }
+            }
+            let missing_patterns = missing_by_block.values().sum::<usize>();
+            cases_with_missing += (missing_patterns > 0) as usize;
+            largest_missing_patterns = largest_missing_patterns.max(missing_patterns);
+            largest_exact_max_patterns = largest_exact_max_patterns.max(exact_max_patterns);
+            largest_exact_max_bits = largest_exact_max_bits.max(exact_max_bits);
+
+            println!("METRIC halfgcd_full_block_pattern_exact_support_n{n}_block={block}");
+            println!(
+                "METRIC halfgcd_full_block_pattern_exact_support_n{n}_train_samples={}",
+                train_traces.len()
+            );
+            println!(
+                "METRIC halfgcd_full_block_pattern_exact_support_n{n}_domain_samples={}",
+                domain_traces.len()
+            );
+            println!(
+                "METRIC halfgcd_full_block_pattern_exact_support_n{n}_train_max_patterns={train_max_patterns}"
+            );
+            println!(
+                "METRIC halfgcd_full_block_pattern_exact_support_n{n}_exact_max_patterns={exact_max_patterns}"
+            );
+            println!(
+                "METRIC halfgcd_full_block_pattern_exact_support_n{n}_train_total_patterns={train_total_patterns}"
+            );
+            println!(
+                "METRIC halfgcd_full_block_pattern_exact_support_n{n}_exact_total_patterns={exact_total_patterns}"
+            );
+            println!(
+                "METRIC halfgcd_full_block_pattern_exact_support_n{n}_train_max_bits={train_max_bits}"
+            );
+            println!(
+                "METRIC halfgcd_full_block_pattern_exact_support_n{n}_exact_max_bits={exact_max_bits}"
+            );
+            println!(
+                "METRIC halfgcd_full_block_pattern_exact_support_n{n}_missing_patterns={missing_patterns}"
+            );
+            println!(
+                "METRIC halfgcd_full_block_pattern_exact_support_n{n}_missing_blocks={}",
+                missing_by_block.len()
+            );
+            eprintln!(
+                "half-GCD full-block exact support n={n}, block={block}: train={}/{}, max_patterns {train_max_patterns}->{exact_max_patterns}, total {train_total_patterns}->{exact_total_patterns}, bits {train_max_bits}->{exact_max_bits}, missing={missing_patterns} across {} blocks",
+                train_traces.len(),
+                domain_traces.len(),
+                missing_by_block.len()
+            );
+        }
+        println!(
+            "METRIC halfgcd_full_block_pattern_exact_support_cases_with_missing={cases_with_missing}"
+        );
+        println!(
+            "METRIC halfgcd_full_block_pattern_exact_support_largest_missing_patterns={largest_missing_patterns}"
+        );
+        println!(
+            "METRIC halfgcd_full_block_pattern_exact_support_largest_exact_max_patterns={largest_exact_max_patterns}"
+        );
+        println!(
+            "METRIC halfgcd_full_block_pattern_exact_support_largest_exact_max_bits={largest_exact_max_bits}"
+        );
+        assert_eq!(
+            cases_with_missing,
+            cases.len(),
+            "sample-trained full-block pattern support covered every toy domain; revisit secp proof"
+        );
+        assert!(
+            largest_missing_patterns >= 918
+                && largest_exact_max_patterns >= 630
+                && largest_exact_max_bits >= 10,
+            "exact toy full-block support stopped showing the sample/proof gap"
+        );
+    }
+
+    #[test]
     fn half_gcd_second_column_fixed_depth_tail_bounded_barrel_needs_fallback() {
         // The sampled fixed-depth ledger only saw tail quotient widths that fit
         // a 5-bit selector.  Probe the full-domain failure mode directly:
