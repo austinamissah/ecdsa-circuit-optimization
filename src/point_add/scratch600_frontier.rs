@@ -145,7 +145,7 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
             name: "direct_centered_signnorm_logical_coeff_signs",
             scratch_bits: 657,
             charged_toffoli: None,
-            blocker: "det-low2 xor coeff_v_sign removes the normalization-sign sidecar in exact toys, and the local predicate toy is phase-clean at 14 CCX. Exact-rem logical-sign accounting clears the average harness metric before cleanup at 2575314 mean / 2574268 first64, and the simple recovery-cost estimate would be 2581169 mean / 2580122 first64 while p99 remains 2753624. The naive compute/use/Bennett-uncompute recovery path is dirty on exact p13 post-step rows (5/16 dirty, phase clean), because the remainder cneg mutates a predicate input. A paired remainder+coefficient cneg with flipped determinant polarity restores the raw toy rows and is phase-clean but leaves the latch dirty (9/16); the stronger paired cneg followed by raw-remainder-sign latch clear restores raw rows, clears the latch, and is phase-clean on the same exact rows (32 CCX, 0/16 dirty). Promotion now needs the full direct-centered extractor, exact normalized-rem cneg, coefficient-sign recovery, raw-sign latch cleanup, and reverse cleanup wired into the production point-add; p99 is still above 2.7M in the conservative ledger, but the measured objective is average",
+            blocker: "det-low2 xor coeff_v_sign removes the normalization-sign sidecar in exact toys, and the local predicate toy is phase-clean at 14 CCX. Exact-rem logical-sign accounting clears the average harness metric before cleanup at 2575314 mean / 2574268 first64; the former predicate-roundtrip estimate was 2581169 mean / 2580122 first64 with p99 2753624. A paired remainder+coefficient cneg followed by raw-remainder-sign latch clear restores raw rows, clears the latch, and is phase-clean on exact p13 rows (32 CCX, 0/16 dirty), reducing the recovery estimate to 2578241 mean / 2577195 first64 while p99 remains 2750292. Promotion now needs the full direct-centered extractor, exact normalized-rem cneg, coefficient-sign recovery, raw-sign latch cleanup, and reverse cleanup wired into the production point-add; p99 is still above 2.7M in the conservative ledger, but the measured objective is average",
         },
         Candidate {
             name: "direct_centered_restoring_final_stored_alignment",
@@ -392,12 +392,19 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     let direct_signnorm_logsign_once_first64 = 2_553_434.812f64;
     let direct_signnorm_logsign_split_first64 = 2_574_268.438f64;
     let direct_signnorm_logsign_recovery_roundtrip_per_step = 28usize;
+    let direct_signnorm_logsign_rawsign_recovery_per_step = 14usize;
     let direct_signnorm_logsign_recovery_cost_mean = 2_927.295f64;
     let direct_signnorm_logsign_recovery_cost_first64 = 2_926.875f64;
     let direct_signnorm_logsign_recovery_cost_p99 = 3_304usize;
+    let direct_signnorm_logsign_rawsign_recovery_cost_mean = 1_463.647f64;
+    let direct_signnorm_logsign_rawsign_recovery_cost_first64 = 1_463.438f64;
+    let direct_signnorm_logsign_rawsign_recovery_cost_p99 = 1_652usize;
     let direct_signnorm_logsign_once_recovered_mean = 2_560_231.797f64;
     let direct_signnorm_logsign_once_recovered_first64 = 2_559_288.562f64;
     let direct_signnorm_logsign_once_recovered_p99 = 2_730_510usize;
+    let direct_signnorm_logsign_once_rawsign_recovered_mean = 2_557_304.503f64;
+    let direct_signnorm_logsign_once_rawsign_recovered_first64 = 2_556_361.688f64;
+    let direct_signnorm_logsign_once_rawsign_recovered_p99 = 2_727_262usize;
     let direct_signnorm_logsign_no_rem_cneg_projection_p99 = 2_697_280usize;
     let direct_signnorm_logsign_no_rem_cneg_gap =
         direct_signnorm_logsign_no_rem_cneg_projection_p99 as isize
@@ -423,6 +430,9 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     let direct_signnorm_logsign_exact_once_recovered_mean = 2_581_168.525f64;
     let direct_signnorm_logsign_exact_once_recovered_first64 = 2_580_122.188f64;
     let direct_signnorm_logsign_exact_once_recovered_p99 = 2_753_624usize;
+    let direct_signnorm_logsign_exact_once_rawsign_recovered_mean = 2_578_241.230f64;
+    let direct_signnorm_logsign_exact_once_rawsign_recovered_first64 = 2_577_195.312f64;
+    let direct_signnorm_logsign_exact_once_rawsign_recovered_p99 = 2_750_292usize;
     let direct_signnorm_logsign_once_gap =
         direct_signnorm_logsign_once_p99 as isize - GOOGLE_LOW_QUBIT_TOFFOLI as isize;
     let direct_signnorm_logsign_split_gap =
@@ -441,6 +451,15 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
         direct_signnorm_logsign_exact_once_recovered_first64 - GOOGLE_LOW_QUBIT_TOFFOLI as f64;
     let direct_signnorm_logsign_exact_once_recovered_gap =
         direct_signnorm_logsign_exact_once_recovered_p99 as isize
+            - GOOGLE_LOW_QUBIT_TOFFOLI as isize;
+    let direct_signnorm_logsign_exact_once_rawsign_recovered_mean_gap =
+        direct_signnorm_logsign_exact_once_rawsign_recovered_mean
+            - GOOGLE_LOW_QUBIT_TOFFOLI as f64;
+    let direct_signnorm_logsign_exact_once_rawsign_recovered_first64_gap =
+        direct_signnorm_logsign_exact_once_rawsign_recovered_first64
+            - GOOGLE_LOW_QUBIT_TOFFOLI as f64;
+    let direct_signnorm_logsign_exact_once_rawsign_recovered_gap =
+        direct_signnorm_logsign_exact_once_rawsign_recovered_p99 as isize
             - GOOGLE_LOW_QUBIT_TOFFOLI as isize;
     let direct_signnorm_logsign_recovered_naive_uncompute_ccx = 36usize;
     let direct_signnorm_logsign_recovered_naive_uncompute_peak_q = 29usize;
@@ -1941,12 +1960,19 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     println!("METRIC scratch600_direct_signnorm_logsign_once_first64={direct_signnorm_logsign_once_first64:.3}");
     println!("METRIC scratch600_direct_signnorm_logsign_split_first64={direct_signnorm_logsign_split_first64:.3}");
     println!("METRIC scratch600_direct_signnorm_logsign_recovery_roundtrip_per_step={direct_signnorm_logsign_recovery_roundtrip_per_step}");
+    println!("METRIC scratch600_direct_signnorm_logsign_rawsign_recovery_per_step={direct_signnorm_logsign_rawsign_recovery_per_step}");
     println!("METRIC scratch600_direct_signnorm_logsign_recovery_cost_mean={direct_signnorm_logsign_recovery_cost_mean:.3}");
     println!("METRIC scratch600_direct_signnorm_logsign_recovery_cost_first64={direct_signnorm_logsign_recovery_cost_first64:.3}");
     println!("METRIC scratch600_direct_signnorm_logsign_recovery_cost_p99={direct_signnorm_logsign_recovery_cost_p99}");
+    println!("METRIC scratch600_direct_signnorm_logsign_rawsign_recovery_cost_mean={direct_signnorm_logsign_rawsign_recovery_cost_mean:.3}");
+    println!("METRIC scratch600_direct_signnorm_logsign_rawsign_recovery_cost_first64={direct_signnorm_logsign_rawsign_recovery_cost_first64:.3}");
+    println!("METRIC scratch600_direct_signnorm_logsign_rawsign_recovery_cost_p99={direct_signnorm_logsign_rawsign_recovery_cost_p99}");
     println!("METRIC scratch600_direct_signnorm_logsign_once_recovered_mean={direct_signnorm_logsign_once_recovered_mean:.3}");
     println!("METRIC scratch600_direct_signnorm_logsign_once_recovered_first64={direct_signnorm_logsign_once_recovered_first64:.3}");
     println!("METRIC scratch600_direct_signnorm_logsign_once_recovered_p99={direct_signnorm_logsign_once_recovered_p99}");
+    println!("METRIC scratch600_direct_signnorm_logsign_once_rawsign_recovered_mean={direct_signnorm_logsign_once_rawsign_recovered_mean:.3}");
+    println!("METRIC scratch600_direct_signnorm_logsign_once_rawsign_recovered_first64={direct_signnorm_logsign_once_rawsign_recovered_first64:.3}");
+    println!("METRIC scratch600_direct_signnorm_logsign_once_rawsign_recovered_p99={direct_signnorm_logsign_once_rawsign_recovered_p99}");
     println!("METRIC scratch600_direct_signnorm_logsign_once_p99={direct_signnorm_logsign_once_p99}");
     println!("METRIC scratch600_direct_signnorm_logsign_split_p99={direct_signnorm_logsign_split_p99}");
     println!("METRIC scratch600_direct_signnorm_logsign_direct_rem_toy_ccx={direct_signnorm_logsign_direct_rem_toy_ccx}");
@@ -1961,6 +1987,9 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     println!("METRIC scratch600_direct_signnorm_logsign_exact_once_recovered_mean={direct_signnorm_logsign_exact_once_recovered_mean:.3}");
     println!("METRIC scratch600_direct_signnorm_logsign_exact_once_recovered_first64={direct_signnorm_logsign_exact_once_recovered_first64:.3}");
     println!("METRIC scratch600_direct_signnorm_logsign_exact_once_recovered_p99={direct_signnorm_logsign_exact_once_recovered_p99}");
+    println!("METRIC scratch600_direct_signnorm_logsign_exact_once_rawsign_recovered_mean={direct_signnorm_logsign_exact_once_rawsign_recovered_mean:.3}");
+    println!("METRIC scratch600_direct_signnorm_logsign_exact_once_rawsign_recovered_first64={direct_signnorm_logsign_exact_once_rawsign_recovered_first64:.3}");
+    println!("METRIC scratch600_direct_signnorm_logsign_exact_once_rawsign_recovered_p99={direct_signnorm_logsign_exact_once_rawsign_recovered_p99}");
     println!("METRIC scratch600_direct_signnorm_logsign_recovered_naive_uncompute_ccx={direct_signnorm_logsign_recovered_naive_uncompute_ccx}");
     println!("METRIC scratch600_direct_signnorm_logsign_recovered_naive_uncompute_peak_q={direct_signnorm_logsign_recovered_naive_uncompute_peak_q}");
     println!("METRIC scratch600_direct_signnorm_logsign_recovered_naive_uncompute_valid_states={direct_signnorm_logsign_recovered_naive_uncompute_valid_states}");
@@ -1993,6 +2022,9 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     println!("METRIC scratch600_direct_signnorm_logsign_exact_once_recovered_mean_gap_to_2700k={direct_signnorm_logsign_exact_once_recovered_mean_gap:.3}");
     println!("METRIC scratch600_direct_signnorm_logsign_exact_once_recovered_first64_gap_to_2700k={direct_signnorm_logsign_exact_once_recovered_first64_gap:.3}");
     println!("METRIC scratch600_direct_signnorm_logsign_exact_once_recovered_gap_to_2700k={direct_signnorm_logsign_exact_once_recovered_gap}");
+    println!("METRIC scratch600_direct_signnorm_logsign_exact_once_rawsign_recovered_mean_gap_to_2700k={direct_signnorm_logsign_exact_once_rawsign_recovered_mean_gap:.3}");
+    println!("METRIC scratch600_direct_signnorm_logsign_exact_once_rawsign_recovered_first64_gap_to_2700k={direct_signnorm_logsign_exact_once_rawsign_recovered_first64_gap:.3}");
+    println!("METRIC scratch600_direct_signnorm_logsign_exact_once_rawsign_recovered_gap_to_2700k={direct_signnorm_logsign_exact_once_rawsign_recovered_gap}");
     println!("METRIC scratch600_direct_signnorm_logsign_exact_once_gap_to_2700k={direct_signnorm_logsign_exact_once_gap}");
     println!("METRIC scratch600_direct_signnorm_logsign_exact_split_gap_to_2700k={direct_signnorm_logsign_exact_split_gap}");
     println!("METRIC scratch600_direct_signnorm_logsign_no_rem_cneg_gap_to_2700k={direct_signnorm_logsign_no_rem_cneg_gap}");
@@ -3186,6 +3218,20 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
             && direct_signnorm_logsign_exact_once_recovered_first64_gap < 0.0
             && direct_signnorm_logsign_exact_once_recovered_gap > 0,
         "recovery-charged logical coefficient signs changed promotion status"
+    );
+    assert!(
+        direct_signnorm_logsign_rawsign_recovery_per_step
+            < direct_signnorm_logsign_recovery_roundtrip_per_step
+            && direct_signnorm_logsign_rawsign_recovery_cost_p99
+                < direct_signnorm_logsign_recovery_cost_p99
+            && direct_signnorm_logsign_exact_once_rawsign_recovered_mean
+                < direct_signnorm_logsign_exact_once_recovered_mean
+            && direct_signnorm_logsign_exact_once_rawsign_recovered_first64
+                < direct_signnorm_logsign_exact_once_recovered_first64
+            && direct_signnorm_logsign_exact_once_rawsign_recovered_mean_gap < 0.0
+            && direct_signnorm_logsign_exact_once_rawsign_recovered_first64_gap < 0.0
+            && direct_signnorm_logsign_exact_once_rawsign_recovered_gap > 0,
+        "raw-sign latch cleanup changed the direct signnorm promotion ledger"
     );
     assert!(
         direct_signnorm_logsign_recovered_naive_uncompute_ccx == 36
