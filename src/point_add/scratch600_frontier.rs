@@ -127,7 +127,7 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
             name: "direct_centered_restoring_final_stored_alignment",
             scratch_bits: 602,
             charged_toffoli: None,
-            blocker: "restoring-final select1 has phase-clean toy cleanup; stored alignment+branch decoder averages 2645270 with raw variable metadata p99 602 and ideal global/step entropy p99 627/622, but rounded prefix codes miss at 756/752 and no exact reversible range parser is built",
+            blocker: "restoring-final select1 has phase-clean toy cleanup; stored alignment+branch decoder averages 2645270 with raw variable metadata p99 602 and ideal global/step entropy p99 627/622, but rounded prefix codes miss at 756/752; finite range state fits at 648 p99, yet a one-state-touch parser floor averages 71167 against a 13682 one-way budget",
         },
         Candidate {
             name: "direct_centered_signnorm_rank_compressed_signs",
@@ -374,6 +374,14 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     let direct_restoring_final_align_prefix_step_scratch_max = 771usize;
     let direct_restoring_final_align_entropy_branch_count_p99 = 117usize;
     let direct_restoring_final_align_entropy_branch_count_max = 125usize;
+    let direct_restoring_final_range_parser_model_precision_bits = 13usize;
+    let direct_restoring_final_range_parser_state_bits_p99 = 366usize;
+    let direct_restoring_final_range_parser_live_scratch_p99 = 648usize;
+    let direct_restoring_final_range_parser_symbol_count_p99 = 235usize;
+    let direct_restoring_final_range_parser_state_touch_floor_mean = 71_167usize;
+    let direct_restoring_final_range_parser_state_touch_floor_p99 = 84_835usize;
+    let direct_restoring_final_range_parser_oneway_budget = 13_682usize;
+    let direct_restoring_final_range_parser_augmented_mean_gap = 229_938isize;
     let plusminus_raw_scratch = 564usize;
     let plusminus_unary_scratch_p99 = 640usize;
     let plusminus_parser_over_strict = plusminus_unary_scratch_p99 - STRICT_SCRATCH;
@@ -782,6 +790,14 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     println!("METRIC scratch600_direct_restoring_final_align_prefix_step_scratch_max={direct_restoring_final_align_prefix_step_scratch_max}");
     println!("METRIC scratch600_direct_restoring_final_align_entropy_branch_count_p99={direct_restoring_final_align_entropy_branch_count_p99}");
     println!("METRIC scratch600_direct_restoring_final_align_entropy_branch_count_max={direct_restoring_final_align_entropy_branch_count_max}");
+    println!("METRIC scratch600_direct_restoring_final_range_parser_model_precision_bits={direct_restoring_final_range_parser_model_precision_bits}");
+    println!("METRIC scratch600_direct_restoring_final_range_parser_state_bits_p99={direct_restoring_final_range_parser_state_bits_p99}");
+    println!("METRIC scratch600_direct_restoring_final_range_parser_live_scratch_p99={direct_restoring_final_range_parser_live_scratch_p99}");
+    println!("METRIC scratch600_direct_restoring_final_range_parser_symbol_count_p99={direct_restoring_final_range_parser_symbol_count_p99}");
+    println!("METRIC scratch600_direct_restoring_final_range_parser_state_touch_floor_mean={direct_restoring_final_range_parser_state_touch_floor_mean}");
+    println!("METRIC scratch600_direct_restoring_final_range_parser_state_touch_floor_p99={direct_restoring_final_range_parser_state_touch_floor_p99}");
+    println!("METRIC scratch600_direct_restoring_final_range_parser_oneway_budget={direct_restoring_final_range_parser_oneway_budget}");
+    println!("METRIC scratch600_direct_restoring_final_range_parser_augmented_mean_gap_to_2700k={direct_restoring_final_range_parser_augmented_mean_gap}");
     println!("METRIC scratch600_plusminus_raw_scratch_bits={plusminus_raw_scratch}");
     println!("METRIC scratch600_plusminus_unary_scratch_p99={plusminus_unary_scratch_p99}");
     println!("METRIC scratch600_plusminus_parser_over_strict_bits={plusminus_parser_over_strict}");
@@ -1154,6 +1170,14 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
             && direct_restoring_final_align_entropy_branch_count_p99
                 == direct_restoring_final_stored_align_branch_count_p99,
         "restoring-final metadata coding frontier changed; revisit parser route"
+    );
+    assert!(
+        direct_restoring_final_range_parser_model_precision_bits == 13
+            && direct_restoring_final_range_parser_live_scratch_p99 <= GOOGLE_LOW_QUBIT_SCRATCH
+            && direct_restoring_final_range_parser_state_touch_floor_mean
+                > direct_restoring_final_range_parser_oneway_budget
+            && direct_restoring_final_range_parser_augmented_mean_gap > 0,
+        "restoring-final range-parser hard-piece accounting changed; revisit parser route"
     );
     assert!(halfgcd_tail_over_google > 0, "half-GCD checkpoint must be fused before it fits");
     assert!(

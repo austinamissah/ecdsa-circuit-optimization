@@ -19373,6 +19373,193 @@ mod tests {
     }
 
     #[test]
+    fn direct_centered_restoring_final_range_parser_state_touch_kills_margin() {
+        // The entropy probe says only a near-arithmetic parser can fit the
+        // metadata scratch target.  This charges the next hard piece: an exact
+        // reversible range/ANS-style parser has to update a live compressed
+        // state after every decoded alignment or branch symbol.  Give it the
+        // best step-conditioned entropy model, free table lookup, free
+        // renormalization, and only one Toffoli-equivalent touch per live state
+        // bit per symbol.  If that floor already exceeds the remaining average
+        // budget, the packed-parser route needs a new premise rather than more
+        // integration.
+        use std::collections::BTreeMap;
+
+        let p = SECP256K1_P;
+        let samples = 8192usize;
+        const MAX_STEPS: usize = 260;
+        const TARGET: f64 = 2_700_000.0;
+        const STORED_BRANCH_MEAN: f64 = 2_645_270.0;
+        const GOOGLE_SCRATCH: usize = 663;
+        let mut rng = 0xd1ce_c0ef_a119_5001u64;
+        let trace_alignment_metadata = |rng: &mut u64| -> (Vec<usize>, Vec<(usize, bool)>) {
+            let mut x = rand_u256(rng);
+            if x.is_zero() {
+                x = U256::from(1u64);
+            }
+            let mut u = smag_for_halfgcd_test(false, u512_from_u256_for_halfgcd_test(p));
+            let mut v = smag_for_halfgcd_test(false, u512_from_u256_for_halfgcd_test(x));
+            let mut coeff_u = smag_for_halfgcd_test(false, U512::ZERO);
+            let mut coeff_v = smag_for_halfgcd_test(false, U512::from(1u64));
+            let mut alignments = Vec::new();
+            let mut branches = Vec::new();
+            while !v.mag.is_zero() {
+                let adjusted = u.mag + (v.mag >> 1usize);
+                let q_direct = adjusted / v.mag;
+                let q_neg = u.neg ^ v.neg;
+                let qv = signed_mul_mag_for_halfgcd_test(v, q_neg, q_direct);
+                let next_v = signed_add_for_halfgcd_test(u, signed_neg_for_halfgcd_test(qv));
+                let qv_coeff = signed_mul_mag_for_halfgcd_test(coeff_v, q_neg, q_direct);
+                let next_coeff_v = signed_add_for_halfgcd_test(
+                    coeff_u,
+                    signed_neg_for_halfgcd_test(qv_coeff),
+                );
+                let denom = coeff_v.mag;
+                assert!(!denom.is_zero(), "restoring-final coefficient denominator vanished");
+                let low_numer = if coeff_u.mag.is_zero() {
+                    next_coeff_v.mag
+                } else {
+                    assert!(
+                        !next_coeff_v.mag.is_zero(),
+                        "restoring-final adjusted coefficient numerator underflow"
+                    );
+                    next_coeff_v.mag - U512::from(1u64)
+                };
+                let high_numer = if coeff_u.mag.is_zero() {
+                    low_numer
+                } else {
+                    next_coeff_v.mag + denom - U512::from(1u64)
+                };
+                let low_q = low_numer / denom;
+                let high_q = high_numer / denom;
+                let high_branch = q_direct != low_q;
+                let numer = if high_branch {
+                    assert_eq!(
+                        q_direct, high_q,
+                        "restoring-final coefficient reverse quotient candidates missed"
+                    );
+                    high_numer
+                } else {
+                    low_numer
+                };
+                if low_q != high_q {
+                    branches.push((alignments.len(), high_branch));
+                }
+                let alignment = u512_bit_len_for_halfgcd_test(numer)
+                    .saturating_sub(u512_bit_len_for_halfgcd_test(denom));
+                alignments.push(alignment);
+
+                u = v;
+                v = next_v;
+                coeff_u = coeff_v;
+                coeff_v = next_coeff_v;
+            }
+            assert_eq!(u.mag, U512::from(1u64), "restoring-final trace ended at non-unit gcd");
+            (alignments, branches)
+        };
+
+        let mut traces = Vec::with_capacity(samples);
+        let mut align_by_step = vec![BTreeMap::<usize, usize>::new(); MAX_STEPS];
+        let mut branch_by_step = [[0usize; 2]; MAX_STEPS];
+        for _ in 0..samples {
+            let (alignments, branches) = trace_alignment_metadata(&mut rng);
+            assert!(alignments.len() < MAX_STEPS, "trace exceeded alignment entropy table");
+            for (step, &alignment) in alignments.iter().enumerate() {
+                *align_by_step[step].entry(alignment).or_insert(0) += 1;
+            }
+            for &(step, branch) in &branches {
+                branch_by_step[step][branch as usize] += 1;
+            }
+            traces.push((alignments, branches));
+        }
+
+        let max_align_model_total = align_by_step
+            .iter()
+            .map(|counts| counts.values().sum::<usize>())
+            .max()
+            .unwrap_or(0);
+        let max_branch_model_total = branch_by_step
+            .iter()
+            .map(|counts| counts.iter().sum::<usize>())
+            .max()
+            .unwrap_or(0);
+        let model_precision_bits =
+            usize_bit_len_for_payload_test(max_align_model_total.max(max_branch_model_total) - 1);
+        let code_len = |freq: usize, total: usize| -> f64 {
+            assert!(freq > 0 && total > 0, "entropy model missing a seen symbol");
+            (total as f64).log2() - (freq as f64).log2()
+        };
+        let mut state_bits_rows = Vec::with_capacity(samples);
+        let mut live_scratch_rows = Vec::with_capacity(samples);
+        let mut symbol_count_rows = Vec::with_capacity(samples);
+        let mut state_touch_floor_rows = Vec::with_capacity(samples);
+        for (alignments, branches) in &traces {
+            let mut bits = 0.0f64;
+            for (step, &alignment) in alignments.iter().enumerate() {
+                let step_total = align_by_step[step].values().sum::<usize>();
+                let step_freq = *align_by_step[step].get(&alignment).unwrap();
+                bits += code_len(step_freq, step_total);
+            }
+            for &(step, branch) in branches {
+                let bit = branch as usize;
+                let step_branch_total = branch_by_step[step].iter().sum::<usize>();
+                bits += code_len(branch_by_step[step][bit], step_branch_total);
+            }
+            let state_bits = bits.ceil() as usize;
+            let symbol_count = alignments.len() + branches.len();
+            let live_scratch = 256 + state_bits + 2 * model_precision_bits;
+            let state_touch_floor = state_bits * symbol_count;
+            state_bits_rows.push(state_bits);
+            live_scratch_rows.push(live_scratch);
+            symbol_count_rows.push(symbol_count);
+            state_touch_floor_rows.push(state_touch_floor);
+        }
+
+        let mean_usize = |rows: &[usize]| -> f64 {
+            rows.iter().map(|&v| v as f64).sum::<f64>() / rows.len() as f64
+        };
+        let p99_usize = |rows: &mut Vec<usize>| -> usize {
+            rows.sort_unstable();
+            rows[rows.len() * 99 / 100]
+        };
+        let state_bits_mean = mean_usize(&state_bits_rows);
+        let symbol_count_mean = mean_usize(&symbol_count_rows);
+        let state_touch_floor_mean = mean_usize(&state_touch_floor_rows);
+        let state_bits_p99 = p99_usize(&mut state_bits_rows);
+        let live_scratch_p99 = p99_usize(&mut live_scratch_rows);
+        let symbol_count_p99 = p99_usize(&mut symbol_count_rows);
+        let state_touch_floor_p99 = p99_usize(&mut state_touch_floor_rows);
+        let oneway_parser_budget = (TARGET - STORED_BRANCH_MEAN) / 4.0;
+        let augmented_mean = STORED_BRANCH_MEAN + 4.0 * state_touch_floor_mean;
+        let augmented_gap = augmented_mean - TARGET;
+        println!("METRIC centered_direct_restoring_final_range_parser_model_precision_bits={model_precision_bits}");
+        println!("METRIC centered_direct_restoring_final_range_parser_state_bits_mean={state_bits_mean:.3}");
+        println!("METRIC centered_direct_restoring_final_range_parser_state_bits_p99={state_bits_p99}");
+        println!("METRIC centered_direct_restoring_final_range_parser_live_scratch_p99={live_scratch_p99}");
+        println!("METRIC centered_direct_restoring_final_range_parser_symbol_count_mean={symbol_count_mean:.3}");
+        println!("METRIC centered_direct_restoring_final_range_parser_symbol_count_p99={symbol_count_p99}");
+        println!("METRIC centered_direct_restoring_final_range_parser_state_touch_floor_mean={state_touch_floor_mean:.3}");
+        println!("METRIC centered_direct_restoring_final_range_parser_state_touch_floor_p99={state_touch_floor_p99}");
+        println!("METRIC centered_direct_restoring_final_range_parser_oneway_budget={oneway_parser_budget:.3}");
+        println!("METRIC centered_direct_restoring_final_range_parser_augmented_mean_gap_to_2700k={augmented_gap:.3}");
+        eprintln!(
+            "Direct-centered restoring-final range parser floor: model_bits={model_precision_bits}, state_bits_mean={state_bits_mean:.1}, symbols_mean={symbol_count_mean:.1}, live_scratch_p99={live_scratch_p99}, floor_mean={state_touch_floor_mean:.1}, one_way_budget={oneway_parser_budget:.1}, augmented_gap={augmented_gap:.1}"
+        );
+        assert!(
+            live_scratch_p99 <= GOOGLE_SCRATCH,
+            "finite-precision range parser scratch stopped fitting; demote on scratch instead"
+        );
+        assert!(
+            state_touch_floor_mean > oneway_parser_budget,
+            "one-state-touch parser floor now fits the restoring-final average margin; build a toy parser"
+        );
+        assert!(
+            augmented_gap > 0.0,
+            "range parser state-touch floor no longer kills the restoring-final route"
+        );
+    }
+
+    #[test]
     fn direct_centered_signnorm_normalization_sign_mbu_is_dense_too() {
         // The sign-normalized direct-centered route keeps quotient signs on the
         // phase-clean q_neg=false path by recording when the centered remainder
