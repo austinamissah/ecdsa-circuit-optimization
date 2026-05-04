@@ -4462,7 +4462,7 @@ mod tests {
         x0: SignedMagU512ForHalfGcdTest,
         x1: SignedMagU512ForHalfGcdTest,
         block: usize,
-    ) -> (usize, usize, usize, usize, usize, usize, Vec<u128>) {
+    ) -> (usize, usize, usize, usize, usize, usize, Vec<u128>, Vec<u128>) {
         const MOD_ADD_FAST_CCX: usize = 1024;
         const MOD_DOUBLE_FAST_CCX: usize = 255;
         const MOD_HALVE_FAST_CCX: usize = 255;
@@ -4606,6 +4606,15 @@ mod tests {
         let row = dp[0][state_idx(1, 1, 0)]
             .expect("block-active trace carry did not drain");
         let mut masks = vec![0u128; (total_bits + block - 1) / block];
+        let mut digit_patterns = vec![0u128; masks.len()];
+        let digit_code = |digit: i8| -> u128 {
+            match digit {
+                -1 => 2,
+                0 => 0,
+                1 => 1,
+                _ => unreachable!("signed-binary digit escaped ternary alphabet"),
+            }
+        };
         let mut c0i = 1usize;
         let mut c1i = 1usize;
         let mut seen_idx = 0usize;
@@ -4677,6 +4686,8 @@ mod tests {
             if d1 != 0 {
                 masks[bit / block] |= 1u128 << (2 * offset + 1);
             }
+            digit_patterns[bit / block] |= digit_code(d0) << (4 * offset);
+            digit_patterns[bit / block] |= digit_code(d1) << (4 * offset + 2);
             c0i = next_c0i;
             c1i = next_c1i;
             seen_idx = next_seen;
@@ -4690,6 +4701,7 @@ mod tests {
             row.occupied,
             row.digits,
             masks,
+            digit_patterns,
         )
     }
 
@@ -9513,6 +9525,10 @@ mod tests {
         let mut block_digits = vec![Vec::<usize>::with_capacity(SAMPLES); BLOCKS.len()];
         let mut block_patterns = vec![Vec::<BTreeSet<u128>>::new(); BLOCKS.len()];
         let mut block_sample_masks = vec![Vec::<Vec<u128>>::with_capacity(SAMPLES); BLOCKS.len()];
+        let mut block_digit_patterns = vec![Vec::<BTreeSet<u128>>::new(); BLOCKS.len()];
+        let mut block_sample_digit_patterns =
+            vec![Vec::<Vec<u128>>::with_capacity(SAMPLES); BLOCKS.len()];
+        let mut block_apps = vec![Vec::<usize>::with_capacity(SAMPLES); BLOCKS.len()];
 
         for _ in 0..SAMPLES {
             let mut x = rand_u256(&mut rng);
@@ -9536,9 +9552,11 @@ mod tests {
                     occupied,
                     digits,
                     masks,
+                    digit_patterns,
                 ) = halfgcd_signed_two_coeff_apply_block_active_trace_for_test(b, d, block);
                 let block_cost = app + compact_source + block_active_source;
                 block_costs[idx].push(block_cost);
+                block_apps[idx].push(app);
                 block_sources[idx].push(block_active_source);
                 block_counts[idx].push(active_blocks);
                 block_occupied[idx].push(occupied);
@@ -9546,12 +9564,21 @@ mod tests {
                 if block_patterns[idx].len() < masks.len() {
                     block_patterns[idx].resize_with(masks.len(), BTreeSet::new);
                 }
+                if block_digit_patterns[idx].len() < digit_patterns.len() {
+                    block_digit_patterns[idx].resize_with(digit_patterns.len(), BTreeSet::new);
+                }
                 for (block_idx, &mask) in masks.iter().enumerate() {
                     if mask != 0 {
                         block_patterns[idx][block_idx].insert(mask);
                     }
                 }
+                for (block_idx, &pattern) in digit_patterns.iter().enumerate() {
+                    if pattern != 0 {
+                        block_digit_patterns[idx][block_idx].insert(pattern);
+                    }
+                }
                 block_sample_masks[idx].push(masks);
+                block_sample_digit_patterns[idx].push(digit_patterns);
                 if block == 1 {
                     assert_eq!(
                         block_active_source,
@@ -9669,6 +9696,60 @@ mod tests {
                 );
             }
         }
+        let mut best_full_code = (usize::MAX, f64::INFINITY, 0.0, 0usize, 0usize);
+        for (idx, &block) in BLOCKS.iter().enumerate() {
+            let support_bits_by_block = block_digit_patterns[idx]
+                .iter()
+                .map(|patterns| ceil_log2(patterns.len()))
+                .collect::<Vec<_>>();
+            let max_patterns = block_digit_patterns[idx]
+                .iter()
+                .map(|patterns| patterns.len())
+                .max()
+                .unwrap_or(0);
+            let max_bits = support_bits_by_block.iter().copied().max().unwrap_or(0);
+            let mut code_bits_total = 0usize;
+            for patterns in &block_sample_digit_patterns[idx] {
+                for (block_idx, &pattern) in patterns.iter().enumerate() {
+                    if pattern != 0 {
+                        code_bits_total += support_bits_by_block[block_idx];
+                    }
+                }
+            }
+            let code_bits_mean = code_bits_total as f64 / SAMPLES as f64;
+            let code_source_mean = 2.0 * FIELD_BITS as f64 * code_bits_mean;
+            let app_mean = mean_usize(&block_apps[idx]);
+            let projected_full_code =
+                ACTIVE_CHARGED_POINTADD_MEAN + 2.0 * (app_mean + code_source_mean - baseline_mean);
+            println!(
+                "METRIC halfgcd_fixed_depth64_block_active_b{block}_full_code_bits_mean={code_bits_mean:.3}"
+            );
+            println!(
+                "METRIC halfgcd_fixed_depth64_block_active_b{block}_full_code_source_mean={code_source_mean:.3}"
+            );
+            println!(
+                "METRIC halfgcd_fixed_depth64_block_active_b{block}_full_code_max_patterns={max_patterns}"
+            );
+            println!(
+                "METRIC halfgcd_fixed_depth64_block_active_b{block}_full_code_max_bits={max_bits}"
+            );
+            println!(
+                "METRIC halfgcd_fixed_depth64_block_active_b{block}_full_code_projected_pointadd_mean={projected_full_code:.3}"
+            );
+            println!(
+                "METRIC halfgcd_fixed_depth64_block_active_b{block}_full_code_projected_gap_to_2700k={:.3}",
+                projected_full_code - TARGET
+            );
+            if projected_full_code < best_full_code.1 {
+                best_full_code = (
+                    block,
+                    projected_full_code,
+                    code_source_mean,
+                    max_patterns,
+                    max_bits,
+                );
+            }
+        }
         println!("METRIC halfgcd_fixed_depth64_block_active_best_b={}", best.0);
         println!(
             "METRIC halfgcd_fixed_depth64_block_active_best_projected_pointadd_mean={:.3}",
@@ -9690,8 +9771,20 @@ mod tests {
             "METRIC halfgcd_fixed_depth64_block_active_mask_best_gap_to_2700k={:.3}",
             best_with_mask.1 - TARGET
         );
+        println!(
+            "METRIC halfgcd_fixed_depth64_block_active_full_code_best_b={}",
+            best_full_code.0
+        );
+        println!(
+            "METRIC halfgcd_fixed_depth64_block_active_full_code_best_projected_pointadd_mean={:.3}",
+            best_full_code.1
+        );
+        println!(
+            "METRIC halfgcd_fixed_depth64_block_active_full_code_best_gap_to_2700k={:.3}",
+            best_full_code.1 - TARGET
+        );
         eprintln!(
-            "half-GCD block-active floor: best_b={}, projected={:.1}, source={:.1}, active_blocks={:.1}, occupied={:.1}, digits={:.1}, mask_best_b={}, mask_projected={:.1}, mask_extra_source={:.1}, mask_max_patterns={}, mask_max_bits={}",
+            "half-GCD block-active floor: best_b={}, projected={:.1}, source={:.1}, active_blocks={:.1}, occupied={:.1}, digits={:.1}, mask_best_b={}, mask_projected={:.1}, mask_extra_source={:.1}, mask_max_patterns={}, mask_max_bits={}, full_code_b={}, full_code_projected={:.1}, full_code_source={:.1}, full_code_patterns={}, full_code_bits={}",
             best.0,
             best.1,
             best.2,
@@ -9702,7 +9795,12 @@ mod tests {
             best_with_mask.1,
             best_with_mask.2,
             best_with_mask.3,
-            best_with_mask.4
+            best_with_mask.4,
+            best_full_code.0,
+            best_full_code.1,
+            best_full_code.2,
+            best_full_code.3,
+            best_full_code.4
         );
         assert!(
             best.1 < PAIR_ACTIVE_POINTADD_MEAN,
@@ -9713,6 +9811,12 @@ mod tests {
                 && block_projected[3] < TARGET
                 && best_with_mask.1 > TARGET,
             "block-active mask support floor now clears; build a block-internal decoder"
+        );
+        assert!(
+            best_full_code.1 < TARGET
+                && best_full_code.3 >= SAMPLES
+                && best_full_code.4 >= 12,
+            "full block-pattern code no longer shows the sampled-support opening/saturation"
         );
     }
 

@@ -286,6 +286,12 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
             blocker: "re-optimizing the signed-binary recoder for public block-active sharing would clear only under a no-routing oracle (b8 projects 2694356, best b32 projects 2683904), but adding the sampled active-mask support floor to route positions inside each block pushes the best b32 row to 2732006 (+32006) with 24051 one-way extra source, 4096 observed masks, and 12 mask bits before any decoder cleanup",
         },
         Candidate {
+            name: "halfgcd_second_column_full_block_pattern_code_opening",
+            scratch_bits: 515,
+            charged_toffoli: None,
+            blocker: "encoding the entire sampled b32 block digit pattern instead of separate active/source routes projects 2651525 (-48475) with 24051 one-way source, but the best block saturates all 4096 samples at 12 bits; this is an opening for an exact scalable block-pattern decoder/proof, not a charged architecture",
+        },
+        Candidate {
             name: "halfgcd_second_column_zero_row_id_noactive_floor",
             scratch_bits: 515,
             charged_toffoli: Some(2_831_471),
@@ -2048,6 +2054,14 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     let halfgcd_second_col_fixed_depth64_block_active_mask_extra_source_mean = 24_051usize;
     let halfgcd_second_col_fixed_depth64_block_active_mask_max_patterns = 4_096usize;
     let halfgcd_second_col_fixed_depth64_block_active_mask_max_bits = 12usize;
+    let halfgcd_second_col_fixed_depth64_full_block_pattern_best_b = 32usize;
+    let halfgcd_second_col_fixed_depth64_full_block_pattern_mean = 2_651_525usize;
+    let halfgcd_second_col_fixed_depth64_full_block_pattern_gap =
+        halfgcd_second_col_fixed_depth64_full_block_pattern_mean as isize
+            - GOOGLE_LOW_QUBIT_TOFFOLI as isize;
+    let halfgcd_second_col_fixed_depth64_full_block_pattern_source_mean = 24_051usize;
+    let halfgcd_second_col_fixed_depth64_full_block_pattern_max_patterns = 4_096usize;
+    let halfgcd_second_col_fixed_depth64_full_block_pattern_max_bits = 12usize;
     let halfgcd_second_col_joint_signed_binary_active_degree_n14 = 13usize;
     let halfgcd_second_col_joint_signed_binary_active_density_n14 = 8_194usize;
     let halfgcd_second_col_joint_signed_binary_active_positions_n14 = 15usize;
@@ -3484,6 +3498,12 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_block_active_mask_extra_source_mean={halfgcd_second_col_fixed_depth64_block_active_mask_extra_source_mean}");
     println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_block_active_mask_max_patterns={halfgcd_second_col_fixed_depth64_block_active_mask_max_patterns}");
     println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_block_active_mask_max_bits={halfgcd_second_col_fixed_depth64_block_active_mask_max_bits}");
+    println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_full_block_pattern_best_b={halfgcd_second_col_fixed_depth64_full_block_pattern_best_b}");
+    println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_full_block_pattern_mean={halfgcd_second_col_fixed_depth64_full_block_pattern_mean}");
+    println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_full_block_pattern_gap_to_2700k={halfgcd_second_col_fixed_depth64_full_block_pattern_gap}");
+    println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_full_block_pattern_source_mean={halfgcd_second_col_fixed_depth64_full_block_pattern_source_mean}");
+    println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_full_block_pattern_max_patterns={halfgcd_second_col_fixed_depth64_full_block_pattern_max_patterns}");
+    println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_full_block_pattern_max_bits={halfgcd_second_col_fixed_depth64_full_block_pattern_max_bits}");
     println!("METRIC scratch600_halfgcd_second_col_joint_signed_binary_active_degree_n14={halfgcd_second_col_joint_signed_binary_active_degree_n14}");
     println!("METRIC scratch600_halfgcd_second_col_joint_signed_binary_active_density_n14={halfgcd_second_col_joint_signed_binary_active_density_n14}");
     println!("METRIC scratch600_halfgcd_second_col_joint_signed_binary_active_positions_n14={halfgcd_second_col_joint_signed_binary_active_positions_n14}");
@@ -4977,6 +4997,15 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
             && halfgcd_second_col_fixed_depth64_block_active_mask_max_patterns >= 4_096
             && halfgcd_second_col_fixed_depth64_block_active_mask_max_bits >= 12,
         "block-active support mask now clears half-GCD; build block-internal active decoder"
+    );
+    assert!(
+        halfgcd_second_col_fixed_depth64_full_block_pattern_best_b == 32
+            && halfgcd_second_col_fixed_depth64_full_block_pattern_gap < 0
+            && halfgcd_second_col_fixed_depth64_full_block_pattern_source_mean
+                == halfgcd_second_col_fixed_depth64_block_active_mask_extra_source_mean
+            && halfgcd_second_col_fixed_depth64_full_block_pattern_max_patterns >= 4_096
+            && halfgcd_second_col_fixed_depth64_full_block_pattern_max_bits >= 12,
+        "full block-pattern code stopped clearing under sampled support; reprioritize half-GCD pattern decoder"
     );
     assert!(
         halfgcd_second_col_joint_signed_binary_active_degree_n14 + 1 >= 14
