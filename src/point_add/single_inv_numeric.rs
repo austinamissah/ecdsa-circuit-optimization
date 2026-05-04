@@ -20581,7 +20581,7 @@ mod tests {
         // state_bits * total_symbols by roughly sum(block_bits * block_symbols).
         // This is still only a lower bound: table lookup, renormalization,
         // terminal-count recovery, and block cleanup are free here.
-        use std::collections::BTreeMap;
+        use std::collections::{BTreeMap, BTreeSet};
 
         let p = SECP256K1_P;
         let samples = 8192usize;
@@ -20788,6 +20788,49 @@ mod tests {
             block32_symbol_count_p99,
             block32_augmented_gap,
         ) = block32.unwrap();
+        let block_qrom_row_floor = |block_symbols: usize| -> (usize, usize, usize) {
+            let mut block_patterns = Vec::<BTreeSet<Vec<(usize, usize)>>>::new();
+            let mut block_counts = Vec::with_capacity(samples);
+            for (alignments, branches) in &traces {
+                let mut branch_at_step = vec![None; alignments.len()];
+                for &(step, branch) in branches {
+                    branch_at_step[step] = Some(branch);
+                }
+                let mut symbols = Vec::with_capacity(alignments.len() + branches.len());
+                for (step, &alignment) in alignments.iter().enumerate() {
+                    symbols.push((2 * step, alignment));
+                    if let Some(branch) = branch_at_step[step] {
+                        symbols.push((2 * step + 1, branch as usize));
+                    }
+                }
+                block_counts.push(symbols.chunks(block_symbols).count());
+                for (block_idx, block) in symbols.chunks(block_symbols).enumerate() {
+                    while block_patterns.len() <= block_idx {
+                        block_patterns.push(BTreeSet::new());
+                    }
+                    block_patterns[block_idx].insert(block.to_vec());
+                }
+            }
+            let row_floor = block_patterns
+                .iter()
+                .map(|patterns| patterns.len().saturating_sub(1))
+                .sum::<usize>();
+            let max_rows_in_block = block_patterns
+                .iter()
+                .map(|patterns| patterns.len())
+                .max()
+                .unwrap_or(0);
+            let block_count_p99 = p99_usize(&mut block_counts);
+            (row_floor, max_rows_in_block, block_count_p99)
+        };
+        let (
+            best_qrom_row_floor,
+            best_qrom_max_rows_in_block,
+            best_qrom_block_count_p99,
+        ) = block_qrom_row_floor(best_block);
+        let (block32_qrom_row_floor, block32_qrom_max_rows_in_block, block32_qrom_block_count_p99) =
+            block_qrom_row_floor(32);
+        let best_qrom_gap = STORED_BRANCH_MEAN + 4.0 * best_qrom_row_floor as f64 - TARGET;
         let mut lookup_scan_floor_rows = Vec::with_capacity(samples);
         for (alignments, branches) in &traces {
             let mut branch_at_step = vec![None; alignments.len()];
@@ -20828,12 +20871,19 @@ mod tests {
         println!("METRIC centered_direct_restoring_final_block32_live_scratch_p99={block32_scratch_p99}");
         println!("METRIC centered_direct_restoring_final_block32_symbol_count_p99={block32_symbol_count_p99}");
         println!("METRIC centered_direct_restoring_final_block32_augmented_gap_to_2700k={block32_augmented_gap:.3}");
+        println!("METRIC centered_direct_restoring_final_block_parser_best_qrom_row_floor={best_qrom_row_floor}");
+        println!("METRIC centered_direct_restoring_final_block_parser_best_qrom_max_rows_in_block={best_qrom_max_rows_in_block}");
+        println!("METRIC centered_direct_restoring_final_block_parser_best_qrom_block_count_p99={best_qrom_block_count_p99}");
+        println!("METRIC centered_direct_restoring_final_block_parser_best_qrom_gap_to_2700k={best_qrom_gap:.3}");
+        println!("METRIC centered_direct_restoring_final_block32_qrom_row_floor={block32_qrom_row_floor}");
+        println!("METRIC centered_direct_restoring_final_block32_qrom_max_rows_in_block={block32_qrom_max_rows_in_block}");
+        println!("METRIC centered_direct_restoring_final_block32_qrom_block_count_p99={block32_qrom_block_count_p99}");
         println!("METRIC centered_direct_restoring_final_block_parser_lookup_scan_floor_mean={lookup_scan_floor_mean:.3}");
         println!("METRIC centered_direct_restoring_final_block_parser_lookup_scan_floor_p99={lookup_scan_floor_p99}");
         println!("METRIC centered_direct_restoring_final_block_parser_best_with_lookup_mean={best_with_lookup_mean:.3}");
         println!("METRIC centered_direct_restoring_final_block_parser_best_with_lookup_gap_to_2700k={best_with_lookup_gap:.3}");
         eprintln!(
-            "Direct-centered restoring-final block parser floor: best_block={best_block}, touch_mean={best_touch_mean:.1}, lookup_mean={lookup_scan_floor_mean:.1}, touch_plus_lookup={best_with_lookup_mean:.1}, scratch_p99={best_scratch_p99}, compressed_p99={best_compressed_p99}, augmented_gap={best_augmented_gap:.1}, lookup_gap={best_with_lookup_gap:.1}, block32_touch={block32_touch_mean:.1}, block32_scratch={block32_scratch_p99}"
+            "Direct-centered restoring-final block parser floor: best_block={best_block}, touch_mean={best_touch_mean:.1}, qrom_rows={best_qrom_row_floor}, lookup_mean={lookup_scan_floor_mean:.1}, touch_plus_lookup={best_with_lookup_mean:.1}, scratch_p99={best_scratch_p99}, compressed_p99={best_compressed_p99}, augmented_gap={best_augmented_gap:.1}, qrom_gap={best_qrom_gap:.1}, lookup_gap={best_with_lookup_gap:.1}, block32_touch={block32_touch_mean:.1}, block32_qrom_rows={block32_qrom_row_floor}, block32_scratch={block32_scratch_p99}"
         );
         assert!(
             best_scratch_p99 <= GOOGLE_SCRATCH,
@@ -20846,6 +20896,12 @@ mod tests {
         assert!(
             best_with_lookup_mean > oneway_parser_budget && best_with_lookup_gap > 0.0,
             "threshold-scan lookup floor now fits the block parser budget; build a toy parser"
+        );
+        assert!(
+            best_qrom_row_floor as f64 > oneway_parser_budget
+                && block32_qrom_row_floor as f64 > oneway_parser_budget
+                && best_qrom_gap > 0.0,
+            "sampled block-QROM row floor now fits; table decoder may revive restoring-final"
         );
     }
 
