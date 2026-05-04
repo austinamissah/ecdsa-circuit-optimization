@@ -11738,6 +11738,188 @@ mod tests {
     }
 
     #[test]
+    fn half_gcd_full_block_endpoint_dp_standard_jsf_shortcut_probe() {
+        // The endpoint DP objective is close to Solinas joint sparse form: pay
+        // once for an occupied position and then per nonzero coefficient digit.
+        // If standard JSF reproduced the block-active trace, the parser would
+        // have a known local algebraic form rather than an opaque DP/table.
+        fn jsf_digit_patterns(x0: U512, x1: U512, block: usize, blocks: usize) -> Vec<u128> {
+            let mut k0 = x0;
+            let mut k1 = x1;
+            let mut patterns = vec![0u128; blocks];
+            let total_bits = blocks * block;
+            let low = |x: U512, mask: u64| -> u64 { x.as_limbs()[0] & mask };
+            let digit_code = |digit: i8| -> u128 {
+                match digit {
+                    -1 => 2,
+                    0 => 0,
+                    1 => 1,
+                    _ => unreachable!("JSF digit escaped ternary alphabet"),
+                }
+            };
+            let choose = |x: U512, y: U512| -> i8 {
+                if low(x, 1) == 0 {
+                    0
+                } else {
+                    let mut digit = if low(x, 3) == 1 { 1 } else { -1 };
+                    let mod8 = low(x, 7);
+                    if (mod8 == 3 || mod8 == 5) && low(y, 3) == 2 {
+                        digit = -digit;
+                    }
+                    digit
+                }
+            };
+            for bit in 0..total_bits {
+                let d0 = choose(k0, k1);
+                let d1 = choose(k1, k0);
+                let block_idx = bit / block;
+                let offset = bit % block;
+                patterns[block_idx] |= digit_code(d0) << (4 * offset);
+                patterns[block_idx] |= digit_code(d1) << (4 * offset + 2);
+                if d0 > 0 {
+                    k0 -= U512::from(d0 as u64);
+                } else if d0 < 0 {
+                    k0 += U512::from((-d0) as u64);
+                }
+                if d1 > 0 {
+                    k1 -= U512::from(d1 as u64);
+                } else if d1 < 0 {
+                    k1 += U512::from((-d1) as u64);
+                }
+                k0 >>= 1usize;
+                k1 >>= 1usize;
+            }
+            patterns
+        }
+
+        let compare = |x0: SignedMagU512ForHalfGcdTest,
+                       x1: SignedMagU512ForHalfGcdTest,
+                       block: usize|
+         -> (usize, usize, usize) {
+            let (_, _, _, _, _, _, _, trace_patterns, _) =
+                halfgcd_signed_two_coeff_apply_block_active_trace_for_test(x0, x1, block);
+            let jsf_patterns = jsf_digit_patterns(x0.mag, x1.mag, block, trace_patterns.len());
+            let mut active_blocks = 0usize;
+            let mut mismatched_active_blocks = 0usize;
+            let mut mismatched_traces = 0usize;
+            for (&trace, &jsf) in trace_patterns.iter().zip(jsf_patterns.iter()) {
+                if trace != 0 {
+                    active_blocks += 1;
+                    mismatched_active_blocks += (trace != jsf) as usize;
+                }
+            }
+            mismatched_traces += (trace_patterns != jsf_patterns) as usize;
+            (active_blocks, mismatched_active_blocks, mismatched_traces)
+        };
+
+        const DEPTH: usize = 64;
+        const BLOCK: usize = 32;
+        const SAMPLES: usize = 4096;
+        let mut rng = 0x10ca_1dec_0de5_ec5u64;
+        let mut sample_active_blocks = 0usize;
+        let mut sample_mismatched_active_blocks = 0usize;
+        let mut sample_mismatched_traces = 0usize;
+        for _ in 0..SAMPLES {
+            let mut x = rand_u256(&mut rng);
+            if x.is_zero() {
+                x = U256::from(1u64);
+            }
+            let (b, d) =
+                halfgcd_second_column_after_fixed_depth_for_test(x, SECP256K1_P, DEPTH);
+            let (active, mismatched_blocks, mismatched_trace) = compare(b, d, BLOCK);
+            sample_active_blocks += active;
+            sample_mismatched_active_blocks += mismatched_blocks;
+            sample_mismatched_traces += mismatched_trace;
+        }
+        println!(
+            "METRIC halfgcd_full_block_endpoint_dp_jsf_sample_active_blocks={sample_active_blocks}"
+        );
+        println!(
+            "METRIC halfgcd_full_block_endpoint_dp_jsf_sample_mismatched_active_blocks={sample_mismatched_active_blocks}"
+        );
+        println!(
+            "METRIC halfgcd_full_block_endpoint_dp_jsf_sample_mismatched_traces={sample_mismatched_traces}"
+        );
+
+        let cases = [
+            (10usize, 1_021u32, 2usize),
+            (12usize, 4_093u32, 3usize),
+            (14usize, 16_381u32, 4usize),
+            (16usize, 65_521u32, 4usize),
+            (17usize, 65_537u32, 5usize),
+        ];
+        let mut toy_active_blocks = 0usize;
+        let mut toy_mismatched_active_blocks = 0usize;
+        let mut toy_mismatched_traces = 0usize;
+        for &(toy_n, toy_p, toy_block) in &cases {
+            let toy_depth = (toy_n / 4).max(1);
+            let mut active_blocks = 0usize;
+            let mut mismatched_active_blocks = 0usize;
+            let mut mismatched_traces = 0usize;
+            for x in 1..toy_p {
+                let (b, d) = halfgcd_second_column_after_fixed_depth_for_test(
+                    U256::from(x as u64),
+                    U256::from(toy_p as u64),
+                    toy_depth,
+                );
+                let (active, mismatched_blocks, mismatched_trace) = compare(b, d, toy_block);
+                active_blocks += active;
+                mismatched_active_blocks += mismatched_blocks;
+                mismatched_traces += mismatched_trace;
+            }
+            println!(
+                "METRIC halfgcd_full_block_endpoint_dp_jsf_toy_n{toy_n}_active_blocks={active_blocks}"
+            );
+            println!(
+                "METRIC halfgcd_full_block_endpoint_dp_jsf_toy_n{toy_n}_mismatched_active_blocks={mismatched_active_blocks}"
+            );
+            println!(
+                "METRIC halfgcd_full_block_endpoint_dp_jsf_toy_n{toy_n}_mismatched_traces={mismatched_traces}"
+            );
+            toy_active_blocks += active_blocks;
+            toy_mismatched_active_blocks += mismatched_active_blocks;
+            toy_mismatched_traces += mismatched_traces;
+        }
+        println!(
+            "METRIC halfgcd_full_block_endpoint_dp_jsf_toy_active_blocks={toy_active_blocks}"
+        );
+        println!(
+            "METRIC halfgcd_full_block_endpoint_dp_jsf_toy_mismatched_active_blocks={toy_mismatched_active_blocks}"
+        );
+        println!(
+            "METRIC halfgcd_full_block_endpoint_dp_jsf_toy_mismatched_traces={toy_mismatched_traces}"
+        );
+        eprintln!(
+            "half-GCD endpoint DP standard-JSF shortcut: sample_mismatched_blocks={sample_mismatched_active_blocks}/{sample_active_blocks}, toy_mismatched_blocks={toy_mismatched_active_blocks}/{toy_active_blocks}, toy_mismatched_traces={toy_mismatched_traces}"
+        );
+
+        assert_eq!(
+            sample_active_blocks, 16_152,
+            "JSF shortcut sample active-block count changed; update endpoint parser ledger"
+        );
+        assert_eq!(
+            sample_mismatched_active_blocks, 12_701,
+            "standard JSF no longer has the sampled mismatch profile; revisit endpoint parser shortcut"
+        );
+        assert_eq!(
+            sample_mismatched_traces, 4_088,
+            "standard JSF sampled trace mismatch count changed; update endpoint parser ledger"
+        );
+        assert_eq!(
+            toy_active_blocks, 299_013,
+            "JSF shortcut toy active-block count changed; update endpoint parser ledger"
+        );
+        assert_eq!(
+            toy_mismatched_active_blocks, 59_445,
+            "standard JSF no longer fails exact toys at the recorded rate; revisit endpoint parser shortcut"
+        );
+        assert_eq!(
+            toy_mismatched_traces, 42_881,
+            "standard JSF exact toy trace mismatch count changed; update endpoint parser ledger"
+        );
+    }
+
+    #[test]
     fn half_gcd_full_block_endpoint_table_floor_needs_algorithmic_decoder() {
         // Endpoint state reopens the full-block code, but only barely.  A
         // generic coherent table over endpoint keys is already at the margin
