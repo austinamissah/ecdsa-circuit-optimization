@@ -139,13 +139,13 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
             name: "direct_centered_signnorm_raw_digits_only",
             scratch_bits: 653,
             charged_toffoli: None,
-            blocker: "raw sign-normalized digits fit, but exact cneg p99 is 2792914; norm signs have dense MBU parity and magnitude-only exact toy reverse collisions. Post-step coefficient rows disambiguate the sign on exact toys (n14 collisions 0/89008), so revival needs a phase-clean local row-recovery circuit rather than a larger sidecar",
+            blocker: "raw sign-normalized digits fit, but exact cneg p99 is 2792914; norm signs have dense MBU parity and magnitude-only exact toy reverse collisions. Post-step rows disambiguate signs, and det-low2 xor coeff_v_sign recovers the norm sign on exact toys (n14 formula mismatches 0/89008), but raw physical cneg remains too expensive",
         },
         Candidate {
             name: "direct_centered_signnorm_logical_coeff_signs",
-            scratch_bits: 765,
-            charged_toffoli: Some(2_746_960),
-            blocker: "logical coefficient signs keep rem-only direct cneg phase-clean in toy, but direct split p99 is still 46960 over target, exact-rem split is 94228 over, and normalization-sign scratch remains 765 p99 unless the new coefficient-row sign disambiguation is turned into a cheap local recovery circuit",
+            scratch_bits: 657,
+            charged_toffoli: Some(2_723_992),
+            blocker: "det-low2 xor coeff_v_sign removes the normalization-sign sidecar in exact toys and keeps the state inside Google scratch, but best logical-sign p99 still misses by 23992 (split misses by 46960) before production predicate wiring",
         },
         Candidate {
             name: "direct_centered_restoring_final_stored_alignment",
@@ -217,7 +217,7 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
             name: "direct_centered_signnorm_rank_compressed_signs",
             scratch_bits: 765,
             charged_toffoli: None,
-            blocker: "even combinatorial/rank-compressed normalization signs need 765 p99 scratch bits, 102 over Google",
+            blocker: "superseded by det-low2 coefficient-sign recovery; rank-compressed normalization signs still document that generic sign sidecars need 765 p99 scratch bits",
         },
         Candidate {
             name: "halfgcd_first_matrix_checkpoint_only",
@@ -367,6 +367,9 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     let centered_boundary_scratch_p99 = 710usize;
     let centered_parser_over_strict = centered_boundary_scratch_p99 - STRICT_SCRATCH;
     let direct_signnorm_raw_digit_scratch_p99 = 653usize;
+    let direct_signnorm_det_coeffsign_scratch_p99 = direct_signnorm_raw_digit_scratch_p99 + 4usize;
+    let direct_signnorm_det_coeffsign_scratch_gap_google =
+        direct_signnorm_det_coeffsign_scratch_p99 as isize - GOOGLE_LOW_QUBIT_SCRATCH as isize;
     let direct_signnorm_rank_scratch_p99 = 765usize;
     let direct_signnorm_ambiguous_rank_scratch_p99 = 764usize;
     let direct_signnorm_rank_over_google =
@@ -404,6 +407,16 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     let direct_signnorm_coeff_reverse_total_steps_n14 = 89_008usize;
     let direct_signnorm_coeff_reverse_max_mult_n14 = 1usize;
     let direct_signnorm_coeff_reverse_zero_coeff_cases_n14 = 0usize;
+    let direct_signnorm_det_sign_reverse_collisions_n14 = 2_654usize;
+    let direct_signnorm_det_sign_reverse_states_n14 = 70_742usize;
+    let direct_signnorm_det_sign_reverse_max_mult_n14 = 2usize;
+    let direct_signnorm_det_coeffsign_reverse_collisions_n14 = 0usize;
+    let direct_signnorm_det_coeffsign_reverse_states_n14 = 73_396usize;
+    let direct_signnorm_det_coeffsign_reverse_total_steps_n14 = 89_008usize;
+    let direct_signnorm_det_coeffsign_reverse_max_mult_n14 = 1usize;
+    let direct_signnorm_det_coeffsign_bad_det_cases_n14 = 0usize;
+    let direct_signnorm_det_coeffsign_low2_mismatches_n14 = 0usize;
+    let direct_signnorm_det_coeffsign_formula_mismatches_n14 = 0usize;
     let direct_restoring_final_coeff_width_p99 = 47_654usize;
     let direct_restoring_final_digit_payload_p99 = 362usize;
     let direct_restoring_final_raw_digit_scratch_p99 = 256usize + direct_restoring_final_digit_payload_p99;
@@ -1682,6 +1695,8 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     println!("METRIC scratch600_centered_boundary_scratch_p99={centered_boundary_scratch_p99}");
     println!("METRIC scratch600_centered_parser_over_strict_bits={centered_parser_over_strict}");
     println!("METRIC scratch600_direct_signnorm_raw_digit_scratch_p99={direct_signnorm_raw_digit_scratch_p99}");
+    println!("METRIC scratch600_direct_signnorm_det_coeffsign_scratch_p99={direct_signnorm_det_coeffsign_scratch_p99}");
+    println!("METRIC scratch600_direct_signnorm_det_coeffsign_scratch_gap_google={direct_signnorm_det_coeffsign_scratch_gap_google}");
     println!("METRIC scratch600_direct_signnorm_rank_scratch_p99={direct_signnorm_rank_scratch_p99}");
     println!("METRIC scratch600_direct_signnorm_rank_over_google_bits={direct_signnorm_rank_over_google}");
     println!("METRIC scratch600_direct_signnorm_ambiguous_rank_scratch_p99={direct_signnorm_ambiguous_rank_scratch_p99}");
@@ -1712,6 +1727,16 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     println!("METRIC scratch600_direct_signnorm_coeff_reverse_total_steps_n14={direct_signnorm_coeff_reverse_total_steps_n14}");
     println!("METRIC scratch600_direct_signnorm_coeff_reverse_max_mult_n14={direct_signnorm_coeff_reverse_max_mult_n14}");
     println!("METRIC scratch600_direct_signnorm_coeff_reverse_zero_coeff_cases_n14={direct_signnorm_coeff_reverse_zero_coeff_cases_n14}");
+    println!("METRIC scratch600_direct_signnorm_det_sign_reverse_collisions_n14={direct_signnorm_det_sign_reverse_collisions_n14}");
+    println!("METRIC scratch600_direct_signnorm_det_sign_reverse_states_n14={direct_signnorm_det_sign_reverse_states_n14}");
+    println!("METRIC scratch600_direct_signnorm_det_sign_reverse_max_mult_n14={direct_signnorm_det_sign_reverse_max_mult_n14}");
+    println!("METRIC scratch600_direct_signnorm_det_coeffsign_reverse_collisions_n14={direct_signnorm_det_coeffsign_reverse_collisions_n14}");
+    println!("METRIC scratch600_direct_signnorm_det_coeffsign_reverse_states_n14={direct_signnorm_det_coeffsign_reverse_states_n14}");
+    println!("METRIC scratch600_direct_signnorm_det_coeffsign_reverse_total_steps_n14={direct_signnorm_det_coeffsign_reverse_total_steps_n14}");
+    println!("METRIC scratch600_direct_signnorm_det_coeffsign_reverse_max_mult_n14={direct_signnorm_det_coeffsign_reverse_max_mult_n14}");
+    println!("METRIC scratch600_direct_signnorm_det_coeffsign_bad_det_cases_n14={direct_signnorm_det_coeffsign_bad_det_cases_n14}");
+    println!("METRIC scratch600_direct_signnorm_det_coeffsign_low2_mismatches_n14={direct_signnorm_det_coeffsign_low2_mismatches_n14}");
+    println!("METRIC scratch600_direct_signnorm_det_coeffsign_formula_mismatches_n14={direct_signnorm_det_coeffsign_formula_mismatches_n14}");
     println!("METRIC scratch600_direct_restoring_final_coeff_width_p99={direct_restoring_final_coeff_width_p99}");
     println!("METRIC scratch600_direct_restoring_final_digit_payload_p99={direct_restoring_final_digit_payload_p99}");
     println!("METRIC scratch600_direct_restoring_final_raw_digit_scratch_p99={direct_restoring_final_raw_digit_scratch_p99}");
@@ -2726,7 +2751,11 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     );
     assert!(
         direct_signnorm_rank_over_google > 0 && direct_signnorm_ambiguous_rank_over_google > 0,
-        "sign-normalized direct route should stay blocked until normalization signs fit Google scratch"
+        "archival rank-compressed normalization-sign sidecar changed; update signnorm ledger"
+    );
+    assert!(
+        direct_signnorm_det_coeffsign_scratch_gap_google <= 0,
+        "det-low2 coefficient-sign recovery no longer fits Google scratch"
     );
     assert!(
         direct_signnorm_exact_split_gap > 0,
@@ -2766,6 +2795,20 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
             && direct_signnorm_coeff_reverse_max_mult_n14 == 1
             && direct_signnorm_coeff_reverse_zero_coeff_cases_n14 == 0,
         "coefficient rows stopped disambiguating sign-normalized reverse signs; require explicit sign history again"
+    );
+    assert!(
+        direct_signnorm_det_sign_reverse_collisions_n14 > 2_000
+            && direct_signnorm_det_sign_reverse_states_n14 > 70_000
+            && direct_signnorm_det_sign_reverse_max_mult_n14 == 2
+            && direct_signnorm_det_coeffsign_reverse_collisions_n14 == 0
+            && direct_signnorm_det_coeffsign_reverse_states_n14 > 73_000
+            && direct_signnorm_det_coeffsign_reverse_total_steps_n14
+                == direct_signnorm_reverse_total_steps_n14
+            && direct_signnorm_det_coeffsign_reverse_max_mult_n14 == 1
+            && direct_signnorm_det_coeffsign_bad_det_cases_n14 == 0
+            && direct_signnorm_det_coeffsign_low2_mismatches_n14 == 0
+            && direct_signnorm_det_coeffsign_formula_mismatches_n14 == 0,
+        "det-low2 xor coeff_v_sign stopped recovering sign-normalized norm signs"
     );
     assert!(
         direct_restoring_final_raw_digit_over_strict > 0

@@ -29912,6 +29912,61 @@ mod tests {
     }
 
     #[test]
+    fn direct_centered_signnorm_det_low2_and_coeff_sign_recover_norm_sign() {
+        // The coefficient-row disambiguation does not require full row
+        // identity.  The determinant sign alone is still ambiguous, but it
+        // combines with the live coeff_v sign bit by a simple xor.
+        // For the live post-step rows, det = v*next_coeff - next_v*coeff_v is
+        // exactly +/-p.  Since p is odd, det mod 4 distinguishes those two
+        // cases with only the two low product bits.
+        let cases = [(8usize, 251u16), (10, 1021), (12, 4093), (14, 16381)];
+        for &(n, p) in &cases {
+            let (
+                det_collisions,
+                det_states,
+                det_max_mult,
+                formula_collisions,
+                formula_states,
+                formula_max_mult,
+                total_steps,
+                bad_det_cases,
+                low2_mismatches,
+                formula_mismatches,
+            ) = direct_centered_signnorm_det_low2_coeff_sign_stats(p);
+            eprintln!(
+                "direct-centered signnorm det-low2 coeff-sign recovery: n={n}, det_collisions={det_collisions}, det_states={det_states}, det_max_mult={det_max_mult}, formula_collisions={formula_collisions}, formula_states={formula_states}, formula_max_mult={formula_max_mult}, total_steps={total_steps}, bad_det_cases={bad_det_cases}, low2_mismatches={low2_mismatches}, formula_mismatches={formula_mismatches}"
+            );
+            if n == 14 {
+                println!("METRIC centered_direct_signnorm_det_sign_reverse_collisions_n14={det_collisions}");
+                println!("METRIC centered_direct_signnorm_det_sign_reverse_states_n14={det_states}");
+                println!("METRIC centered_direct_signnorm_det_sign_reverse_max_mult_n14={det_max_mult}");
+                println!("METRIC centered_direct_signnorm_det_coeffsign_reverse_collisions_n14={formula_collisions}");
+                println!("METRIC centered_direct_signnorm_det_coeffsign_reverse_states_n14={formula_states}");
+                println!("METRIC centered_direct_signnorm_det_coeffsign_reverse_total_steps_n14={total_steps}");
+                println!("METRIC centered_direct_signnorm_det_coeffsign_reverse_max_mult_n14={formula_max_mult}");
+                println!("METRIC centered_direct_signnorm_det_coeffsign_bad_det_cases_n14={bad_det_cases}");
+                println!("METRIC centered_direct_signnorm_det_coeffsign_low2_mismatches_n14={low2_mismatches}");
+                println!("METRIC centered_direct_signnorm_det_coeffsign_formula_mismatches_n14={formula_mismatches}");
+            }
+            assert_eq!(bad_det_cases, 0, "post-step determinant is not exactly +/-p");
+            assert_eq!(
+                low2_mismatches, 0,
+                "determinant low two bits do not recover the determinant sign"
+            );
+            assert!(det_collisions > 0, "determinant sign alone unexpectedly recovers norm signs");
+            assert_eq!(
+                formula_mismatches, 0,
+                "norm_sign != det_positive xor coeff_v_negative on the exact toy image"
+            );
+            assert_eq!(
+                formula_collisions, 0,
+                "determinant sign plus coeff_v sign does not recover normalization signs"
+            );
+            assert_eq!(formula_max_mult, 1, "det/coeff-sign image has unexpected multiplicity");
+        }
+    }
+
+    #[test]
     fn euclid_quotient_stream_entropy_also_exceeds_scratch600() {
         // Follow-up to the raw-payload quotient-stream DIV test.  The tempting
         // objection is that a clever prefix/arithmetic code could pack the
@@ -30403,6 +30458,91 @@ mod tests {
             .max()
             .unwrap_or(0);
         (collisions, total_steps, image.len(), max_mult, zero_coeff_cases)
+    }
+
+    fn direct_centered_signnorm_det_low2_coeff_sign_stats(
+        p: u16,
+    ) -> (usize, usize, usize, usize, usize, usize, usize, usize, usize, usize) {
+        use std::collections::BTreeMap;
+        let mut det_image: BTreeMap<(usize, i128, i128, i128, bool), u8> =
+            BTreeMap::new();
+        let mut formula_image: BTreeMap<(usize, i128, i128, i128, bool, bool), u8> =
+            BTreeMap::new();
+        let mut total_steps = 0usize;
+        let mut bad_det_cases = 0usize;
+        let mut low2_mismatches = 0usize;
+        let mut formula_mismatches = 0usize;
+        let p_i = p as i128;
+        let p_low2 = p_i.rem_euclid(4);
+        let neg_p_low2 = (-p_i).rem_euclid(4);
+        assert_ne!(p_low2, neg_p_low2, "odd modulus should distinguish +/-p mod 4");
+        for x in 1..p {
+            let mut u = p as i128;
+            let mut v = x as i128;
+            let mut coeff_u = 0i128;
+            let mut coeff_v = 1i128;
+            let mut step = 0usize;
+            while v != 0 {
+                let adjusted = u + (v >> 1);
+                let q = adjusted / v;
+                let rem = u - q * v;
+                let sign = (rem < 0) as u8;
+                let next_v = rem.abs();
+                let mut next_coeff = coeff_u - q * coeff_v;
+                if sign != 0 {
+                    next_coeff = -next_coeff;
+                }
+                if next_v != 0 {
+                    let det = v * next_coeff - next_v * coeff_v;
+                    let det_positive = det > 0;
+                    let coeff_v_negative = coeff_v < 0;
+                    bad_det_cases += (det.abs() != p_i) as usize;
+                    let det_low2 = det.rem_euclid(4);
+                    let expected_low2 = if det_positive { p_low2 } else { neg_p_low2 };
+                    low2_mismatches += (det_low2 != expected_low2) as usize;
+                    formula_mismatches += ((det_positive ^ coeff_v_negative) != (sign != 0))
+                        as usize;
+                    let det_entry = det_image
+                        .entry((step, v, next_v, q, det_positive))
+                        .or_insert(0);
+                    *det_entry |= 1u8 << sign;
+                    let formula_entry = formula_image
+                        .entry((step, v, next_v, q, det_positive, coeff_v_negative))
+                        .or_insert(0);
+                    *formula_entry |= 1u8 << sign;
+                    total_steps += 1;
+                }
+                u = v;
+                v = next_v;
+                coeff_u = coeff_v;
+                coeff_v = next_coeff;
+                step += 1;
+            }
+        }
+        let det_collisions = det_image.values().filter(|&&mask| mask == 0b11).count();
+        let det_max_mult = det_image
+            .values()
+            .map(|mask| mask.count_ones() as usize)
+            .max()
+            .unwrap_or(0);
+        let formula_collisions = formula_image.values().filter(|&&mask| mask == 0b11).count();
+        let formula_max_mult = formula_image
+            .values()
+            .map(|mask| mask.count_ones() as usize)
+            .max()
+            .unwrap_or(0);
+        (
+            det_collisions,
+            det_image.len(),
+            det_max_mult,
+            formula_collisions,
+            formula_image.len(),
+            formula_max_mult,
+            total_steps,
+            bad_det_cases,
+            low2_mismatches,
+            formula_mismatches,
+        )
     }
 
     fn direct_centered_restoring_final_reverse_q_collision_stats(
