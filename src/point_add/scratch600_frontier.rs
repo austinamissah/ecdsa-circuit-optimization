@@ -169,7 +169,7 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
             name: "halfgcd_second_column_fixed_depth64_static_window_floor",
             scratch_bits: 515,
             charged_toffoli: Some(2_749_506),
-            blocker: "joint static-window scan improves to w6 average 2749506 (+49506), but the best selector/table floor still misses before carry, reduction, sign selection, and cleanup overhead",
+            blocker: "joint static-window scan improves to w6 average 2749506 (+49506); table-only w4 would be 2559198, but current bit-product selector floor needs a 24753 one-way cut before carry, reduction, sign selection, and cleanup overhead",
         },
         Candidate {
             name: "folded_kaliski_one_pair_plus_required_sidecar",
@@ -718,6 +718,19 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
         111_577usize;
     let halfgcd_second_col_fixed_depth64_static_window_scan_best_table_row_mean =
         76_657usize;
+    let halfgcd_second_col_fixed_depth64_static_window_table_only_best_w = 4usize;
+    let halfgcd_second_col_fixed_depth64_static_window_table_only_best_mean =
+        2_559_198usize;
+    let halfgcd_second_col_fixed_depth64_static_window_table_only_best_p99 =
+        2_657_270usize;
+    let halfgcd_second_col_fixed_depth64_static_window_table_only_best_gap =
+        halfgcd_second_col_fixed_depth64_static_window_table_only_best_mean as isize
+            - GOOGLE_LOW_QUBIT_TOFFOLI as isize;
+    let halfgcd_second_col_fixed_depth64_static_window_required_selector_mean =
+        86_824usize;
+    let halfgcd_second_col_fixed_depth64_static_window_selector_cut_needed =
+        24_753usize;
+    let halfgcd_second_col_fixed_depth64_static_window_table_margin = 10_166usize;
     let halfgcd_second_col_alignment_mbu_degree_n14 = 14usize;
     let halfgcd_second_col_alignment_mbu_density_n14 = 8_142usize;
     let halfgcd_second_col_alignment_mbu_max_alignment_n14 = 13usize;
@@ -1184,6 +1197,13 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_static_window_scan_best_app_mean={halfgcd_second_col_fixed_depth64_static_window_scan_best_app_mean}");
     println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_static_window_scan_best_selector_mean={halfgcd_second_col_fixed_depth64_static_window_scan_best_selector_mean}");
     println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_static_window_scan_best_table_row_mean={halfgcd_second_col_fixed_depth64_static_window_scan_best_table_row_mean}");
+    println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_static_window_table_only_best_w={halfgcd_second_col_fixed_depth64_static_window_table_only_best_w}");
+    println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_static_window_table_only_best_mean={halfgcd_second_col_fixed_depth64_static_window_table_only_best_mean}");
+    println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_static_window_table_only_best_p99={halfgcd_second_col_fixed_depth64_static_window_table_only_best_p99}");
+    println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_static_window_table_only_best_gap_to_2700k={halfgcd_second_col_fixed_depth64_static_window_table_only_best_gap}");
+    println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_static_window_required_selector_mean={halfgcd_second_col_fixed_depth64_static_window_required_selector_mean}");
+    println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_static_window_selector_cut_needed={halfgcd_second_col_fixed_depth64_static_window_selector_cut_needed}");
+    println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_static_window_table_margin={halfgcd_second_col_fixed_depth64_static_window_table_margin}");
     println!("METRIC scratch600_halfgcd_second_col_alignment_mbu_degree_n14={halfgcd_second_col_alignment_mbu_degree_n14}");
     println!("METRIC scratch600_halfgcd_second_col_alignment_mbu_density_n14={halfgcd_second_col_alignment_mbu_density_n14}");
     println!("METRIC scratch600_halfgcd_second_col_alignment_mbu_max_alignment_n14={halfgcd_second_col_alignment_mbu_max_alignment_n14}");
@@ -1636,6 +1656,17 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
             && halfgcd_second_col_fixed_depth64_static_window_scan_best_table_row_mean
                 > 70_000,
         "half-GCD static-window scan now fits or changed selector/table tradeoff; revisit route"
+    );
+    assert!(
+        halfgcd_second_col_fixed_depth64_static_window_table_only_best_w == 4
+            && halfgcd_second_col_fixed_depth64_static_window_table_only_best_gap < 0
+            && halfgcd_second_col_fixed_depth64_static_window_required_selector_mean
+                < halfgcd_second_col_fixed_depth64_static_window_scan_best_selector_mean
+            && halfgcd_second_col_fixed_depth64_static_window_required_selector_mean
+                > halfgcd_second_col_fixed_depth64_static_window_scan_best_table_row_mean
+            && halfgcd_second_col_fixed_depth64_static_window_selector_cut_needed > 20_000
+            && halfgcd_second_col_fixed_depth64_static_window_table_margin > 5_000,
+        "half-GCD static-window selector breakthrough budget changed; revisit selector design"
     );
     assert!(
         halfgcd_second_col_fixed_depth64_dynamic_barrel_static_mean
