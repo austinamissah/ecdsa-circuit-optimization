@@ -419,6 +419,12 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     let direct_restoring_final_reverse_coeff_high_branch_total_n14 = 40_112usize;
     let direct_restoring_final_reverse_coeff_candidates_max_q_bits_n14 = 14usize;
     let direct_restoring_final_reverse_coeff_candidates_max_coeff_abs_bits_n14 = 14usize;
+    let direct_restoring_final_low_branch_adjacent_transitions_n14 = 105_388usize;
+    let direct_restoring_final_low_branch_adjacent_ambiguous_n14 = 89_008usize;
+    let direct_restoring_final_low_branch_adjacent_high_n14 = 40_112usize;
+    let direct_restoring_final_low_branch_adjacent_violations_n14 = 0usize;
+    let direct_restoring_final_low_branch_adjacent_max_delta_n14 = 1usize;
+    let direct_restoring_final_low_branch_adjacent_max_alignment_n14 = 13usize;
     let direct_restoring_final_coeff_decoder_exact_p99 = 185_694usize;
     let direct_restoring_final_coeff_decoder_digit_width_p99 = 46_950usize;
     let direct_restoring_final_coeff_decoder_scan_p99 = 138_744usize;
@@ -1344,6 +1350,12 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     println!("METRIC scratch600_direct_restoring_final_reverse_coeff_high_branch_total_n14={direct_restoring_final_reverse_coeff_high_branch_total_n14}");
     println!("METRIC scratch600_direct_restoring_final_reverse_coeff_candidates_max_q_bits_n14={direct_restoring_final_reverse_coeff_candidates_max_q_bits_n14}");
     println!("METRIC scratch600_direct_restoring_final_reverse_coeff_candidates_max_coeff_abs_bits_n14={direct_restoring_final_reverse_coeff_candidates_max_coeff_abs_bits_n14}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_adjacent_transitions_n14={direct_restoring_final_low_branch_adjacent_transitions_n14}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_adjacent_ambiguous_n14={direct_restoring_final_low_branch_adjacent_ambiguous_n14}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_adjacent_high_n14={direct_restoring_final_low_branch_adjacent_high_n14}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_adjacent_violations_n14={direct_restoring_final_low_branch_adjacent_violations_n14}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_adjacent_max_delta_n14={direct_restoring_final_low_branch_adjacent_max_delta_n14}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_adjacent_max_alignment_n14={direct_restoring_final_low_branch_adjacent_max_alignment_n14}");
     println!("METRIC scratch600_direct_restoring_final_coeff_decoder_exact_p99={direct_restoring_final_coeff_decoder_exact_p99}");
     println!("METRIC scratch600_direct_restoring_final_coeff_decoder_digit_width_p99={direct_restoring_final_coeff_decoder_digit_width_p99}");
     println!("METRIC scratch600_direct_restoring_final_coeff_decoder_scan_p99={direct_restoring_final_coeff_decoder_scan_p99}");
@@ -2167,6 +2179,21 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
             && direct_restoring_final_reverse_coeff_high_branch_total_n14
                 == direct_restoring_final_reverse_coeff_candidates_high_n14,
         "restoring-final coefficient high-branch selector stopped looking dense"
+    );
+    assert!(
+        direct_restoring_final_low_branch_adjacent_transitions_n14
+            == direct_restoring_final_reverse_coeff_candidates_transitions_n14
+            && direct_restoring_final_low_branch_adjacent_ambiguous_n14
+                == direct_restoring_final_reverse_coeff_candidates_low_n14
+                    + direct_restoring_final_reverse_coeff_candidates_high_n14
+            && direct_restoring_final_low_branch_adjacent_ambiguous_n14
+                == direct_restoring_final_reverse_q_total_steps_n14
+            && direct_restoring_final_low_branch_adjacent_high_n14
+                == direct_restoring_final_reverse_coeff_candidates_high_n14
+            && direct_restoring_final_low_branch_adjacent_violations_n14 == 0
+            && direct_restoring_final_low_branch_adjacent_max_delta_n14 == 1
+            && direct_restoring_final_low_branch_adjacent_max_alignment_n14 + 1 >= 14,
+        "low-branch high candidate stopped being an exact final digit"
     );
     assert!(
         direct_restoring_final_coeff_decoder_exact_p99

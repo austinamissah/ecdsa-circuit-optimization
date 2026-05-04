@@ -20275,6 +20275,53 @@ mod tests {
     }
 
     #[test]
+    fn direct_centered_restoring_final_low_branch_is_exact_adjacent_on_toys() {
+        // Branch-as-final-digit depends on the high candidate being exactly
+        // low_q+1 whenever the coefficient reverse decoder is ambiguous.  The
+        // secp-sized budget observed this on samples; this exhaustive toy check
+        // makes the algebraic premise explicit before deeper parser integration.
+        let cases = [(8usize, 251u16), (10, 1021), (12, 4093), (14, 16381)];
+        for &(n, p) in &cases {
+            let (
+                transitions,
+                ambiguous,
+                high_branch,
+                adjacent_violations,
+                max_candidate_delta,
+                max_low_alignment,
+            ) = direct_centered_restoring_final_low_branch_adjacent_stats(p);
+            eprintln!(
+                "direct-centered restoring-final low-branch adjacent: n={n}, transitions={transitions}, ambiguous={ambiguous}, high_branch={high_branch}, violations={adjacent_violations}, max_delta={max_candidate_delta}, max_low_alignment={max_low_alignment}"
+            );
+            if n == 14 {
+                println!("METRIC centered_direct_restoring_final_low_branch_adjacent_transitions_n14={transitions}");
+                println!("METRIC centered_direct_restoring_final_low_branch_adjacent_ambiguous_n14={ambiguous}");
+                println!("METRIC centered_direct_restoring_final_low_branch_adjacent_high_n14={high_branch}");
+                println!("METRIC centered_direct_restoring_final_low_branch_adjacent_violations_n14={adjacent_violations}");
+                println!("METRIC centered_direct_restoring_final_low_branch_adjacent_max_delta_n14={max_candidate_delta}");
+                println!("METRIC centered_direct_restoring_final_low_branch_adjacent_max_alignment_n14={max_low_alignment}");
+            }
+            assert!(
+                ambiguous > 0,
+                "toy field did not exercise ambiguous low/high candidates"
+            );
+            assert!(
+                high_branch > 0,
+                "toy field did not exercise high branch candidates"
+            );
+            assert_eq!(
+                adjacent_violations, 0,
+                "high candidate is not always low_q+1"
+            );
+            assert_eq!(max_candidate_delta, 1, "candidate gap is not one digit");
+            assert!(
+                max_low_alignment + 1 >= n,
+                "toy low-alignment stream stopped exercising high shifts"
+            );
+        }
+    }
+
+    #[test]
     fn direct_centered_restoring_final_coeff_decoder_alignment_mbu_is_dense_too() {
         // The average gate ledger says the restoring-final coefficient decoder
         // would fit if its quotient alignment scan were free.  That requires
@@ -26114,6 +26161,85 @@ mod tests {
             .max()
             .unwrap_or(0);
         (degree, density, max_high_count, total_high_count)
+    }
+
+    fn direct_centered_restoring_final_low_branch_adjacent_stats(
+        p: u16,
+    ) -> (usize, usize, usize, usize, usize, usize) {
+        let bit_len = |z: u128| -> usize {
+            if z == 0 {
+                0
+            } else {
+                128usize - z.leading_zeros() as usize
+            }
+        };
+        let mut transitions = 0usize;
+        let mut ambiguous = 0usize;
+        let mut high_branch = 0usize;
+        let mut adjacent_violations = 0usize;
+        let mut max_candidate_delta = 0usize;
+        let mut max_low_alignment = 0usize;
+        for x in 1..p {
+            let mut u = p as i128;
+            let mut v = x as i128;
+            let mut coeff_u = 0i128;
+            let mut coeff_v = 1i128;
+            while v != 0 {
+                let abs_u = u.unsigned_abs();
+                let abs_v = v.unsigned_abs();
+                let adjusted = abs_u + (abs_v >> 1);
+                let q_abs = adjusted / abs_v;
+                let q_signed = if (u < 0) ^ (v < 0) {
+                    -(q_abs as i128)
+                } else {
+                    q_abs as i128
+                };
+                let next_v = u - q_signed * v;
+                let next_coeff_v = coeff_u - q_signed * coeff_v;
+                let denom = coeff_v.unsigned_abs();
+                assert!(denom > 0, "low-branch denominator vanished");
+                let next_abs = next_coeff_v.unsigned_abs();
+                let low_numer = if coeff_u == 0 {
+                    next_abs
+                } else {
+                    assert!(next_abs > 0, "low-branch numerator underflowed");
+                    next_abs - 1
+                };
+                let high_numer = if coeff_u == 0 {
+                    low_numer
+                } else {
+                    next_abs + denom - 1
+                };
+                let low_q = low_numer / denom;
+                let high_q = high_numer / denom;
+                let candidate_delta = high_q.saturating_sub(low_q) as usize;
+                max_candidate_delta = max_candidate_delta.max(candidate_delta);
+                max_low_alignment = max_low_alignment
+                    .max(bit_len(low_numer).saturating_sub(bit_len(denom)));
+                if low_q != high_q {
+                    ambiguous += 1;
+                    adjacent_violations += (high_q != low_q + 1) as usize;
+                    high_branch += (q_abs == high_q) as usize;
+                }
+                assert!(
+                    q_abs == low_q || q_abs == high_q,
+                    "actual quotient escaped low/high coefficient candidates"
+                );
+                u = v;
+                v = next_v;
+                coeff_u = coeff_v;
+                coeff_v = next_coeff_v;
+                transitions += 1;
+            }
+        }
+        (
+            transitions,
+            ambiguous,
+            high_branch,
+            adjacent_violations,
+            max_candidate_delta,
+            max_low_alignment,
+        )
     }
 
     fn direct_centered_restoring_final_coeff_decoder_alignment_parity_anf_stats(
