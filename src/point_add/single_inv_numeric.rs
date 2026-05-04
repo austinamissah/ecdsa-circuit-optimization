@@ -21155,6 +21155,542 @@ mod tests {
     }
 
     #[test]
+    fn direct_centered_restoring_final_low_branch_alignment_only_parser_budget_probe() {
+        // Branch-as-final-digit removes the high/low branch bits from the
+        // compressed parser stream. Reprice the hard parser on the low
+        // candidate's alignment stream only; this is the first budget gate
+        // before trying to build another reversible decoder.
+        use std::collections::BTreeMap;
+
+        const TARGET: f64 = 2_700_000.0;
+        const STORED_BRANCH_MEAN: f64 = 2_645_270.0;
+        const MAX_STEPS: usize = 260;
+        const GOOGLE_SCRATCH: usize = 663;
+        let p = SECP256K1_P;
+        let samples = 8192usize;
+        let mut rng = 0xd1ce_c0ef_a119_0301u64;
+        let mut traces = Vec::with_capacity(samples);
+        let mut align_by_step = vec![BTreeMap::<usize, usize>::new(); MAX_STEPS];
+        let mut align_global = BTreeMap::<usize, usize>::new();
+        let mut align_global_total = 0usize;
+        let mut low_path_width_saving_rows = Vec::with_capacity(samples);
+
+        for _ in 0..samples {
+            let mut x = rand_u256(&mut rng);
+            if x.is_zero() {
+                x = U256::from(1u64);
+            }
+            let mut u = smag_for_halfgcd_test(false, u512_from_u256_for_halfgcd_test(p));
+            let mut v = smag_for_halfgcd_test(false, u512_from_u256_for_halfgcd_test(x));
+            let mut coeff_u = smag_for_halfgcd_test(false, U512::ZERO);
+            let mut coeff_v = smag_for_halfgcd_test(false, U512::from(1u64));
+            let mut alignments = Vec::new();
+            let mut variable_bits = 0usize;
+            let mut selected_decoder_touch = 0usize;
+            let mut low_decoder_touch = 0usize;
+            let mut branch_select = 0usize;
+            let mut branch_final_width = 0usize;
+
+            while !v.mag.is_zero() {
+                let adjusted = u.mag + (v.mag >> 1usize);
+                let q_direct = adjusted / v.mag;
+                let q_neg = u.neg ^ v.neg;
+                let qv = signed_mul_mag_for_halfgcd_test(v, q_neg, q_direct);
+                let next_v = signed_add_for_halfgcd_test(u, signed_neg_for_halfgcd_test(qv));
+                let qv_coeff = signed_mul_mag_for_halfgcd_test(coeff_v, q_neg, q_direct);
+                let next_coeff_v = signed_add_for_halfgcd_test(
+                    coeff_u,
+                    signed_neg_for_halfgcd_test(qv_coeff),
+                );
+
+                let denom = coeff_v.mag;
+                assert!(!denom.is_zero(), "restoring-final coefficient denominator vanished");
+                let low_numer = if coeff_u.mag.is_zero() {
+                    next_coeff_v.mag
+                } else {
+                    assert!(
+                        !next_coeff_v.mag.is_zero(),
+                        "restoring-final adjusted coefficient numerator underflow"
+                    );
+                    next_coeff_v.mag - U512::from(1u64)
+                };
+                let high_numer = if coeff_u.mag.is_zero() {
+                    low_numer
+                } else {
+                    next_coeff_v.mag + denom - U512::from(1u64)
+                };
+                let low_q = low_numer / denom;
+                let high_q = high_numer / denom;
+                let high_branch = q_direct != low_q;
+                let selected_numer = if high_branch {
+                    assert_eq!(
+                        q_direct, high_q,
+                        "restoring-final coefficient reverse quotient candidates missed"
+                    );
+                    high_numer
+                } else {
+                    assert_eq!(
+                        q_direct, low_q,
+                        "restoring-final coefficient low reverse quotient missed"
+                    );
+                    low_numer
+                };
+
+                let denom_width = u512_bit_len_for_halfgcd_test(denom);
+                let selected_digits =
+                    nonrestoring_floor_restoring_final_digits_for_centered_test(
+                        selected_numer,
+                        denom,
+                    );
+                let low_digits =
+                    nonrestoring_floor_restoring_final_digits_for_centered_test(low_numer, denom);
+                let selected_width = u512_bit_len_for_halfgcd_test(selected_numer)
+                    .max(denom_width)
+                    .max(1);
+                let low_width = u512_bit_len_for_halfgcd_test(low_numer)
+                    .max(denom_width)
+                    .max(1);
+                let selected_alignment = u512_bit_len_for_halfgcd_test(selected_numer)
+                    .saturating_sub(denom_width);
+                let low_alignment =
+                    u512_bit_len_for_halfgcd_test(low_numer).saturating_sub(denom_width);
+                selected_decoder_touch +=
+                    selected_digits.len() * selected_width.saturating_sub(1)
+                        + selected_width * selected_alignment.count_ones() as usize;
+                low_decoder_touch += low_digits.len() * low_width.saturating_sub(1)
+                    + low_width * low_alignment.count_ones() as usize;
+                if low_q != high_q {
+                    assert_eq!(high_q, low_q + U512::from(1u64), "high branch is not adjacent");
+                    branch_select += (2 * selected_width).saturating_sub(1);
+                    branch_final_width += selected_width;
+                }
+                variable_bits += usize_bit_len_for_payload_test(low_alignment);
+                alignments.push(low_alignment);
+
+                u = v;
+                v = next_v;
+                coeff_u = coeff_v;
+                coeff_v = next_coeff_v;
+            }
+            assert_eq!(u.mag, U512::from(1u64), "restoring-final trace ended at non-unit gcd");
+            assert!(alignments.len() < MAX_STEPS, "trace exceeded alignment parser model");
+            let low_path_width_saving = (selected_decoder_touch + branch_select) as isize
+                - (low_decoder_touch + branch_final_width) as isize;
+            for (step, &alignment) in alignments.iter().enumerate() {
+                *align_by_step[step].entry(alignment).or_insert(0) += 1;
+                *align_global.entry(alignment).or_insert(0) += 1;
+                align_global_total += 1;
+            }
+            low_path_width_saving_rows.push(low_path_width_saving);
+            traces.push((alignments, variable_bits));
+        }
+
+        let mean_usize = |rows: &[usize]| -> f64 {
+            rows.iter().map(|&v| v as f64).sum::<f64>() / rows.len() as f64
+        };
+        let mean_isize = |rows: &[isize]| -> f64 {
+            rows.iter().map(|&v| v as f64).sum::<f64>() / rows.len() as f64
+        };
+        let p99_usize = |rows: &mut Vec<usize>| -> usize {
+            rows.sort_unstable();
+            rows[rows.len() * 99 / 100]
+        };
+        let p99_f64 = |rows: &mut Vec<f64>| -> f64 {
+            rows.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            rows[rows.len() * 99 / 100]
+        };
+        let code_len = |freq: usize, total: usize| -> f64 {
+            assert!(freq > 0 && total > 0, "entropy model missing a seen symbol");
+            (total as f64).log2() - (freq as f64).log2()
+        };
+        let prefix_len = |freq: usize, total: usize| -> usize {
+            let bits = code_len(freq, total).ceil() as usize;
+            if freq == total { 0 } else { bits.max(1) }
+        };
+        let ceil_log2 = |x: usize| -> usize {
+            if x <= 1 { 0 } else { usize_bit_len_for_payload_test(x - 1) }
+        };
+        let max_align_model_total = align_by_step
+            .iter()
+            .map(|counts| counts.values().sum::<usize>())
+            .max()
+            .unwrap_or(0);
+        let model_precision_bits = usize_bit_len_for_payload_test(max_align_model_total - 1);
+        let low_path_width_saving_mean = mean_isize(&low_path_width_saving_rows);
+        let oneway_parser_budget = (TARGET - STORED_BRANCH_MEAN) / 4.0;
+        let low_path_oneway_budget = oneway_parser_budget + low_path_width_saving_mean;
+
+        let mut raw_scratch_rows = Vec::with_capacity(samples);
+        let mut global_entropy_scratch_rows = Vec::with_capacity(samples);
+        let mut step_entropy_scratch_rows = Vec::with_capacity(samples);
+        let mut global_prefix_scratch_rows = Vec::with_capacity(samples);
+        let mut step_prefix_scratch_rows = Vec::with_capacity(samples);
+        let mut symbol_prefix_rows = Vec::with_capacity(samples);
+        for (alignments, variable_bits) in &traces {
+            let mut global_bits = 0.0f64;
+            let mut step_bits = 0.0f64;
+            let mut global_prefix_bits = 0usize;
+            let mut step_prefix_bits = 0usize;
+            let mut prefix = Vec::with_capacity(alignments.len() + 1);
+            let mut running_step_bits = 0.0f64;
+            prefix.push(0.0);
+            for (step, &alignment) in alignments.iter().enumerate() {
+                let global_freq = *align_global.get(&alignment).unwrap();
+                global_bits += code_len(global_freq, align_global_total);
+                global_prefix_bits += prefix_len(global_freq, align_global_total);
+                let step_total = align_by_step[step].values().sum::<usize>();
+                let step_freq = *align_by_step[step].get(&alignment).unwrap();
+                let symbol_bits = code_len(step_freq, step_total);
+                step_bits += symbol_bits;
+                step_prefix_bits += prefix_len(step_freq, step_total);
+                running_step_bits += symbol_bits;
+                prefix.push(running_step_bits);
+            }
+            raw_scratch_rows.push(256 + *variable_bits);
+            global_entropy_scratch_rows.push(256.0 + global_bits.ceil());
+            step_entropy_scratch_rows.push(256.0 + step_bits.ceil());
+            global_prefix_scratch_rows.push(256 + global_prefix_bits);
+            step_prefix_scratch_rows.push(256 + step_prefix_bits);
+            symbol_prefix_rows.push(prefix);
+        }
+
+        let eval_schedule = |schedule: &[usize]| -> (f64, usize, usize, usize, usize, f64) {
+            let mut compressed_bits_rows = Vec::with_capacity(samples);
+            let mut live_scratch_rows = Vec::with_capacity(samples);
+            let mut symbol_count_rows = Vec::with_capacity(samples);
+            let mut state_touch_floor_rows = Vec::with_capacity(samples);
+            for prefix in &symbol_prefix_rows {
+                let symbol_count = prefix.len() - 1;
+                let mut compressed_bits = 0usize;
+                let mut state_touch_floor = 0usize;
+                let mut pos = 0usize;
+                let mut block_idx = 0usize;
+                while pos < symbol_count {
+                    let block_len = schedule[block_idx % schedule.len()]
+                        .min(symbol_count - pos);
+                    let block_bits = (prefix[pos + block_len] - prefix[pos]).ceil() as usize;
+                    compressed_bits += block_bits;
+                    state_touch_floor += block_bits * block_len;
+                    pos += block_len;
+                    block_idx += 1;
+                }
+                compressed_bits_rows.push(compressed_bits);
+                live_scratch_rows.push(256 + compressed_bits + 2 * model_precision_bits);
+                symbol_count_rows.push(symbol_count);
+                state_touch_floor_rows.push(state_touch_floor);
+            }
+            let touch_mean = mean_usize(&state_touch_floor_rows);
+            let touch_p99 = p99_usize(&mut state_touch_floor_rows);
+            let compressed_p99 = p99_usize(&mut compressed_bits_rows);
+            let scratch_p99 = p99_usize(&mut live_scratch_rows);
+            let symbol_count_p99 = p99_usize(&mut symbol_count_rows);
+            let augmented_gap = STORED_BRANCH_MEAN
+                + 4.0 * (touch_mean - low_path_width_saving_mean)
+                - TARGET;
+            (
+                touch_mean,
+                touch_p99,
+                compressed_p99,
+                scratch_p99,
+                symbol_count_p99,
+                augmented_gap,
+            )
+        };
+
+        let mut best_block: Option<(usize, f64, usize, usize, usize, usize, f64)> = None;
+        for &block_symbols in &[2usize, 3, 4, 5, 6, 7, 8, 12, 16, 24, 32, 48, 64, 96, 128] {
+            let (
+                touch_mean,
+                touch_p99,
+                compressed_p99,
+                scratch_p99,
+                symbol_count_p99,
+                augmented_gap,
+            ) = eval_schedule(&[block_symbols]);
+            let scratch_fit = scratch_p99 <= GOOGLE_SCRATCH;
+            let row = (
+                block_symbols,
+                touch_mean,
+                touch_p99,
+                compressed_p99,
+                scratch_p99,
+                symbol_count_p99,
+                augmented_gap,
+            );
+            if best_block
+                .map(|old| {
+                    let old_fit = old.4 <= GOOGLE_SCRATCH;
+                    if scratch_fit != old_fit {
+                        scratch_fit
+                    } else {
+                        touch_mean < old.1
+                    }
+                })
+                .unwrap_or(true)
+            {
+                best_block = Some(row);
+            }
+        }
+        let mut best_mixed4to8: Option<(usize, usize, f64, usize, usize, usize, usize, f64)> =
+            None;
+        for period in 2usize..=4 {
+            let mut schedule = vec![4usize; period];
+            loop {
+                let (
+                    touch_mean,
+                    touch_p99,
+                    compressed_p99,
+                    scratch_p99,
+                    symbol_count_p99,
+                    augmented_gap,
+                ) = eval_schedule(&schedule);
+                if scratch_p99 <= GOOGLE_SCRATCH
+                    && best_mixed4to8
+                        .map(|old| touch_mean < old.2)
+                        .unwrap_or(true)
+                {
+                    let mut schedule_code = 0usize;
+                    for &block in schedule.iter().rev() {
+                        schedule_code = schedule_code * 10 + block;
+                    }
+                    best_mixed4to8 = Some((
+                        period,
+                        schedule_code,
+                        touch_mean,
+                        touch_p99,
+                        compressed_p99,
+                        scratch_p99,
+                        symbol_count_p99,
+                        augmented_gap,
+                    ));
+                }
+                let mut pos = 0usize;
+                while pos < period && schedule[pos] == 8 {
+                    schedule[pos] = 4;
+                    pos += 1;
+                }
+                if pos == period {
+                    break;
+                }
+                schedule[pos] += 1;
+            }
+        }
+
+        let huffman_depths = |counts: &BTreeMap<usize, usize>| -> BTreeMap<usize, usize> {
+            let mut depths = BTreeMap::<usize, usize>::new();
+            let mut nodes = Vec::<(usize, Vec<usize>)>::new();
+            for (&symbol, &count) in counts {
+                if count > 0 {
+                    depths.insert(symbol, 0);
+                    nodes.push((count, vec![symbol]));
+                }
+            }
+            while nodes.len() > 1 {
+                nodes.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+                let (left_count, left_symbols) = nodes.remove(0);
+                let (right_count, right_symbols) = nodes.remove(0);
+                let mut merged = left_symbols;
+                for symbol in &merged {
+                    *depths.get_mut(symbol).unwrap() += 1;
+                }
+                for symbol in &right_symbols {
+                    *depths.get_mut(symbol).unwrap() += 1;
+                }
+                merged.extend(right_symbols);
+                merged.sort_unstable();
+                nodes.push((left_count + right_count, merged));
+            }
+            depths
+        };
+        let align_huffman_by_step: Vec<_> =
+            align_by_step.iter().map(huffman_depths).collect();
+        let mut lookup_scan_floor_rows = Vec::with_capacity(samples);
+        let mut binary_lookup_floor_rows = Vec::with_capacity(samples);
+        let mut huffman_lookup_floor_rows = Vec::with_capacity(samples);
+        let mut prefix_tree_node_floor_rows = Vec::with_capacity(samples);
+        let mut support_noncontig_steps = 0usize;
+        let mut support_max_span = 0usize;
+        for counts in &align_by_step {
+            if counts.is_empty() {
+                continue;
+            }
+            let min_symbol = *counts.keys().next().unwrap();
+            let max_symbol = *counts.keys().next_back().unwrap();
+            let span = max_symbol - min_symbol + 1;
+            support_max_span = support_max_span.max(span);
+            support_noncontig_steps += (span != counts.len()) as usize;
+        }
+        for (alignments, _) in &traces {
+            let mut scan = 0usize;
+            let mut binary = 0usize;
+            let mut huffman = 0usize;
+            let mut prefix_tree_nodes = 0usize;
+            for (step, &alignment) in alignments.iter().enumerate() {
+                let support = align_by_step[step].len();
+                scan += model_precision_bits * support.saturating_sub(1);
+                binary += model_precision_bits * ceil_log2(support);
+                prefix_tree_nodes += support.saturating_sub(1);
+                huffman += model_precision_bits
+                    * align_huffman_by_step[step]
+                        .get(&alignment)
+                        .copied()
+                        .unwrap_or(0);
+            }
+            lookup_scan_floor_rows.push(scan);
+            binary_lookup_floor_rows.push(binary);
+            huffman_lookup_floor_rows.push(huffman);
+            prefix_tree_node_floor_rows.push(prefix_tree_nodes);
+        }
+
+        let raw_scratch_p99 = p99_usize(&mut raw_scratch_rows);
+        let raw_scratch_max = *raw_scratch_rows.last().unwrap();
+        let global_entropy_scratch_p99 = p99_f64(&mut global_entropy_scratch_rows);
+        let global_entropy_scratch_max = *global_entropy_scratch_rows.last().unwrap();
+        let step_entropy_scratch_p99 = p99_f64(&mut step_entropy_scratch_rows);
+        let step_entropy_scratch_max = *step_entropy_scratch_rows.last().unwrap();
+        let global_prefix_scratch_p99 = p99_usize(&mut global_prefix_scratch_rows);
+        let global_prefix_scratch_max = *global_prefix_scratch_rows.last().unwrap();
+        let step_prefix_scratch_p99 = p99_usize(&mut step_prefix_scratch_rows);
+        let step_prefix_scratch_max = *step_prefix_scratch_rows.last().unwrap();
+        let (
+            best_block_symbols,
+            best_touch_mean,
+            best_touch_p99,
+            best_compressed_p99,
+            best_scratch_p99,
+            best_symbol_count_p99,
+            best_augmented_gap,
+        ) = best_block.unwrap();
+        let (
+            mixed4to8_period,
+            mixed4to8_schedule_code,
+            mixed4to8_touch_mean,
+            mixed4to8_touch_p99,
+            mixed4to8_compressed_p99,
+            mixed4to8_scratch_p99,
+            mixed4to8_symbol_count_p99,
+            mixed4to8_augmented_gap,
+        ) = best_mixed4to8.expect("no mixed 4..8 alignment-only schedule fits scratch");
+        let scan_lookup_mean = mean_usize(&lookup_scan_floor_rows);
+        let scan_lookup_p99 = p99_usize(&mut lookup_scan_floor_rows);
+        let binary_lookup_mean = mean_usize(&binary_lookup_floor_rows);
+        let binary_lookup_p99 = p99_usize(&mut binary_lookup_floor_rows);
+        let huffman_lookup_mean = mean_usize(&huffman_lookup_floor_rows);
+        let huffman_lookup_p99 = p99_usize(&mut huffman_lookup_floor_rows);
+        let prefix_tree_node_floor_mean = mean_usize(&prefix_tree_node_floor_rows);
+        let prefix_tree_node_floor_p99 = p99_usize(&mut prefix_tree_node_floor_rows);
+        let best_scan_gap = STORED_BRANCH_MEAN
+            + 4.0 * (best_touch_mean + 2.0 * scan_lookup_mean - low_path_width_saving_mean)
+            - TARGET;
+        let best_binary_gap = STORED_BRANCH_MEAN
+            + 4.0 * (best_touch_mean + 2.0 * binary_lookup_mean - low_path_width_saving_mean)
+            - TARGET;
+        let best_huffman_gap = STORED_BRANCH_MEAN
+            + 4.0 * (best_touch_mean + 2.0 * huffman_lookup_mean - low_path_width_saving_mean)
+            - TARGET;
+        let best_prefix_tree_gap = STORED_BRANCH_MEAN
+            + 4.0
+                * (best_touch_mean + 2.0 * prefix_tree_node_floor_mean
+                    - low_path_width_saving_mean)
+            - TARGET;
+        let mixed4to8_scan_gap = STORED_BRANCH_MEAN
+            + 4.0 * (mixed4to8_touch_mean + 2.0 * scan_lookup_mean - low_path_width_saving_mean)
+            - TARGET;
+        let mixed4to8_binary_gap = STORED_BRANCH_MEAN
+            + 4.0 * (mixed4to8_touch_mean + 2.0 * binary_lookup_mean - low_path_width_saving_mean)
+            - TARGET;
+        let mixed4to8_prefix_tree_gap = STORED_BRANCH_MEAN
+            + 4.0
+                * (mixed4to8_touch_mean + 2.0 * prefix_tree_node_floor_mean
+                    - low_path_width_saving_mean)
+            - TARGET;
+        let best_lookup_target_mean = (low_path_oneway_budget - best_touch_mean) / 2.0;
+        let mixed4to8_lookup_target_mean =
+            (low_path_oneway_budget - mixed4to8_touch_mean) / 2.0;
+        let best_lookup_multiplier_budget = best_lookup_target_mean / binary_lookup_mean;
+        let mixed4to8_lookup_multiplier_budget =
+            mixed4to8_lookup_target_mean / binary_lookup_mean;
+        let scan_over_binary_multiplier = scan_lookup_mean / binary_lookup_mean;
+        let huffman_over_binary_multiplier = huffman_lookup_mean / binary_lookup_mean;
+        let prefix_tree_over_binary_multiplier =
+            prefix_tree_node_floor_mean / binary_lookup_mean;
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_low_path_width_saving_mean={low_path_width_saving_mean:.3}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_model_precision_bits={model_precision_bits}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_raw_scratch_p99={raw_scratch_p99}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_raw_scratch_max={raw_scratch_max}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_global_entropy_scratch_p99={global_entropy_scratch_p99:.3}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_global_entropy_scratch_max={global_entropy_scratch_max:.3}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_step_entropy_scratch_p99={step_entropy_scratch_p99:.3}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_step_entropy_scratch_max={step_entropy_scratch_max:.3}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_global_prefix_scratch_p99={global_prefix_scratch_p99}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_global_prefix_scratch_max={global_prefix_scratch_max}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_step_prefix_scratch_p99={step_prefix_scratch_p99}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_step_prefix_scratch_max={step_prefix_scratch_max}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_best_block_symbols={best_block_symbols}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_best_touch_floor_mean={best_touch_mean:.3}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_best_touch_floor_p99={best_touch_p99}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_best_compressed_bits_p99={best_compressed_p99}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_best_live_scratch_p99={best_scratch_p99}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_best_symbol_count_p99={best_symbol_count_p99}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_best_augmented_gap_to_2700k={best_augmented_gap:.3}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_mixed4to8_period={mixed4to8_period}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_mixed4to8_schedule_code={mixed4to8_schedule_code}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_mixed4to8_touch_floor_mean={mixed4to8_touch_mean:.3}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_mixed4to8_touch_floor_p99={mixed4to8_touch_p99}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_mixed4to8_compressed_bits_p99={mixed4to8_compressed_p99}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_mixed4to8_live_scratch_p99={mixed4to8_scratch_p99}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_mixed4to8_symbol_count_p99={mixed4to8_symbol_count_p99}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_mixed4to8_augmented_gap_to_2700k={mixed4to8_augmented_gap:.3}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_scan_lookup_floor_mean={scan_lookup_mean:.3}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_scan_lookup_floor_p99={scan_lookup_p99}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_binary_lookup_floor_mean={binary_lookup_mean:.3}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_binary_lookup_floor_p99={binary_lookup_p99}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_huffman_lookup_floor_mean={huffman_lookup_mean:.3}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_huffman_lookup_floor_p99={huffman_lookup_p99}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_prefix_tree_node_floor_mean={prefix_tree_node_floor_mean:.3}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_prefix_tree_node_floor_p99={prefix_tree_node_floor_p99}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_best_scan_gap_to_2700k={best_scan_gap:.3}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_best_binary_gap_to_2700k={best_binary_gap:.3}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_best_huffman_gap_to_2700k={best_huffman_gap:.3}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_best_prefix_tree_gap_to_2700k={best_prefix_tree_gap:.3}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_mixed4to8_scan_gap_to_2700k={mixed4to8_scan_gap:.3}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_mixed4to8_binary_gap_to_2700k={mixed4to8_binary_gap:.3}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_mixed4to8_prefix_tree_gap_to_2700k={mixed4to8_prefix_tree_gap:.3}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_best_lookup_target_mean={best_lookup_target_mean:.3}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_mixed4to8_lookup_target_mean={mixed4to8_lookup_target_mean:.3}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_best_lookup_multiplier_budget={best_lookup_multiplier_budget:.6}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_mixed4to8_lookup_multiplier_budget={mixed4to8_lookup_multiplier_budget:.6}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_scan_over_binary_multiplier={scan_over_binary_multiplier:.6}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_huffman_over_binary_multiplier={huffman_over_binary_multiplier:.6}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_prefix_tree_over_binary_multiplier={prefix_tree_over_binary_multiplier:.6}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_support_noncontig_steps={support_noncontig_steps}");
+        println!("METRIC centered_direct_restoring_final_low_branch_align_only_support_max_span={support_max_span}");
+        eprintln!(
+            "Direct-centered low-branch alignment-only parser: raw_p99={raw_scratch_p99}, step_prefix_p99={step_prefix_scratch_p99}, best_block={best_block_symbols}, best_touch={best_touch_mean:.1}, best_scratch={best_scratch_p99}, mixed4to8={mixed4to8_schedule_code}, scan_lookup={scan_lookup_mean:.1}, binary_lookup={binary_lookup_mean:.1}, prefix_nodes={prefix_tree_node_floor_mean:.1}, huffman_lookup={huffman_lookup_mean:.1}, gaps scan/binary/prefix/huff=({best_scan_gap:.1},{best_binary_gap:.1},{best_prefix_tree_gap:.1},{best_huffman_gap:.1}), lookup_target={best_lookup_target_mean:.1}, multiplier_budget={best_lookup_multiplier_budget:.3}x, scan_ratio={scan_over_binary_multiplier:.3}x"
+        );
+
+        assert!(
+            raw_scratch_p99 <= GOOGLE_SCRATCH && step_entropy_scratch_p99 <= GOOGLE_SCRATCH as f64,
+            "low-branch alignment-only metadata no longer fits the scratch target"
+        );
+        assert!(
+            best_scratch_p99 <= GOOGLE_SCRATCH && best_augmented_gap < 0.0,
+            "low-branch alignment-only block parser lower bound no longer fits"
+        );
+        assert!(
+            best_scan_gap > 0.0 && mixed4to8_scan_gap > 0.0,
+            "alignment-only full-scan lookup now fits the branch-digit budget; promote parser integration"
+        );
+        assert!(
+            best_binary_gap < 0.0
+                && best_prefix_tree_gap < -100_000.0
+                && best_lookup_multiplier_budget > 2.6
+                && scan_over_binary_multiplier > best_lookup_multiplier_budget,
+            "alignment-only binary lookup floor no longer clears enough branch-digit budget"
+        );
+    }
+
+    #[test]
     fn direct_centered_restoring_final_alignment_public_len_predictor_still_needs_sidecar() {
         // The raw variable alignment stream fits only if the parser knows each
         // per-step payload length.  Give the parser a very generous public

@@ -157,7 +157,13 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
             name: "direct_centered_restoring_final_low_branch_digit_mixed4to8_floor",
             scratch_bits: 663,
             charged_toffoli: Some(2_643_614),
-            blocker: "low-candidate branch-as-final-digit lower bound clears binary lookup by 56386, high_q=low_q+1 on the sample set, and a 23-CCX branch digit toy is Bennett-clean; coherent full-scan lookup still misses by 40096, so this needs a phase-clean parser below a 2.037x lookup factor plus full reverse-decoder integration",
+            blocker: "low-candidate branch-as-final-digit lower bound clears binary lookup by 56386, high_q=low_q+1 on the sample set, and a 23-CCX branch digit toy is Bennett-clean; superseded by the alignment-only parser floor, but still needs full reverse-decoder integration",
+        },
+        Candidate {
+            name: "direct_centered_restoring_final_low_branch_align_only_prefix_tree_floor",
+            scratch_bits: 580,
+            charged_toffoli: None,
+            blocker: "branch-as-final-digit removes branch symbols from the parser stream; low-alignment block2 fits 580 scratch, binary lookup projects 2626705, and a prefix-tree node floor projects 2593870, but it still needs a phase-clean variable-prefix bit reader/tree and full reverse-decoder integration",
         },
         Candidate {
             name: "direct_centered_restoring_final_mixed4to8_joint_binary_floor",
@@ -511,6 +517,49 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     let direct_restoring_final_branch_final_low_path_width_scan_mixed4to8_gap = 40_095.623f64;
     let direct_restoring_final_branch_final_low_path_width_minus1_scan_mixed4to8_gap =
         39_681.222f64;
+    let direct_restoring_final_low_branch_align_only_low_path_width_saving_mean =
+        16_267.701f64;
+    let direct_restoring_final_low_branch_align_only_model_precision_bits = 13usize;
+    let direct_restoring_final_low_branch_align_only_raw_scratch_p99 = 471usize;
+    let direct_restoring_final_low_branch_align_only_raw_scratch_max = 478usize;
+    let direct_restoring_final_low_branch_align_only_step_entropy_scratch_p99 = 530usize;
+    let direct_restoring_final_low_branch_align_only_step_entropy_scratch_max = 547usize;
+    let direct_restoring_final_low_branch_align_only_step_prefix_scratch_p99 = 578usize;
+    let direct_restoring_final_low_branch_align_only_step_prefix_scratch_max = 593usize;
+    let direct_restoring_final_low_branch_align_only_best_block_symbols = 2usize;
+    let direct_restoring_final_low_branch_align_only_best_touch_floor_mean = 542.607f64;
+    let direct_restoring_final_low_branch_align_only_best_touch_floor_p99 = 594usize;
+    let direct_restoring_final_low_branch_align_only_best_compressed_bits_p99 = 298usize;
+    let direct_restoring_final_low_branch_align_only_best_live_scratch_p99 = 580usize;
+    let direct_restoring_final_low_branch_align_only_best_symbol_count_p99 = 118usize;
+    let direct_restoring_final_low_branch_align_only_best_augmented_gap = -117_630.377f64;
+    let direct_restoring_final_low_branch_align_only_mixed4to8_schedule_code = 44usize;
+    let direct_restoring_final_low_branch_align_only_mixed4to8_touch_floor_mean = 1_044.569f64;
+    let direct_restoring_final_low_branch_align_only_mixed4to8_live_scratch_p99 = 568usize;
+    let direct_restoring_final_low_branch_align_only_scan_lookup_floor_mean = 18_687.901f64;
+    let direct_restoring_final_low_branch_align_only_scan_lookup_floor_p99 = 20_384usize;
+    let direct_restoring_final_low_branch_align_only_binary_lookup_floor_mean = 5_541.966f64;
+    let direct_restoring_final_low_branch_align_only_binary_lookup_floor_p99 = 6_214usize;
+    let direct_restoring_final_low_branch_align_only_huffman_lookup_floor_mean = 3_336.980f64;
+    let direct_restoring_final_low_branch_align_only_huffman_lookup_floor_p99 = 3_666usize;
+    let direct_restoring_final_low_branch_align_only_prefix_tree_node_floor_mean = 1_437.531f64;
+    let direct_restoring_final_low_branch_align_only_prefix_tree_node_floor_p99 = 1_568usize;
+    let direct_restoring_final_low_branch_align_only_best_scan_gap = 31_872.834f64;
+    let direct_restoring_final_low_branch_align_only_best_binary_gap = -73_294.652f64;
+    let direct_restoring_final_low_branch_align_only_best_huffman_gap = -90_934.535f64;
+    let direct_restoring_final_low_branch_align_only_best_prefix_tree_gap = -106_130.130f64;
+    let direct_restoring_final_low_branch_align_only_mixed4to8_scan_gap = 33_880.682f64;
+    let direct_restoring_final_low_branch_align_only_mixed4to8_prefix_tree_gap = -104_122.283f64;
+    let direct_restoring_final_low_branch_align_only_best_lookup_target_mean = 14_703.797f64;
+    let direct_restoring_final_low_branch_align_only_best_lookup_multiplier_budget =
+        2.653_174f64;
+    let direct_restoring_final_low_branch_align_only_scan_over_binary_multiplier = 3.372_071f64;
+    let direct_restoring_final_low_branch_align_only_huffman_over_binary_multiplier =
+        0.602_129f64;
+    let direct_restoring_final_low_branch_align_only_prefix_tree_over_binary_multiplier =
+        0.259_390f64;
+    let direct_restoring_final_low_branch_align_only_support_noncontig_steps = 61usize;
+    let direct_restoring_final_low_branch_align_only_support_max_span = 24usize;
     let direct_restoring_final_coeff_decoder_alignment_degree_n14 = 13usize;
     let direct_restoring_final_coeff_decoder_alignment_density_n14 = 8_278usize;
     let direct_restoring_final_coeff_decoder_alignment_max_n14 = 13usize;
@@ -1313,6 +1362,45 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     println!("METRIC scratch600_direct_restoring_final_branch_final_selected_width_scan_mixed4to8_gap_to_2700k={direct_restoring_final_branch_final_selected_width_scan_mixed4to8_gap:.3}");
     println!("METRIC scratch600_direct_restoring_final_branch_final_low_path_width_scan_mixed4to8_gap_to_2700k={direct_restoring_final_branch_final_low_path_width_scan_mixed4to8_gap:.3}");
     println!("METRIC scratch600_direct_restoring_final_branch_final_low_path_width_minus1_scan_mixed4to8_gap_to_2700k={direct_restoring_final_branch_final_low_path_width_minus1_scan_mixed4to8_gap:.3}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_align_only_low_path_width_saving_mean={direct_restoring_final_low_branch_align_only_low_path_width_saving_mean:.3}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_align_only_model_precision_bits={direct_restoring_final_low_branch_align_only_model_precision_bits}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_align_only_raw_scratch_p99={direct_restoring_final_low_branch_align_only_raw_scratch_p99}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_align_only_raw_scratch_max={direct_restoring_final_low_branch_align_only_raw_scratch_max}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_align_only_step_entropy_scratch_p99={direct_restoring_final_low_branch_align_only_step_entropy_scratch_p99}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_align_only_step_entropy_scratch_max={direct_restoring_final_low_branch_align_only_step_entropy_scratch_max}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_align_only_step_prefix_scratch_p99={direct_restoring_final_low_branch_align_only_step_prefix_scratch_p99}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_align_only_step_prefix_scratch_max={direct_restoring_final_low_branch_align_only_step_prefix_scratch_max}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_align_only_best_block_symbols={direct_restoring_final_low_branch_align_only_best_block_symbols}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_align_only_best_touch_floor_mean={direct_restoring_final_low_branch_align_only_best_touch_floor_mean:.3}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_align_only_best_touch_floor_p99={direct_restoring_final_low_branch_align_only_best_touch_floor_p99}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_align_only_best_compressed_bits_p99={direct_restoring_final_low_branch_align_only_best_compressed_bits_p99}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_align_only_best_live_scratch_p99={direct_restoring_final_low_branch_align_only_best_live_scratch_p99}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_align_only_best_symbol_count_p99={direct_restoring_final_low_branch_align_only_best_symbol_count_p99}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_align_only_best_augmented_gap_to_2700k={direct_restoring_final_low_branch_align_only_best_augmented_gap:.3}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_align_only_mixed4to8_schedule_code={direct_restoring_final_low_branch_align_only_mixed4to8_schedule_code}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_align_only_mixed4to8_touch_floor_mean={direct_restoring_final_low_branch_align_only_mixed4to8_touch_floor_mean:.3}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_align_only_mixed4to8_live_scratch_p99={direct_restoring_final_low_branch_align_only_mixed4to8_live_scratch_p99}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_align_only_scan_lookup_floor_mean={direct_restoring_final_low_branch_align_only_scan_lookup_floor_mean:.3}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_align_only_scan_lookup_floor_p99={direct_restoring_final_low_branch_align_only_scan_lookup_floor_p99}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_align_only_binary_lookup_floor_mean={direct_restoring_final_low_branch_align_only_binary_lookup_floor_mean:.3}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_align_only_binary_lookup_floor_p99={direct_restoring_final_low_branch_align_only_binary_lookup_floor_p99}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_align_only_huffman_lookup_floor_mean={direct_restoring_final_low_branch_align_only_huffman_lookup_floor_mean:.3}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_align_only_huffman_lookup_floor_p99={direct_restoring_final_low_branch_align_only_huffman_lookup_floor_p99}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_align_only_prefix_tree_node_floor_mean={direct_restoring_final_low_branch_align_only_prefix_tree_node_floor_mean:.3}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_align_only_prefix_tree_node_floor_p99={direct_restoring_final_low_branch_align_only_prefix_tree_node_floor_p99}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_align_only_best_scan_gap_to_2700k={direct_restoring_final_low_branch_align_only_best_scan_gap:.3}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_align_only_best_binary_gap_to_2700k={direct_restoring_final_low_branch_align_only_best_binary_gap:.3}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_align_only_best_huffman_gap_to_2700k={direct_restoring_final_low_branch_align_only_best_huffman_gap:.3}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_align_only_best_prefix_tree_gap_to_2700k={direct_restoring_final_low_branch_align_only_best_prefix_tree_gap:.3}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_align_only_mixed4to8_scan_gap_to_2700k={direct_restoring_final_low_branch_align_only_mixed4to8_scan_gap:.3}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_align_only_mixed4to8_prefix_tree_gap_to_2700k={direct_restoring_final_low_branch_align_only_mixed4to8_prefix_tree_gap:.3}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_align_only_best_lookup_target_mean={direct_restoring_final_low_branch_align_only_best_lookup_target_mean:.3}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_align_only_best_lookup_multiplier_budget={direct_restoring_final_low_branch_align_only_best_lookup_multiplier_budget:.6}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_align_only_scan_over_binary_multiplier={direct_restoring_final_low_branch_align_only_scan_over_binary_multiplier:.6}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_align_only_huffman_over_binary_multiplier={direct_restoring_final_low_branch_align_only_huffman_over_binary_multiplier:.6}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_align_only_prefix_tree_over_binary_multiplier={direct_restoring_final_low_branch_align_only_prefix_tree_over_binary_multiplier:.6}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_align_only_support_noncontig_steps={direct_restoring_final_low_branch_align_only_support_noncontig_steps}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_align_only_support_max_span={direct_restoring_final_low_branch_align_only_support_max_span}");
     println!("METRIC scratch600_direct_restoring_final_coeff_decoder_alignment_degree_n14={direct_restoring_final_coeff_decoder_alignment_degree_n14}");
     println!("METRIC scratch600_direct_restoring_final_coeff_decoder_alignment_density_n14={direct_restoring_final_coeff_decoder_alignment_density_n14}");
     println!("METRIC scratch600_direct_restoring_final_coeff_decoder_alignment_max_n14={direct_restoring_final_coeff_decoder_alignment_max_n14}");
@@ -2014,6 +2102,27 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
             && direct_restoring_final_branch_final_alignment_diff_p99 > 0
             && direct_restoring_final_branch_final_digit_len_diff_p99 > 0,
         "branch-as-final-digit restoring-final lower bound changed; revisit branch-fold circuit target"
+    );
+    assert!(
+        direct_restoring_final_low_branch_align_only_model_precision_bits == 13
+            && direct_restoring_final_low_branch_align_only_raw_scratch_p99
+                <= GOOGLE_LOW_QUBIT_SCRATCH
+            && direct_restoring_final_low_branch_align_only_step_prefix_scratch_p99
+                < GOOGLE_LOW_QUBIT_SCRATCH
+            && direct_restoring_final_low_branch_align_only_best_block_symbols == 2
+            && direct_restoring_final_low_branch_align_only_best_live_scratch_p99
+                < GOOGLE_LOW_QUBIT_SCRATCH
+            && direct_restoring_final_low_branch_align_only_best_augmented_gap < -100_000.0
+            && direct_restoring_final_low_branch_align_only_best_binary_gap < -70_000.0
+            && direct_restoring_final_low_branch_align_only_best_prefix_tree_gap < -100_000.0
+            && direct_restoring_final_low_branch_align_only_best_scan_gap > 30_000.0
+            && direct_restoring_final_low_branch_align_only_best_lookup_multiplier_budget > 2.6
+            && direct_restoring_final_low_branch_align_only_scan_over_binary_multiplier
+                > direct_restoring_final_low_branch_align_only_best_lookup_multiplier_budget
+            && direct_restoring_final_low_branch_align_only_huffman_over_binary_multiplier < 1.0
+            && direct_restoring_final_low_branch_align_only_prefix_tree_over_binary_multiplier < 0.3
+            && direct_restoring_final_low_branch_align_only_support_noncontig_steps > 50,
+        "low-branch alignment-only parser budget changed; revisit prefix/lookup decoder target"
     );
     assert!(
         direct_restoring_final_coeff_decoder_alignment_degree_n14 + 1 >= 14
