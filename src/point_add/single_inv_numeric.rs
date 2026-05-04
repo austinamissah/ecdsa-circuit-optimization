@@ -6810,6 +6810,392 @@ mod tests {
     }
 
     #[test]
+    fn half_gcd_fixed_depth64_public_slot_alignment_envelope() {
+        // Dynamic barrels would clear the fixed-depth64 row only if alignment
+        // controls were classical.  A more structural alternative is public
+        // slot scheduling: use a full-domain per-step envelope and pay static
+        // barrel layers only at slots whose public envelope requires them.
+        // This tests whether the adversarial high-quotient slots are sparse
+        // enough to keep that schedule below the low-qubit target without any
+        // quantum-control execution discount.
+        const SCAFFOLD_AFTER_DIV: usize = 642_716;
+        const TAIL_REPLAY_PER_BIT_CCX: usize = 587;
+        const TARGET: f64 = 2_700_000.0;
+        const DEPTH: usize = 64;
+        const SAMPLED_BARREL_BITS: usize = 5;
+        const SAMPLES: usize = 4096;
+
+        #[derive(Clone)]
+        struct SlotRow {
+            prefix_common: usize,
+            decoder_common: usize,
+            tail_extract_floor: usize,
+            app: usize,
+            app_static: usize,
+            replay: usize,
+            prefix_widths: [usize; DEPTH],
+            prefix_bits: [usize; DEPTH],
+            decoder_widths: [usize; DEPTH],
+            decoder_bits: [usize; DEPTH],
+            tail_widths: Vec<usize>,
+            tail_bits: Vec<usize>,
+        }
+
+        fn update_envelope(row: &SlotRow, prefix: &mut [usize; DEPTH], decoder: &mut [usize; DEPTH], tail: &mut Vec<usize>) {
+            for i in 0..DEPTH {
+                prefix[i] = prefix[i].max(row.prefix_bits[i]);
+                decoder[i] = decoder[i].max(row.decoder_bits[i]);
+            }
+            if tail.len() < row.tail_bits.len() {
+                tail.resize(row.tail_bits.len(), 0);
+            }
+            for (i, &bits) in row.tail_bits.iter().enumerate() {
+                tail[i] = tail[i].max(bits);
+            }
+        }
+
+        fn pointadd_for_app(
+            row: &SlotRow,
+            prefix_env: &[usize; DEPTH],
+            decoder_env: &[usize; DEPTH],
+            tail_env: &[usize],
+            app: usize,
+        ) -> isize {
+            let prefix_barrel = (0..DEPTH)
+                .map(|i| row.prefix_widths[i] * prefix_env[i])
+                .sum::<usize>();
+            let decoder_barrel = (0..DEPTH)
+                .map(|i| row.decoder_widths[i] * decoder_env[i])
+                .sum::<usize>();
+            let tail_barrel = row
+                .tail_widths
+                .iter()
+                .enumerate()
+                .map(|(i, &width)| width * tail_env.get(i).copied().unwrap_or(0))
+                .sum::<usize>();
+            SCAFFOLD_AFTER_DIV as isize
+                + 2 * (app + row.replay + 2 * (row.prefix_common + prefix_barrel)) as isize
+                + 4 * (row.decoder_common + decoder_barrel) as isize
+                + 4 * (row.tail_extract_floor + tail_barrel) as isize
+        }
+
+        fn pointadd_for(
+            row: &SlotRow,
+            prefix_env: &[usize; DEPTH],
+            decoder_env: &[usize; DEPTH],
+            tail_env: &[usize],
+        ) -> isize {
+            pointadd_for_app(row, prefix_env, decoder_env, tail_env, row.app)
+        }
+
+        fn collect_row(x: U256, p: U256) -> SlotRow {
+            let mut u = p;
+            let mut v = x;
+            let mut b = smag_for_halfgcd_test(false, U512::ZERO);
+            let mut d = smag_for_halfgcd_test(false, U512::from(1u64));
+            let mut residual_digit_width = 0usize;
+            let mut coeff_digit_width = 0usize;
+            let mut final_fix_width = 0usize;
+            let mut residual_width_sum = 0usize;
+            let mut coeff_width_sum = 0usize;
+            let mut decoder_digit = 0usize;
+            let mut decoder_final_fix = 0usize;
+            let mut decoder_width_sum = 0usize;
+            let mut prefix_widths = [0usize; DEPTH];
+            let mut prefix_bits = [0usize; DEPTH];
+            let mut decoder_widths = [0usize; DEPTH];
+            let mut decoder_bits = [0usize; DEPTH];
+            let mut prefix_steps = 0usize;
+
+            while prefix_steps < DEPTH && !v.is_zero() {
+                let q = u / v;
+                let (digits, prefinal_rem, prefinal_q) =
+                    nonrestoring_prefinal_signed_digits_for_centered_test(
+                        u512_from_u256_for_halfgcd_test(u),
+                        u512_from_u256_for_halfgcd_test(v),
+                    );
+                let final_negative = prefinal_rem.neg && !prefinal_rem.mag.is_zero();
+                let floor_q = if final_negative {
+                    prefinal_q - U512::from(1u64)
+                } else {
+                    prefinal_q
+                };
+                assert_eq!(floor_q, u512_from_u256_for_halfgcd_test(q));
+                let width = u256_bit_len(u).max(u256_bit_len(v)).max(1);
+                let coeff_width = u512_bit_len_for_halfgcd_test(b.mag)
+                    .max(u512_bit_len_for_halfgcd_test(d.mag))
+                    .max(1)
+                    + 1;
+                prefix_widths[prefix_steps] = width + coeff_width;
+                prefix_bits[prefix_steps] =
+                    usize_bit_len_for_payload_test(digits.len().saturating_sub(1));
+                residual_digit_width += digits.len() * width.saturating_sub(1);
+                final_fix_width +=
+                    (2 * width).saturating_sub(1) + (2 * coeff_width).saturating_sub(1);
+                residual_width_sum += width;
+                coeff_width_sum += coeff_width;
+
+                let mut coeff_acc = b;
+                for &(digit_neg, sh) in &digits {
+                    let term = signed_mul_mag_for_halfgcd_test(
+                        d,
+                        digit_neg,
+                        U512::from(1u64) << sh,
+                    );
+                    let next = signed_add_for_halfgcd_test(
+                        coeff_acc,
+                        signed_neg_for_halfgcd_test(term),
+                    );
+                    let op_width = u512_bit_len_for_halfgcd_test(coeff_acc.mag)
+                        .max(u512_bit_len_for_halfgcd_test(term.mag))
+                        .max(u512_bit_len_for_halfgcd_test(next.mag))
+                        .max(1)
+                        + 1;
+                    coeff_digit_width += op_width.saturating_sub(1);
+                    coeff_acc = next;
+                }
+                if final_negative {
+                    coeff_acc = signed_add_for_halfgcd_test(coeff_acc, d);
+                }
+
+                let rem = u - q * v;
+                let nb = d;
+                let nd = signed_sub_scaled_for_halfgcd_test(b, q, d);
+                assert_eq!(coeff_acc, nd, "public-slot prefix replay mismatch");
+
+                let numer = if b.mag.is_zero() {
+                    nd.mag
+                } else {
+                    nd.mag - U512::from(1u64)
+                };
+                let denom = nb.mag;
+                assert!(!denom.is_zero(), "public-slot decoder denominator vanished");
+                assert_eq!(
+                    numer / denom,
+                    u512_from_u256_for_halfgcd_test(q),
+                    "public-slot decoder reverse quotient mismatch"
+                );
+                let (decoder_digits, decoder_prefinal_rem, decoder_prefinal_q) =
+                    nonrestoring_prefinal_signed_digits_for_centered_test(numer, denom);
+                let decoder_final_negative =
+                    decoder_prefinal_rem.neg && !decoder_prefinal_rem.mag.is_zero();
+                let decoder_floor_q = if decoder_final_negative {
+                    decoder_prefinal_q - U512::from(1u64)
+                } else {
+                    decoder_prefinal_q
+                };
+                assert_eq!(decoder_floor_q, u512_from_u256_for_halfgcd_test(q));
+                let decoder_width = u512_bit_len_for_halfgcd_test(numer)
+                    .max(u512_bit_len_for_halfgcd_test(denom))
+                    .max(1);
+                decoder_widths[prefix_steps] = decoder_width;
+                decoder_bits[prefix_steps] =
+                    usize_bit_len_for_payload_test(decoder_digits.len().saturating_sub(1));
+                decoder_digit += decoder_digits.len() * decoder_width.saturating_sub(1);
+                decoder_final_fix += (2 * decoder_width).saturating_sub(1);
+                decoder_width_sum += decoder_width;
+
+                u = v;
+                v = rem;
+                b = nb;
+                d = nd;
+                prefix_steps += 1;
+            }
+
+            let mut tail_payload = 0usize;
+            let mut tail_extract_floor = 0usize;
+            let mut tail_widths = Vec::new();
+            let mut tail_bits = Vec::new();
+            let mut tu = u;
+            let mut tv = v;
+            while !tv.is_zero() {
+                let q = tu / tv;
+                let q_bits = u256_bit_len(q);
+                let tail_width = u256_bit_len(tu).max(u256_bit_len(tv)).max(1);
+                tail_payload += q_bits;
+                tail_extract_floor += q_bits * 3 * tail_width + tail_width;
+                tail_widths.push(tail_width);
+                tail_bits.push(usize_bit_len_for_payload_test(q_bits.saturating_sub(1)));
+                let rem = tu - q * tv;
+                tu = tv;
+                tv = rem;
+            }
+            assert_eq!(tu, U256::from(1u64), "public-slot tail replay missed gcd 1");
+
+            SlotRow {
+                prefix_common: residual_digit_width
+                    + coeff_digit_width
+                    + final_fix_width
+                    + residual_width_sum
+                    + coeff_width_sum,
+                decoder_common: decoder_digit + decoder_final_fix + decoder_width_sum,
+                tail_extract_floor,
+                app: halfgcd_signed_two_coeff_apply_cost_for_test(b, d),
+                app_static: halfgcd_signed_two_coeff_apply_static_binary_floor_for_test(b, d),
+                replay: tail_payload * TAIL_REPLAY_PER_BIT_CCX,
+                prefix_widths,
+                prefix_bits,
+                decoder_widths,
+                decoder_bits,
+                tail_widths,
+                tail_bits,
+            }
+        }
+
+        let p = SECP256K1_P;
+        let mut rng = 0x5ec0_0001_5107_0064u64;
+        let mut rows = Vec::with_capacity(SAMPLES);
+        let mut sample_prefix_env = [0usize; DEPTH];
+        let mut sample_decoder_env = [0usize; DEPTH];
+        let mut sample_tail_env = Vec::<usize>::new();
+        for _ in 0..SAMPLES {
+            let mut x = rand_u256(&mut rng);
+            if x.is_zero() {
+                x = U256::from(1u64);
+            }
+            let row = collect_row(x, p);
+            update_envelope(&row, &mut sample_prefix_env, &mut sample_decoder_env, &mut sample_tail_env);
+            rows.push(row);
+        }
+
+        let mut full_prefix_env = sample_prefix_env;
+        let mut full_decoder_env = sample_decoder_env;
+        let mut full_tail_env = sample_tail_env.clone();
+        let p512 = u512_from_u256_for_halfgcd_test(p);
+        let mut num_prev2 = U512::ZERO;
+        let mut num_prev1 = U512::from(1u64);
+        let mut den_prev2 = U512::from(1u64);
+        let mut den_prev1 = U512::ZERO;
+        for _ in 0..DEPTH {
+            let num = num_prev1 + num_prev2;
+            let den = den_prev1 + den_prev2;
+            num_prev2 = num_prev1;
+            num_prev1 = num;
+            den_prev2 = den_prev1;
+            den_prev1 = den;
+        }
+        let center = low_u256_from_u512_for_centered_test((p512 * den_prev1) / num_prev1);
+        let mut adversarial_rows = 0usize;
+        for x_u64 in 1u64..=512u64 {
+            for x in [U256::from(x_u64), p - U256::from(x_u64)] {
+                let row = collect_row(x, p);
+                update_envelope(&row, &mut full_prefix_env, &mut full_decoder_env, &mut full_tail_env);
+                adversarial_rows += 1;
+            }
+        }
+        for delta in -512i64..=512i64 {
+            let offset = U256::from(delta.unsigned_abs());
+            let x = if delta < 0 {
+                if center <= offset {
+                    continue;
+                }
+                center - offset
+            } else {
+                let candidate = center + offset;
+                if candidate >= p {
+                    continue;
+                }
+                candidate
+            };
+            if x.is_zero() {
+                continue;
+            }
+            let row = collect_row(x, p);
+            update_envelope(&row, &mut full_prefix_env, &mut full_decoder_env, &mut full_tail_env);
+            adversarial_rows += 1;
+        }
+
+        let mean = |values: &[isize]| -> f64 {
+            values.iter().map(|&v| v as f64).sum::<f64>() / values.len() as f64
+        };
+        let p99 = |values: &mut Vec<isize>| -> isize {
+            values.sort_unstable();
+            values[values.len() * 99 / 100]
+        };
+        let mut sample_costs = rows
+            .iter()
+            .map(|row| pointadd_for(row, &sample_prefix_env, &sample_decoder_env, &sample_tail_env))
+            .collect::<Vec<_>>();
+        let mut full_costs = rows
+            .iter()
+            .map(|row| pointadd_for(row, &full_prefix_env, &full_decoder_env, &full_tail_env))
+            .collect::<Vec<_>>();
+        let mut full_static_costs = rows
+            .iter()
+            .map(|row| {
+                pointadd_for_app(
+                    row,
+                    &full_prefix_env,
+                    &full_decoder_env,
+                    &full_tail_env,
+                    row.app_static,
+                )
+            })
+            .collect::<Vec<_>>();
+        let sample_mean = mean(&sample_costs);
+        let full_mean = mean(&full_costs);
+        let full_static_mean = mean(&full_static_costs);
+        let sample_p99 = p99(&mut sample_costs);
+        let full_p99 = p99(&mut full_costs);
+        let full_static_p99 = p99(&mut full_static_costs);
+        let full_first64 = rows
+            .iter()
+            .take(64)
+            .map(|row| pointadd_for(row, &full_prefix_env, &full_decoder_env, &full_tail_env))
+            .sum::<isize>() as f64
+            / 64.0;
+        let prefix_high_slots = full_prefix_env
+            .iter()
+            .filter(|&&bits| bits > SAMPLED_BARREL_BITS)
+            .count();
+        let decoder_high_slots = full_decoder_env
+            .iter()
+            .filter(|&&bits| bits > SAMPLED_BARREL_BITS)
+            .count();
+        let tail_high_slots = full_tail_env
+            .iter()
+            .filter(|&&bits| bits > SAMPLED_BARREL_BITS)
+            .count();
+        let max_prefix_bits = full_prefix_env.iter().copied().max().unwrap_or(0);
+        let max_decoder_bits = full_decoder_env.iter().copied().max().unwrap_or(0);
+        let max_tail_bits = full_tail_env.iter().copied().max().unwrap_or(0);
+        println!("METRIC halfgcd_fixed_depth64_slot_envelope_adversarial_rows={adversarial_rows}");
+        println!("METRIC halfgcd_fixed_depth64_slot_envelope_prefix_high_slots={prefix_high_slots}");
+        println!("METRIC halfgcd_fixed_depth64_slot_envelope_decoder_high_slots={decoder_high_slots}");
+        println!("METRIC halfgcd_fixed_depth64_slot_envelope_tail_high_slots={tail_high_slots}");
+        println!("METRIC halfgcd_fixed_depth64_slot_envelope_max_prefix_bits={max_prefix_bits}");
+        println!("METRIC halfgcd_fixed_depth64_slot_envelope_max_decoder_bits={max_decoder_bits}");
+        println!("METRIC halfgcd_fixed_depth64_slot_envelope_max_tail_bits={max_tail_bits}");
+        println!("METRIC halfgcd_fixed_depth64_slot_envelope_sample_mean={sample_mean:.3}");
+        println!("METRIC halfgcd_fixed_depth64_slot_envelope_sample_p99={sample_p99}");
+        println!("METRIC halfgcd_fixed_depth64_slot_envelope_full_mean={full_mean:.3}");
+        println!("METRIC halfgcd_fixed_depth64_slot_envelope_full_first64={full_first64:.3}");
+        println!("METRIC halfgcd_fixed_depth64_slot_envelope_full_p99={full_p99}");
+        println!("METRIC halfgcd_fixed_depth64_slot_envelope_static_app_mean={full_static_mean:.3}");
+        println!("METRIC halfgcd_fixed_depth64_slot_envelope_static_app_p99={full_static_p99}");
+        println!(
+            "METRIC halfgcd_fixed_depth64_slot_envelope_full_gap_to_2700k={:.3}",
+            full_mean - TARGET
+        );
+        println!(
+            "METRIC halfgcd_fixed_depth64_slot_envelope_static_app_gap_to_2700k={:.3}",
+            full_static_mean - TARGET
+        );
+        eprintln!(
+            "half-GCD fixed-depth64 public slot envelope: sample_mean={sample_mean:.1}, full_mean={full_mean:.1}, static_app={full_static_mean:.1}, first64={full_first64:.1}, full_p99={full_p99}, static_p99={full_static_p99}, high_slots=({prefix_high_slots},{decoder_high_slots},{tail_high_slots}), max_bits=({max_prefix_bits},{max_decoder_bits},{max_tail_bits}), adversarial_rows={adversarial_rows}"
+        );
+        assert!(max_prefix_bits >= 8 && max_decoder_bits >= 8 && max_tail_bits >= 8);
+        assert!(
+            full_mean < TARGET && full_p99 < TARGET as isize,
+            "public per-slot half-GCD alignment envelope stopped fitting the popcount application ledger"
+        );
+        assert!(
+            full_static_mean < TARGET && full_static_p99 < TARGET as isize,
+            "public per-slot half-GCD envelope cannot carry static quantum coefficient application"
+        );
+    }
+
+    #[test]
     fn half_gcd_fixed_depth_coefficient_application_needs_classical_or_static_recode() {
         // The fixed-depth64 near-miss also used a popcount-priced application
         // of the final second-column coefficients.  That is only production

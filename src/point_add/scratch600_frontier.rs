@@ -241,13 +241,19 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
             name: "halfgcd_second_column_fixed_depth64_dynamic_barrel_model",
             scratch_bits: 515,
             charged_toffoli: None,
-            blocker: "if alignment layers are BitId conditions, depth64 dynamic barrels average 1986713 with p99 2047416, but simulator stats do not discount quantum controls; HMR controls are random rather than alignment values and generic alignment-control MBU phase is dense at n14",
+            blocker: "if alignment layers are BitId conditions, depth64 dynamic barrels average 1986713 with p99 2047416, but simulator stats do not discount quantum controls; HMR controls are random rather than alignment values and generic alignment-control MBU phase is dense at n14; a public per-slot envelope avoids the dynamic-control premise and projects 2539415 with static coefficient application, but still needs an exact full-domain envelope proof and real reversible extractor/application",
+        },
+        Candidate {
+            name: "halfgcd_second_column_fixed_depth64_public_slot_envelope",
+            scratch_bits: 515,
+            charged_toffoli: None,
+            blocker: "sample plus targeted adversarial slot envelope has only 3 prefix, 3 decoder, and 1 tail high-layer slots; popcount app projects 2345809 mean / 2408100 p99 and static quantum coefficient application projects 2539415 mean / 2612732 p99, but this is not production-charged until the per-slot envelope is proved for the full secp domain and the fixed-depth extractor/application circuit is wired and cleaned",
         },
         Candidate {
             name: "halfgcd_second_column_fixed_depth64_tail_stream",
             scratch_bits: 515,
             charged_toffoli: Some(2_934_322),
-            blocker: "fixed-depth64 popcount-priced coefficient application averages 2740052, but coefficient bits are quantum data; a generous static binary application floor averages 2934322, so this route needs classical coefficient controls or a static window recode",
+            blocker: "fixed-depth64 popcount-priced coefficient application averages 2740052 under global exact alignment, but coefficient bits are quantum data; a generous static binary application floor averages 2934322 with global alignment. Public slot alignment would bring the static floor below target, so this row is now superseded by the slot-envelope proof/implementation blocker",
         },
         Candidate {
             name: "halfgcd_second_column_fixed_depth64_static_window_floor",
@@ -1561,6 +1567,28 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     let halfgcd_second_col_fixed_depth64_dynamic_tail_static_mean = 51_671usize;
     let halfgcd_second_col_fixed_depth64_dynamic_tail_mean = 4_628usize;
     let halfgcd_second_col_fixed_depth64_dynamic_high_layer_hits_p99 = 0usize;
+    let halfgcd_second_col_fixed_depth64_slot_envelope_adversarial_rows = 2_049usize;
+    let halfgcd_second_col_fixed_depth64_slot_envelope_prefix_high_slots = 3usize;
+    let halfgcd_second_col_fixed_depth64_slot_envelope_decoder_high_slots = 3usize;
+    let halfgcd_second_col_fixed_depth64_slot_envelope_tail_high_slots = 1usize;
+    let halfgcd_second_col_fixed_depth64_slot_envelope_max_prefix_bits = 8usize;
+    let halfgcd_second_col_fixed_depth64_slot_envelope_max_decoder_bits = 8usize;
+    let halfgcd_second_col_fixed_depth64_slot_envelope_max_tail_bits = 8usize;
+    let halfgcd_second_col_fixed_depth64_slot_envelope_sample_mean = 2_329_235usize;
+    let halfgcd_second_col_fixed_depth64_slot_envelope_sample_p99 = 2_391_412usize;
+    let halfgcd_second_col_fixed_depth64_slot_envelope_full_mean = 2_345_809usize;
+    let halfgcd_second_col_fixed_depth64_slot_envelope_full_first64 = 2_346_165usize;
+    let halfgcd_second_col_fixed_depth64_slot_envelope_full_p99 = 2_408_100usize;
+    let halfgcd_second_col_fixed_depth64_slot_envelope_static_app_mean =
+        2_539_415usize;
+    let halfgcd_second_col_fixed_depth64_slot_envelope_static_app_p99 =
+        2_612_732usize;
+    let halfgcd_second_col_fixed_depth64_slot_envelope_full_gap =
+        halfgcd_second_col_fixed_depth64_slot_envelope_full_mean as isize
+            - GOOGLE_LOW_QUBIT_TOFFOLI as isize;
+    let halfgcd_second_col_fixed_depth64_slot_envelope_static_app_gap =
+        halfgcd_second_col_fixed_depth64_slot_envelope_static_app_mean as isize
+            - GOOGLE_LOW_QUBIT_TOFFOLI as isize;
     let halfgcd_second_col_fixed_depth64_static_app_mean = 2_934_322usize;
     let halfgcd_second_col_fixed_depth64_static_app_p99 = 3_010_096usize;
     let halfgcd_second_col_fixed_depth64_static_app_gap =
@@ -2801,6 +2829,22 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_dynamic_tail_static_mean={halfgcd_second_col_fixed_depth64_dynamic_tail_static_mean}");
     println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_dynamic_tail_mean={halfgcd_second_col_fixed_depth64_dynamic_tail_mean}");
     println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_dynamic_high_layer_hits_p99={halfgcd_second_col_fixed_depth64_dynamic_high_layer_hits_p99}");
+    println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_slot_envelope_adversarial_rows={halfgcd_second_col_fixed_depth64_slot_envelope_adversarial_rows}");
+    println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_slot_envelope_prefix_high_slots={halfgcd_second_col_fixed_depth64_slot_envelope_prefix_high_slots}");
+    println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_slot_envelope_decoder_high_slots={halfgcd_second_col_fixed_depth64_slot_envelope_decoder_high_slots}");
+    println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_slot_envelope_tail_high_slots={halfgcd_second_col_fixed_depth64_slot_envelope_tail_high_slots}");
+    println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_slot_envelope_max_prefix_bits={halfgcd_second_col_fixed_depth64_slot_envelope_max_prefix_bits}");
+    println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_slot_envelope_max_decoder_bits={halfgcd_second_col_fixed_depth64_slot_envelope_max_decoder_bits}");
+    println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_slot_envelope_max_tail_bits={halfgcd_second_col_fixed_depth64_slot_envelope_max_tail_bits}");
+    println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_slot_envelope_sample_mean={halfgcd_second_col_fixed_depth64_slot_envelope_sample_mean}");
+    println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_slot_envelope_sample_p99={halfgcd_second_col_fixed_depth64_slot_envelope_sample_p99}");
+    println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_slot_envelope_full_mean={halfgcd_second_col_fixed_depth64_slot_envelope_full_mean}");
+    println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_slot_envelope_full_first64={halfgcd_second_col_fixed_depth64_slot_envelope_full_first64}");
+    println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_slot_envelope_full_p99={halfgcd_second_col_fixed_depth64_slot_envelope_full_p99}");
+    println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_slot_envelope_static_app_mean={halfgcd_second_col_fixed_depth64_slot_envelope_static_app_mean}");
+    println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_slot_envelope_static_app_p99={halfgcd_second_col_fixed_depth64_slot_envelope_static_app_p99}");
+    println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_slot_envelope_full_gap_to_2700k={halfgcd_second_col_fixed_depth64_slot_envelope_full_gap}");
+    println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_slot_envelope_static_app_gap_to_2700k={halfgcd_second_col_fixed_depth64_slot_envelope_static_app_gap}");
     println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_static_app_mean={halfgcd_second_col_fixed_depth64_static_app_mean}");
     println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_static_app_p99={halfgcd_second_col_fixed_depth64_static_app_p99}");
     println!("METRIC scratch600_halfgcd_second_col_fixed_depth64_static_app_gap_to_2700k={halfgcd_second_col_fixed_depth64_static_app_gap}");
@@ -4146,6 +4190,24 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
             && halfgcd_second_col_alignment_mbu_degree_n14 >= 14
             && halfgcd_second_col_alignment_mbu_density_n14 > (1usize << 14) / 4,
         "half-GCD dynamic barrel/classical-control frontier changed; revisit measurement-clean alignment priority"
+    );
+    assert!(
+        halfgcd_second_col_fixed_depth64_slot_envelope_adversarial_rows == 2_049
+            && halfgcd_second_col_fixed_depth64_slot_envelope_prefix_high_slots == 3
+            && halfgcd_second_col_fixed_depth64_slot_envelope_decoder_high_slots == 3
+            && halfgcd_second_col_fixed_depth64_slot_envelope_tail_high_slots == 1
+            && halfgcd_second_col_fixed_depth64_slot_envelope_max_prefix_bits == 8
+            && halfgcd_second_col_fixed_depth64_slot_envelope_max_decoder_bits == 8
+            && halfgcd_second_col_fixed_depth64_slot_envelope_max_tail_bits == 8
+            && halfgcd_second_col_fixed_depth64_slot_envelope_full_mean
+                < GOOGLE_LOW_QUBIT_TOFFOLI
+            && halfgcd_second_col_fixed_depth64_slot_envelope_full_p99
+                < GOOGLE_LOW_QUBIT_TOFFOLI
+            && halfgcd_second_col_fixed_depth64_slot_envelope_static_app_mean
+                < GOOGLE_LOW_QUBIT_TOFFOLI
+            && halfgcd_second_col_fixed_depth64_slot_envelope_static_app_p99
+                < GOOGLE_LOW_QUBIT_TOFFOLI,
+        "half-GCD public slot envelope no longer gives a SOTA-shaped extractor/application ledger"
     );
     assert!(
         halfgcd_second_col_static_window_mbu_max_coeff_bits_n14 >= 14
