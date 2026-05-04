@@ -3394,6 +3394,66 @@ mod tests {
         (degree, density, max_alignment)
     }
 
+    fn half_gcd_second_column_static_window_parity_anf_stats(
+        n: usize,
+        p: u16,
+        window: usize,
+        phase_mask: usize,
+    ) -> (usize, usize, usize, usize) {
+        let size = 1usize << n;
+        let depth = (n / 4).max(1);
+        let pair_mask = (1usize << (2 * window)) - 1;
+        let digit_mask = (1usize << window) - 1;
+        let mut anf = vec![0u8; size];
+        let mut max_coeff_bits = 0usize;
+        let mut max_pair = 0usize;
+        for x in 1..p {
+            let mut u = p as i128;
+            let mut v = x as i128;
+            let mut b = 0i128;
+            let mut d = 1i128;
+            let mut prefix_steps = 0usize;
+            while prefix_steps < depth && v != 0 {
+                let q = u / v;
+                let rem = u - q * v;
+                (b, d) = (d, b - q * d);
+                u = v;
+                v = rem;
+                prefix_steps += 1;
+            }
+            let b_abs = b.unsigned_abs() as usize;
+            let d_abs = d.unsigned_abs() as usize;
+            let coeff_bits = usize_bit_len_for_payload_test(b_abs)
+                .max(usize_bit_len_for_payload_test(d_abs));
+            max_coeff_bits = max_coeff_bits.max(coeff_bits);
+            let mut parity = 0u8;
+            let mut pos = 0usize;
+            while pos < coeff_bits.max(1) {
+                let pair = ((b_abs >> pos) & digit_mask)
+                    | (((d_abs >> pos) & digit_mask) << window);
+                max_pair = max_pair.max(pair);
+                parity ^= ((pair & phase_mask & pair_mask).count_ones() as u8) & 1;
+                pos += window;
+            }
+            anf[x as usize] = parity;
+        }
+        for bit in 0..n {
+            for idx in 0..size {
+                if (idx & (1usize << bit)) != 0 {
+                    anf[idx] ^= anf[idx ^ (1usize << bit)];
+                }
+            }
+        }
+        let density = anf.iter().filter(|&&v| v != 0).count();
+        let degree = anf
+            .iter()
+            .enumerate()
+            .filter_map(|(i, &v)| if v != 0 { Some(i.count_ones() as usize) } else { None })
+            .max()
+            .unwrap_or(0);
+        (degree, density, max_coeff_bits, max_pair)
+    }
+
     fn half_gcd_second_column_prefix_reversibility_stats(
         n: usize,
         p: u16,
@@ -4053,6 +4113,41 @@ mod tests {
             assert!(max_alignment + 1 >= n / 2, "toy alignment controls stopped exercising high layers");
             assert!(degree + 2 >= n, "alignment-control parity unexpectedly low degree");
             assert!(density > table / 4, "alignment-control parity unexpectedly sparse");
+        }
+    }
+
+    #[test]
+    fn half_gcd_second_column_static_window_selectors_are_not_generic_mbu_clean() {
+        // The table-only static-window application ledger is only meaningful if
+        // the coefficient-window selector can be made available without paying
+        // the bit-product selector floor.  A generic X-measurement cleanup of
+        // the second-column window bits would need phase parities of those
+        // windows.  Representative fixed-depth toy parities are already dense,
+        // so table-only selection still needs a structural selector circuit.
+        let cases = [
+            (8usize, 251u16, 2usize, 0b1011usize),
+            (10usize, 1021u16, 2usize, 0b1001usize),
+            (12usize, 4093u16, 3usize, 0b10_1011usize),
+            (14usize, 16381u16, 3usize, 0b10_0101usize),
+        ];
+        for &(n, p, window, phase_mask) in &cases {
+            let (degree, density, max_coeff_bits, max_pair) =
+                half_gcd_second_column_static_window_parity_anf_stats(
+                    n, p, window, phase_mask,
+                );
+            let table = 1usize << n;
+            eprintln!(
+                "half-GCD second-column static-window parity ANF: n={n}, window={window}, mask={phase_mask:#b}, degree={degree}, density={density}/{table}, max_coeff_bits={max_coeff_bits}, max_pair={max_pair}"
+            );
+            if n == 14 {
+                println!("METRIC halfgcd_second_col_static_window_mbu_degree_n14={degree}");
+                println!("METRIC halfgcd_second_col_static_window_mbu_density_n14={density}");
+                println!("METRIC halfgcd_second_col_static_window_mbu_max_coeff_bits_n14={max_coeff_bits}");
+                println!("METRIC halfgcd_second_col_static_window_mbu_max_pair_n14={max_pair}");
+            }
+            assert!(max_coeff_bits + 2 >= n / 2, "toy second-column coefficients stopped reaching wide windows");
+            assert!(degree + 2 >= n, "static-window coefficient parity unexpectedly low degree");
+            assert!(density > table / 4, "static-window coefficient parity unexpectedly sparse");
         }
     }
 

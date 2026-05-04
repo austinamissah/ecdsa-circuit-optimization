@@ -169,7 +169,7 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
             name: "halfgcd_second_column_fixed_depth64_static_window_floor",
             scratch_bits: 515,
             charged_toffoli: Some(2_749_506),
-            blocker: "joint static-window scan improves to w6 average 2749506 (+49506); table-only w4 would be 2559198, but current bit-product selector floor needs a 24753 one-way cut before carry, reduction, sign selection, and cleanup overhead",
+            blocker: "joint static-window scan improves to w6 average 2749506 (+49506); table-only w4 would be 2559198, but current bit-product selector floor needs a 24753 one-way cut and generic window-measurement cleanup is dense at n14 before carry, reduction, sign selection, and cleanup overhead",
         },
         Candidate {
             name: "folded_kaliski_one_pair_plus_required_sidecar",
@@ -734,6 +734,10 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     let halfgcd_second_col_alignment_mbu_degree_n14 = 14usize;
     let halfgcd_second_col_alignment_mbu_density_n14 = 8_142usize;
     let halfgcd_second_col_alignment_mbu_max_alignment_n14 = 13usize;
+    let halfgcd_second_col_static_window_mbu_degree_n14 = 13usize;
+    let halfgcd_second_col_static_window_mbu_density_n14 = 8_194usize;
+    let halfgcd_second_col_static_window_mbu_max_coeff_bits_n14 = 14usize;
+    let halfgcd_second_col_static_window_mbu_max_pair_n14 = 63usize;
 
     eprintln!("\nScratch-600 architecture frontier:");
     for c in candidates {
@@ -1207,6 +1211,10 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     println!("METRIC scratch600_halfgcd_second_col_alignment_mbu_degree_n14={halfgcd_second_col_alignment_mbu_degree_n14}");
     println!("METRIC scratch600_halfgcd_second_col_alignment_mbu_density_n14={halfgcd_second_col_alignment_mbu_density_n14}");
     println!("METRIC scratch600_halfgcd_second_col_alignment_mbu_max_alignment_n14={halfgcd_second_col_alignment_mbu_max_alignment_n14}");
+    println!("METRIC scratch600_halfgcd_second_col_static_window_mbu_degree_n14={halfgcd_second_col_static_window_mbu_degree_n14}");
+    println!("METRIC scratch600_halfgcd_second_col_static_window_mbu_density_n14={halfgcd_second_col_static_window_mbu_density_n14}");
+    println!("METRIC scratch600_halfgcd_second_col_static_window_mbu_max_coeff_bits_n14={halfgcd_second_col_static_window_mbu_max_coeff_bits_n14}");
+    println!("METRIC scratch600_halfgcd_second_col_static_window_mbu_max_pair_n14={halfgcd_second_col_static_window_mbu_max_pair_n14}");
 
     assert!(best_state <= STRICT_SCRATCH, "at least some state shapes fit");
     assert!(streamed_gap_to_google > 0, "no fully charged <=600-scratch row should be counted as solved yet");
@@ -1682,5 +1690,12 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
             && halfgcd_second_col_alignment_mbu_degree_n14 >= 14
             && halfgcd_second_col_alignment_mbu_density_n14 > (1usize << 14) / 4,
         "half-GCD dynamic barrel/classical-control frontier changed; revisit measurement-clean alignment priority"
+    );
+    assert!(
+        halfgcd_second_col_static_window_mbu_max_coeff_bits_n14 >= 14
+            && halfgcd_second_col_static_window_mbu_max_pair_n14 == 63
+            && halfgcd_second_col_static_window_mbu_degree_n14 + 2 >= 14
+            && halfgcd_second_col_static_window_mbu_density_n14 > (1usize << 14) / 4,
+        "half-GCD static-window selector bits may be generic-MBU clean; revisit table-only route"
     );
 }
