@@ -187,7 +187,7 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
             name: "direct_centered_restoring_final_low_branch_selective_prefix_flatten_floor",
             scratch_bits: 663,
             charged_toffoli: None,
-            blocker: "p99-only selective length-flattening has 394 sampled max prefix bits and would need 676 scratch; trimming 9 balanced steps gives a 381-bit sampled max, fits 663 scratch, and projects 2661534 with 38466 margin; support-2..18 generated balanced block2 selected-add/sub roundtrip family is phase-clean across 289 pairs with max 804 CCX, and peak-fit mixed schedule codebooks decode 856854 sampled symbols with no collisions or mismatches; disjoint 8192 secp holdout already has 182 missing symbols, 170 missing traces, 7 over-budget rows, 391 seen bits, and 10-bit raw-escape charging raises this to 13 over-budget rows / 432 bits; a parity scaling probe at 65536 training / 32768 holdout still leaves 105 missing symbols and only about 631 Toffoli margin; toy exact-domain train/exhaust probes miss symbols in all 4 cases, support-only toys find modest but real misses (n16: 26 symbols over 11 steps, exact contiguous span 16), and charged fallbacks do not rescue it: a raw escape fallback still reaches 3092 over-budget traces / 38 bits, guard4 intervals cover 0/4 toy domains, a full 0..n per-step envelope covers 4/4 but fits 0/4 and reaches 4268 over-budget traces / 37 bits vs n16 budget 24, exact denominator-width context fits 0/4 even when the width is free (n16 free 35/38 bits vs budget 24), and exact previous-alignment context also fits 0/4 (n16 prev 36/39 bits, prev+width-free 33/37); promotion now needs a non-sampled support proof or a different decoder, not the simple fallback/context family",
+            blocker: "p99-only selective length-flattening has 394 sampled max prefix bits and would need 676 scratch; trimming 9 balanced steps gives a 381-bit sampled max, fits 663 scratch, and projects 2661534 with 38466 margin; support-2..18 generated balanced block2 selected-add/sub roundtrip family is phase-clean across 289 pairs with max 804 CCX, and peak-fit mixed schedule codebooks decode 856854 sampled symbols with no collisions or mismatches; disjoint 8192 secp holdout already has 182 missing symbols, 170 missing traces, 7 over-budget rows, 391 seen bits, and 10-bit raw-escape charging raises this to 13 over-budget rows / 432 bits; a parity scaling probe at 65536 training / 32768 holdout still leaves 105 missing symbols and only about 631 Toffoli margin; toy exact-domain train/exhaust probes miss symbols in all 4 cases, support-only toys find modest but real misses (n16: 26 symbols over 11 steps, exact contiguous span 16), and charged fallbacks do not rescue it: a raw escape fallback still reaches 3092 over-budget traces / 38 bits, guard4 intervals cover 0/4 toy domains, a full 0..n per-step envelope covers 4/4 but fits 0/4 and reaches 4268 over-budget traces / 37 bits vs n16 budget 24, exact denominator-width context fits 0/4 even when the width is free (n16 free 35/38 bits vs budget 24), exact previous-alignment context also fits 0/4 (n16 prev 36/39 bits, prev+width-free 33/37), and two-sided previous+next+width context fits only 1/4 free and 0/4 charged (n16 free 29/32, charged 129/152); promotion now needs a non-sampled support proof or a different decoder, not the simple fallback/context/lookahead family",
         },
         Candidate {
             name: "direct_centered_restoring_final_mixed4to8_joint_binary_floor",
@@ -1146,6 +1146,38 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
         84usize;
     let direct_restoring_final_low_branch_prev_context_n16_prev_width_charged_max =
         97usize;
+    let direct_restoring_final_low_branch_two_sided_next_context_fit_cases = 0usize;
+    let direct_restoring_final_low_branch_two_sided_prev_next_free_fit_cases = 0usize;
+    let direct_restoring_final_low_branch_two_sided_prev_next_width_free_fit_cases =
+        1usize;
+    let direct_restoring_final_low_branch_two_sided_prev_next_width_charged_fit_cases =
+        0usize;
+    let direct_restoring_final_low_branch_two_sided_next_context_largest_over_budget =
+        46_273usize;
+    let direct_restoring_final_low_branch_two_sided_prev_next_free_largest_over_budget =
+        43_805usize;
+    let direct_restoring_final_low_branch_two_sided_prev_next_width_free_largest_over_budget =
+        7_249usize;
+    let direct_restoring_final_low_branch_two_sided_prev_next_width_charged_largest_over_budget =
+        65_397usize;
+    let direct_restoring_final_low_branch_two_sided_next_context_largest_support =
+        15usize;
+    let direct_restoring_final_low_branch_two_sided_prev_next_largest_support = 14usize;
+    let direct_restoring_final_low_branch_two_sided_prev_next_width_largest_support =
+        14usize;
+    let direct_restoring_final_low_branch_two_sided_n16_budget_bits = 24usize;
+    let direct_restoring_final_low_branch_two_sided_n16_next_p99 = 36usize;
+    let direct_restoring_final_low_branch_two_sided_n16_next_max = 38usize;
+    let direct_restoring_final_low_branch_two_sided_n16_prev_next_free_p99 = 34usize;
+    let direct_restoring_final_low_branch_two_sided_n16_prev_next_free_max = 36usize;
+    let direct_restoring_final_low_branch_two_sided_n16_prev_next_width_free_p99 =
+        29usize;
+    let direct_restoring_final_low_branch_two_sided_n16_prev_next_width_free_max =
+        32usize;
+    let direct_restoring_final_low_branch_two_sided_n16_prev_next_width_charged_p99 =
+        129usize;
+    let direct_restoring_final_low_branch_two_sided_n16_prev_next_width_charged_max =
+        152usize;
     let direct_restoring_final_peakfit_holdout_missing_symbols = 182usize;
     let direct_restoring_final_peakfit_holdout_missing_traces = 170usize;
     let direct_restoring_final_peakfit_holdout_over_budget_rows = 7usize;
@@ -2605,6 +2637,26 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     println!("METRIC scratch600_direct_restoring_final_low_branch_prev_context_n16_prev_width_free_max={direct_restoring_final_low_branch_prev_context_n16_prev_width_free_max}");
     println!("METRIC scratch600_direct_restoring_final_low_branch_prev_context_n16_prev_width_charged_p99={direct_restoring_final_low_branch_prev_context_n16_prev_width_charged_p99}");
     println!("METRIC scratch600_direct_restoring_final_low_branch_prev_context_n16_prev_width_charged_max={direct_restoring_final_low_branch_prev_context_n16_prev_width_charged_max}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_two_sided_next_context_fit_cases={direct_restoring_final_low_branch_two_sided_next_context_fit_cases}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_two_sided_prev_next_free_fit_cases={direct_restoring_final_low_branch_two_sided_prev_next_free_fit_cases}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_two_sided_prev_next_width_free_fit_cases={direct_restoring_final_low_branch_two_sided_prev_next_width_free_fit_cases}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_two_sided_prev_next_width_charged_fit_cases={direct_restoring_final_low_branch_two_sided_prev_next_width_charged_fit_cases}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_two_sided_next_context_largest_over_budget={direct_restoring_final_low_branch_two_sided_next_context_largest_over_budget}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_two_sided_prev_next_free_largest_over_budget={direct_restoring_final_low_branch_two_sided_prev_next_free_largest_over_budget}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_two_sided_prev_next_width_free_largest_over_budget={direct_restoring_final_low_branch_two_sided_prev_next_width_free_largest_over_budget}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_two_sided_prev_next_width_charged_largest_over_budget={direct_restoring_final_low_branch_two_sided_prev_next_width_charged_largest_over_budget}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_two_sided_next_context_largest_support={direct_restoring_final_low_branch_two_sided_next_context_largest_support}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_two_sided_prev_next_largest_support={direct_restoring_final_low_branch_two_sided_prev_next_largest_support}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_two_sided_prev_next_width_largest_support={direct_restoring_final_low_branch_two_sided_prev_next_width_largest_support}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_two_sided_n16_budget_bits={direct_restoring_final_low_branch_two_sided_n16_budget_bits}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_two_sided_n16_next_p99={direct_restoring_final_low_branch_two_sided_n16_next_p99}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_two_sided_n16_next_max={direct_restoring_final_low_branch_two_sided_n16_next_max}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_two_sided_n16_prev_next_free_p99={direct_restoring_final_low_branch_two_sided_n16_prev_next_free_p99}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_two_sided_n16_prev_next_free_max={direct_restoring_final_low_branch_two_sided_n16_prev_next_free_max}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_two_sided_n16_prev_next_width_free_p99={direct_restoring_final_low_branch_two_sided_n16_prev_next_width_free_p99}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_two_sided_n16_prev_next_width_free_max={direct_restoring_final_low_branch_two_sided_n16_prev_next_width_free_max}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_two_sided_n16_prev_next_width_charged_p99={direct_restoring_final_low_branch_two_sided_n16_prev_next_width_charged_p99}");
+    println!("METRIC scratch600_direct_restoring_final_low_branch_two_sided_n16_prev_next_width_charged_max={direct_restoring_final_low_branch_two_sided_n16_prev_next_width_charged_max}");
     println!("METRIC scratch600_direct_restoring_final_peakfit_holdout_missing_symbols={direct_restoring_final_peakfit_holdout_missing_symbols}");
     println!("METRIC scratch600_direct_restoring_final_peakfit_holdout_missing_traces={direct_restoring_final_peakfit_holdout_missing_traces}");
     println!("METRIC scratch600_direct_restoring_final_peakfit_holdout_over_budget_rows={direct_restoring_final_peakfit_holdout_over_budget_rows}");
@@ -4019,6 +4071,40 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
                 > direct_restoring_final_low_branch_prev_context_n16_prev_width_free_p99
             && direct_restoring_final_low_branch_prev_context_n16_prev_width_charged_max
                 > direct_restoring_final_low_branch_prev_context_n16_prev_width_free_max
+            && direct_restoring_final_low_branch_two_sided_next_context_fit_cases == 0
+            && direct_restoring_final_low_branch_two_sided_prev_next_free_fit_cases == 0
+            && direct_restoring_final_low_branch_two_sided_prev_next_width_free_fit_cases
+                == 1
+            && direct_restoring_final_low_branch_two_sided_prev_next_width_charged_fit_cases
+                == 0
+            && direct_restoring_final_low_branch_two_sided_next_context_largest_over_budget
+                > 40_000
+            && direct_restoring_final_low_branch_two_sided_prev_next_free_largest_over_budget
+                > 40_000
+            && direct_restoring_final_low_branch_two_sided_prev_next_width_free_largest_over_budget
+                > 7_000
+            && direct_restoring_final_low_branch_two_sided_prev_next_width_charged_largest_over_budget
+                > 60_000
+            && direct_restoring_final_low_branch_two_sided_next_context_largest_support == 15
+            && direct_restoring_final_low_branch_two_sided_prev_next_largest_support == 14
+            && direct_restoring_final_low_branch_two_sided_prev_next_width_largest_support
+                == 14
+            && direct_restoring_final_low_branch_two_sided_n16_next_p99
+                > direct_restoring_final_low_branch_two_sided_n16_budget_bits
+            && direct_restoring_final_low_branch_two_sided_n16_next_max
+                > direct_restoring_final_low_branch_two_sided_n16_budget_bits
+            && direct_restoring_final_low_branch_two_sided_n16_prev_next_free_p99
+                > direct_restoring_final_low_branch_two_sided_n16_budget_bits
+            && direct_restoring_final_low_branch_two_sided_n16_prev_next_free_max
+                > direct_restoring_final_low_branch_two_sided_n16_budget_bits
+            && direct_restoring_final_low_branch_two_sided_n16_prev_next_width_free_p99
+                > direct_restoring_final_low_branch_two_sided_n16_budget_bits
+            && direct_restoring_final_low_branch_two_sided_n16_prev_next_width_free_max
+                > direct_restoring_final_low_branch_two_sided_n16_budget_bits
+            && direct_restoring_final_low_branch_two_sided_n16_prev_next_width_charged_p99
+                > direct_restoring_final_low_branch_two_sided_n16_prev_next_width_free_p99
+            && direct_restoring_final_low_branch_two_sided_n16_prev_next_width_charged_max
+                > direct_restoring_final_low_branch_two_sided_n16_prev_next_width_free_max
             && direct_restoring_final_peakfit_holdout_missing_symbols == 182
             && direct_restoring_final_peakfit_holdout_missing_traces == 170
             && direct_restoring_final_peakfit_holdout_over_budget_rows == 7

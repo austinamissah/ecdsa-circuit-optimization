@@ -32305,6 +32305,272 @@ mod tests {
     }
 
     #[test]
+    fn direct_centered_low_branch_two_sided_context_needs_free_lookahead() {
+        // A block or bidirectional decoder might try to condition each symbol
+        // on adjacent low-branch alignments instead of only the already-decoded
+        // previous alignment.  Grant the next alignment for free, then charge
+        // that lookahead as payload.  If the charged rows fit the scaled toy
+        // budget, this route would deserve a real block-decoder construction.
+        use std::collections::BTreeMap;
+
+        let bit_len_u128 = |x: u128| -> usize {
+            if x == 0 { 0 } else { 128 - x.leading_zeros() as usize }
+        };
+        let trace_width_alignment = |p: u16, x: u16| -> Vec<(usize, usize)> {
+            let mut u = p as i128;
+            let mut v = x as i128;
+            let mut coeff_u = 0i128;
+            let mut coeff_v = 1i128;
+            let mut out = Vec::new();
+            while v != 0 {
+                let abs_u = u.unsigned_abs();
+                let abs_v = v.unsigned_abs();
+                let adjusted = abs_u + (abs_v >> 1usize);
+                let q_abs = (adjusted / abs_v) as i128;
+                let q_signed = if (u < 0) ^ (v < 0) { -q_abs } else { q_abs };
+                let next_v = u - q_signed * v;
+                let next_coeff_v = coeff_u - q_signed * coeff_v;
+
+                let denom = coeff_v.unsigned_abs();
+                assert!(denom > 0, "toy two-sided-context denominator vanished");
+                let low_numer = if coeff_u == 0 {
+                    next_coeff_v.unsigned_abs()
+                } else {
+                    next_coeff_v
+                        .unsigned_abs()
+                        .checked_sub(1)
+                        .expect("toy two-sided-context numerator underflow")
+                };
+                let width = bit_len_u128(denom);
+                let alignment = bit_len_u128(low_numer).saturating_sub(width);
+                out.push((width, alignment));
+
+                u = v;
+                v = next_v;
+                coeff_u = coeff_v;
+                coeff_v = next_coeff_v;
+            }
+            out
+        };
+        let p99_usize = |rows: &mut Vec<usize>| -> usize {
+            rows.sort_unstable();
+            rows[rows.len() * 99 / 100]
+        };
+        let max_usize = |rows: &[usize]| -> usize {
+            rows.iter().copied().max().unwrap_or(0)
+        };
+        let ceil_log2 = |x: usize| -> usize {
+            if x <= 1 { 0 } else { usize_bit_len_for_payload_test(x - 1) }
+        };
+
+        let cases = [
+            (10usize, 1021u16),
+            (12usize, 4093u16),
+            (14usize, 16381u16),
+            (16usize, 65521u16),
+        ];
+        let mut next_fit_cases = 0usize;
+        let mut prev_next_free_fit_cases = 0usize;
+        let mut prev_next_width_free_fit_cases = 0usize;
+        let mut prev_next_width_charged_fit_cases = 0usize;
+        let mut largest_next_over_budget = 0usize;
+        let mut largest_prev_next_free_over_budget = 0usize;
+        let mut largest_prev_next_width_free_over_budget = 0usize;
+        let mut largest_prev_next_width_charged_over_budget = 0usize;
+        let mut largest_next_support = 0usize;
+        let mut largest_prev_next_support = 0usize;
+        let mut largest_prev_next_width_support = 0usize;
+        for &(n, p) in &cases {
+            let traces = (1..p)
+                .map(|x| trace_width_alignment(p, x))
+                .collect::<Vec<_>>();
+            let max_steps = traces.iter().map(Vec::len).max().unwrap_or(0);
+            let sentinel_prev = n + 1;
+            let sentinel_next = n + 2;
+            let mut by_step_next =
+                vec![BTreeMap::<usize, BTreeMap<usize, usize>>::new(); max_steps];
+            let mut by_step_prev_next =
+                vec![BTreeMap::<(usize, usize), BTreeMap<usize, usize>>::new(); max_steps];
+            let mut by_step_prev_next_width =
+                vec![BTreeMap::<(usize, usize, usize), BTreeMap<usize, usize>>::new(); max_steps];
+            for trace in &traces {
+                for (step, &(width, alignment)) in trace.iter().enumerate() {
+                    let prev = if step == 0 {
+                        sentinel_prev
+                    } else {
+                        trace[step - 1].1
+                    };
+                    let next = trace
+                        .get(step + 1)
+                        .map(|&(_, next_alignment)| next_alignment)
+                        .unwrap_or(sentinel_next);
+                    *by_step_next[step]
+                        .entry(next)
+                        .or_default()
+                        .entry(alignment)
+                        .or_insert(0) += 1;
+                    *by_step_prev_next[step]
+                        .entry((prev, next))
+                        .or_default()
+                        .entry(alignment)
+                        .or_insert(0) += 1;
+                    *by_step_prev_next_width[step]
+                        .entry((prev, next, width))
+                        .or_default()
+                        .entry(alignment)
+                        .or_insert(0) += 1;
+                }
+            }
+
+            let width_bits = ceil_log2(n + 1);
+            let lookahead_bits = ceil_log2(n + 3);
+            let mut next_rows = Vec::with_capacity(traces.len());
+            let mut prev_next_free_rows = Vec::with_capacity(traces.len());
+            let mut prev_next_width_free_rows = Vec::with_capacity(traces.len());
+            let mut prev_next_width_charged_rows = Vec::with_capacity(traces.len());
+            let mut max_next_support = 0usize;
+            let mut max_prev_next_support = 0usize;
+            let mut max_prev_next_width_support = 0usize;
+            for contexts in &by_step_next {
+                for support in contexts.values() {
+                    max_next_support = max_next_support.max(support.len());
+                }
+            }
+            for contexts in &by_step_prev_next {
+                for support in contexts.values() {
+                    max_prev_next_support = max_prev_next_support.max(support.len());
+                }
+            }
+            for contexts in &by_step_prev_next_width {
+                for support in contexts.values() {
+                    max_prev_next_width_support = max_prev_next_width_support.max(support.len());
+                }
+            }
+            for trace in &traces {
+                let mut next_bits = 0usize;
+                let mut prev_next_free_bits = 0usize;
+                let mut prev_next_width_free_bits = 0usize;
+                let mut prev_next_width_charged_bits = 0usize;
+                for (step, &(width, _alignment)) in trace.iter().enumerate() {
+                    let prev = if step == 0 {
+                        sentinel_prev
+                    } else {
+                        trace[step - 1].1
+                    };
+                    let next = trace
+                        .get(step + 1)
+                        .map(|&(_, next_alignment)| next_alignment)
+                        .unwrap_or(sentinel_next);
+                    let next_support = by_step_next[step]
+                        .get(&next)
+                        .expect("next context missing seen trace");
+                    let prev_next_support = by_step_prev_next[step]
+                        .get(&(prev, next))
+                        .expect("prev-next context missing seen trace");
+                    let prev_next_width_support = by_step_prev_next_width[step]
+                        .get(&(prev, next, width))
+                        .expect("prev-next-width context missing seen trace");
+                    next_bits += ceil_log2(next_support.len());
+                    prev_next_free_bits += ceil_log2(prev_next_support.len());
+                    prev_next_width_free_bits += ceil_log2(prev_next_width_support.len());
+                    prev_next_width_charged_bits +=
+                        lookahead_bits + width_bits + ceil_log2(prev_next_width_support.len());
+                }
+                next_rows.push(next_bits);
+                prev_next_free_rows.push(prev_next_free_bits);
+                prev_next_width_free_rows.push(prev_next_width_free_bits);
+                prev_next_width_charged_rows.push(prev_next_width_charged_bits);
+            }
+
+            let budget = (381usize * n + 255usize) / 256usize;
+            let next_p99 = p99_usize(&mut next_rows.clone());
+            let next_max = max_usize(&next_rows);
+            let prev_next_free_p99 = p99_usize(&mut prev_next_free_rows.clone());
+            let prev_next_free_max = max_usize(&prev_next_free_rows);
+            let prev_next_width_free_p99 = p99_usize(&mut prev_next_width_free_rows.clone());
+            let prev_next_width_free_max = max_usize(&prev_next_width_free_rows);
+            let prev_next_width_charged_p99 =
+                p99_usize(&mut prev_next_width_charged_rows.clone());
+            let prev_next_width_charged_max = max_usize(&prev_next_width_charged_rows);
+            let next_over_budget = next_rows.iter().filter(|&&bits| bits > budget).count();
+            let prev_next_free_over_budget = prev_next_free_rows
+                .iter()
+                .filter(|&&bits| bits > budget)
+                .count();
+            let prev_next_width_free_over_budget = prev_next_width_free_rows
+                .iter()
+                .filter(|&&bits| bits > budget)
+                .count();
+            let prev_next_width_charged_over_budget = prev_next_width_charged_rows
+                .iter()
+                .filter(|&&bits| bits > budget)
+                .count();
+            next_fit_cases += (next_over_budget == 0 && next_max <= budget) as usize;
+            prev_next_free_fit_cases +=
+                (prev_next_free_over_budget == 0 && prev_next_free_max <= budget) as usize;
+            prev_next_width_free_fit_cases +=
+                (prev_next_width_free_over_budget == 0 && prev_next_width_free_max <= budget)
+                    as usize;
+            prev_next_width_charged_fit_cases +=
+                (prev_next_width_charged_over_budget == 0
+                    && prev_next_width_charged_max <= budget) as usize;
+            largest_next_over_budget = largest_next_over_budget.max(next_over_budget);
+            largest_prev_next_free_over_budget =
+                largest_prev_next_free_over_budget.max(prev_next_free_over_budget);
+            largest_prev_next_width_free_over_budget =
+                largest_prev_next_width_free_over_budget.max(prev_next_width_free_over_budget);
+            largest_prev_next_width_charged_over_budget =
+                largest_prev_next_width_charged_over_budget
+                    .max(prev_next_width_charged_over_budget);
+            largest_next_support = largest_next_support.max(max_next_support);
+            largest_prev_next_support = largest_prev_next_support.max(max_prev_next_support);
+            largest_prev_next_width_support =
+                largest_prev_next_width_support.max(max_prev_next_width_support);
+
+            println!("METRIC centered_direct_low_branch_two_sided_context_n{n}_budget_bits={budget}");
+            println!("METRIC centered_direct_low_branch_two_sided_context_n{n}_width_bits={width_bits}");
+            println!("METRIC centered_direct_low_branch_two_sided_context_n{n}_lookahead_bits={lookahead_bits}");
+            println!("METRIC centered_direct_low_branch_two_sided_context_n{n}_next_max_support={max_next_support}");
+            println!("METRIC centered_direct_low_branch_two_sided_context_n{n}_next_p99={next_p99}");
+            println!("METRIC centered_direct_low_branch_two_sided_context_n{n}_next_max={next_max}");
+            println!("METRIC centered_direct_low_branch_two_sided_context_n{n}_next_over_budget={next_over_budget}");
+            println!("METRIC centered_direct_low_branch_two_sided_context_n{n}_prev_next_max_support={max_prev_next_support}");
+            println!("METRIC centered_direct_low_branch_two_sided_context_n{n}_prev_next_free_p99={prev_next_free_p99}");
+            println!("METRIC centered_direct_low_branch_two_sided_context_n{n}_prev_next_free_max={prev_next_free_max}");
+            println!("METRIC centered_direct_low_branch_two_sided_context_n{n}_prev_next_free_over_budget={prev_next_free_over_budget}");
+            println!("METRIC centered_direct_low_branch_two_sided_context_n{n}_prev_next_width_max_support={max_prev_next_width_support}");
+            println!("METRIC centered_direct_low_branch_two_sided_context_n{n}_prev_next_width_free_p99={prev_next_width_free_p99}");
+            println!("METRIC centered_direct_low_branch_two_sided_context_n{n}_prev_next_width_free_max={prev_next_width_free_max}");
+            println!("METRIC centered_direct_low_branch_two_sided_context_n{n}_prev_next_width_free_over_budget={prev_next_width_free_over_budget}");
+            println!("METRIC centered_direct_low_branch_two_sided_context_n{n}_prev_next_width_charged_p99={prev_next_width_charged_p99}");
+            println!("METRIC centered_direct_low_branch_two_sided_context_n{n}_prev_next_width_charged_max={prev_next_width_charged_max}");
+            println!("METRIC centered_direct_low_branch_two_sided_context_n{n}_prev_next_width_charged_over_budget={prev_next_width_charged_over_budget}");
+            eprintln!(
+                "Low-branch two-sided-context toy n={n}: budget={budget}, next={next_p99}/{next_max} over={next_over_budget}, prev+next free={prev_next_free_p99}/{prev_next_free_max} over={prev_next_free_over_budget}, prev+next+width free={prev_next_width_free_p99}/{prev_next_width_free_max} over={prev_next_width_free_over_budget}, charged={prev_next_width_charged_p99}/{prev_next_width_charged_max} over={prev_next_width_charged_over_budget}"
+            );
+        }
+        println!("METRIC centered_direct_low_branch_two_sided_next_context_fit_cases={next_fit_cases}");
+        println!("METRIC centered_direct_low_branch_two_sided_prev_next_free_fit_cases={prev_next_free_fit_cases}");
+        println!("METRIC centered_direct_low_branch_two_sided_prev_next_width_free_fit_cases={prev_next_width_free_fit_cases}");
+        println!("METRIC centered_direct_low_branch_two_sided_prev_next_width_charged_fit_cases={prev_next_width_charged_fit_cases}");
+        println!("METRIC centered_direct_low_branch_two_sided_next_context_largest_over_budget={largest_next_over_budget}");
+        println!("METRIC centered_direct_low_branch_two_sided_prev_next_free_largest_over_budget={largest_prev_next_free_over_budget}");
+        println!("METRIC centered_direct_low_branch_two_sided_prev_next_width_free_largest_over_budget={largest_prev_next_width_free_over_budget}");
+        println!("METRIC centered_direct_low_branch_two_sided_prev_next_width_charged_largest_over_budget={largest_prev_next_width_charged_over_budget}");
+        println!("METRIC centered_direct_low_branch_two_sided_next_context_largest_support={largest_next_support}");
+        println!("METRIC centered_direct_low_branch_two_sided_prev_next_largest_support={largest_prev_next_support}");
+        println!("METRIC centered_direct_low_branch_two_sided_prev_next_width_largest_support={largest_prev_next_width_support}");
+        assert_eq!(
+            prev_next_width_charged_fit_cases, 0,
+            "charged two-sided low-branch context now fits every toy budget; build the block decoder"
+        );
+        assert!(
+            largest_prev_next_width_charged_over_budget > 0,
+            "charged two-sided context unexpectedly stayed under budget"
+        );
+    }
+
+    #[test]
     fn direct_centered_restoring_final_block_joint_rank_bits_are_dense() {
         // The mixed 4..8 block-joint binary-depth floor only helps if the block
         // pattern rank can be decoded phase-cleanly.  Treat the exact toy
