@@ -144,8 +144,8 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
         Candidate {
             name: "direct_centered_signnorm_logical_coeff_signs",
             scratch_bits: 657,
-            charged_toffoli: Some(2_581_169),
-            blocker: "det-low2 xor coeff_v_sign removes the normalization-sign sidecar in exact toys, and the local predicate toy is phase-clean at 14 CCX. Charging compute/uncompute of that predicate during reverse cleanup, conservative exact-rem logical-sign accounting still clears the average harness metric at 2581169 mean / 2580122 first64 while p99 remains 2753624, so this is an average-shaped structural opening. It is not production-wired: deleting physical rem cneg would only clear p99 by 2720, the tested signed-remainder recurrence jumps to 3136080 from 180 p99 steps, and the signed-domain non-restoring body needs a relative-negative zero predicate per digit (toy 416 CCX, scaled predicate 1025 CCX). Promotion needs the full direct-centered extractor, normalized-rem cneg, coefficient-sign recovery, and reverse cleanup wired together",
+            charged_toffoli: None,
+            blocker: "det-low2 xor coeff_v_sign removes the normalization-sign sidecar in exact toys, and the local predicate toy is phase-clean at 14 CCX. Exact-rem logical-sign accounting clears the average harness metric before cleanup at 2575314 mean / 2574268 first64, and the simple recovery-cost estimate would be 2581169 mean / 2580122 first64 while p99 remains 2753624. That estimate is not production-charged: the naive compute/use/Bennett-uncompute recovery path is dirty on exact p13 post-step rows (5/16 dirty, phase clean), because the remainder cneg mutates a predicate input. Deleting physical rem cneg would only clear p99 by 2720, the tested signed-remainder recurrence jumps to 3136080 from 180 p99 steps, and the signed-domain non-restoring body needs a relative-negative zero predicate per digit (toy 416 CCX, scaled predicate 1025 CCX). Promotion needs a self-cleaning recovered-sign latch or cleanup, plus the full direct-centered extractor, normalized-rem cneg, coefficient-sign recovery, and reverse cleanup wired together",
         },
         Candidate {
             name: "direct_centered_restoring_final_stored_alignment",
@@ -442,6 +442,12 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     let direct_signnorm_logsign_exact_once_recovered_gap =
         direct_signnorm_logsign_exact_once_recovered_p99 as isize
             - GOOGLE_LOW_QUBIT_TOFFOLI as isize;
+    let direct_signnorm_logsign_recovered_naive_uncompute_ccx = 36usize;
+    let direct_signnorm_logsign_recovered_naive_uncompute_peak_q = 29usize;
+    let direct_signnorm_logsign_recovered_naive_uncompute_valid_states = 16usize;
+    let direct_signnorm_logsign_recovered_naive_uncompute_norm_cases = 7usize;
+    let direct_signnorm_logsign_recovered_naive_uncompute_dirty_cases = 5usize;
+    let direct_signnorm_logsign_recovered_naive_uncompute_phase_dirty_cases = 0usize;
     let direct_signnorm_mbu_degree_n14 = 13usize;
     let direct_signnorm_mbu_density_n14 = 8_208usize;
     let direct_signnorm_mbu_max_count_n14 = 8usize;
@@ -1934,6 +1940,12 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     println!("METRIC scratch600_direct_signnorm_logsign_exact_once_recovered_mean={direct_signnorm_logsign_exact_once_recovered_mean:.3}");
     println!("METRIC scratch600_direct_signnorm_logsign_exact_once_recovered_first64={direct_signnorm_logsign_exact_once_recovered_first64:.3}");
     println!("METRIC scratch600_direct_signnorm_logsign_exact_once_recovered_p99={direct_signnorm_logsign_exact_once_recovered_p99}");
+    println!("METRIC scratch600_direct_signnorm_logsign_recovered_naive_uncompute_ccx={direct_signnorm_logsign_recovered_naive_uncompute_ccx}");
+    println!("METRIC scratch600_direct_signnorm_logsign_recovered_naive_uncompute_peak_q={direct_signnorm_logsign_recovered_naive_uncompute_peak_q}");
+    println!("METRIC scratch600_direct_signnorm_logsign_recovered_naive_uncompute_valid_states={direct_signnorm_logsign_recovered_naive_uncompute_valid_states}");
+    println!("METRIC scratch600_direct_signnorm_logsign_recovered_naive_uncompute_norm_cases={direct_signnorm_logsign_recovered_naive_uncompute_norm_cases}");
+    println!("METRIC scratch600_direct_signnorm_logsign_recovered_naive_uncompute_dirty_cases={direct_signnorm_logsign_recovered_naive_uncompute_dirty_cases}");
+    println!("METRIC scratch600_direct_signnorm_logsign_recovered_naive_uncompute_phase_dirty_cases={direct_signnorm_logsign_recovered_naive_uncompute_phase_dirty_cases}");
     println!("METRIC scratch600_direct_signnorm_logsign_exact_once_p99={direct_signnorm_logsign_exact_once_p99}");
     println!("METRIC scratch600_direct_signnorm_logsign_exact_split_p99={direct_signnorm_logsign_exact_split_p99}");
     println!("METRIC scratch600_direct_signnorm_logsign_no_rem_cneg_projection_p99={direct_signnorm_logsign_no_rem_cneg_projection_p99}");
@@ -3133,6 +3145,15 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
             && direct_signnorm_logsign_exact_once_recovered_first64_gap < 0.0
             && direct_signnorm_logsign_exact_once_recovered_gap > 0,
         "recovery-charged logical coefficient signs changed promotion status"
+    );
+    assert!(
+        direct_signnorm_logsign_recovered_naive_uncompute_ccx == 36
+            && direct_signnorm_logsign_recovered_naive_uncompute_peak_q == 29
+            && direct_signnorm_logsign_recovered_naive_uncompute_valid_states == 16
+            && direct_signnorm_logsign_recovered_naive_uncompute_norm_cases == 7
+            && direct_signnorm_logsign_recovered_naive_uncompute_dirty_cases == 5
+            && direct_signnorm_logsign_recovered_naive_uncompute_phase_dirty_cases == 0,
+        "naive recovered-sign cleanup stopped documenting the direct signnorm blocker"
     );
     assert!(
         direct_signnorm_logsign_direct_rem_toy_ccx == 148
