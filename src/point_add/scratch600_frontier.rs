@@ -82,6 +82,12 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
             blocker: "raw 560-bit pattern plus single A only fits 663 scratch if the delta parser is non-reversible; sampled reversible delta checkpoint needs 5 bits and 666 scratch, retained A history is p99 218 bits, and two exact clean pattern decoders miss by 1606 before compressed expansion",
         },
         Candidate {
+            name: "scaled_by_h_only_compressed_history_budget",
+            scratch_bits: 2_224,
+            charged_toffoli: None,
+            blocker: "h-only compressed-history model is sub-MToffoli and under 2800q on sampled modular arithmetic, but exact W=4 toys show next-h update payload saturates a full rank per window (n14 rank_p99=28 over 7 windows, max_next_h_choices=16), so it still needs charged high-ratio/rank history before integration",
+        },
+        Candidate {
             name: "streamed_mask_qoffset_replay_body_only",
             scratch_bits: 510,
             charged_toffoli: None,
@@ -316,6 +322,17 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     let scaled_by_raw_pattern_exact_two_decoder_gap =
         scaled_by_raw_pattern_exact_two_decoder_projection as isize
             - GOOGLE_LOW_QUBIT_TOFFOLI as isize;
+    let scaled_by_h_only_model_modular_windows = 35usize;
+    let scaled_by_h_only_model_modular_toffoli = 672_650usize;
+    let scaled_by_h_only_model_peak = 2_736usize;
+    let scaled_by_h_only_model_history_bits = 480usize;
+    let scaled_by_h_only_next_ratio_toy_n14_windows = 7usize;
+    let scaled_by_h_only_next_ratio_toy_n14_keys = 802usize;
+    let scaled_by_h_only_next_ratio_toy_n14_ambiguous_keys = 742usize;
+    let scaled_by_h_only_next_ratio_toy_n14_max_next_h_choices = 16usize;
+    let scaled_by_h_only_next_ratio_toy_n14_rank_p99 = 28usize;
+    let scaled_by_h_only_next_ratio_toy_n14_rank_max = 28usize;
+    let scaled_by_h_only_next_ratio_toy_n14_rank_mean_milli = 27_718usize;
     let by_consumed_high_update_mean_compute_ccx = 515_494usize;
     let by_consumed_high_update_compute_uncompute_ccx = 1_030_988usize;
     let by_consumed_high_q_oracle_total_ccx = 329_280usize;
@@ -1591,6 +1608,17 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     println!("METRIC scratch600_scaled_by_raw_pattern_exact_decoder_per_replay={scaled_by_raw_pattern_exact_decoder_per_replay}");
     println!("METRIC scratch600_scaled_by_raw_pattern_exact_two_decoder_projection={scaled_by_raw_pattern_exact_two_decoder_projection}");
     println!("METRIC scratch600_scaled_by_raw_pattern_exact_two_decoder_gap={scaled_by_raw_pattern_exact_two_decoder_gap}");
+    println!("METRIC scratch600_scaled_by_h_only_model_modular_windows={scaled_by_h_only_model_modular_windows}");
+    println!("METRIC scratch600_scaled_by_h_only_model_modular_toffoli={scaled_by_h_only_model_modular_toffoli}");
+    println!("METRIC scratch600_scaled_by_h_only_model_peak={scaled_by_h_only_model_peak}");
+    println!("METRIC scratch600_scaled_by_h_only_model_history_bits={scaled_by_h_only_model_history_bits}");
+    println!("METRIC scratch600_scaled_by_h_only_next_ratio_toy_n14_windows={scaled_by_h_only_next_ratio_toy_n14_windows}");
+    println!("METRIC scratch600_scaled_by_h_only_next_ratio_toy_n14_keys={scaled_by_h_only_next_ratio_toy_n14_keys}");
+    println!("METRIC scratch600_scaled_by_h_only_next_ratio_toy_n14_ambiguous_keys={scaled_by_h_only_next_ratio_toy_n14_ambiguous_keys}");
+    println!("METRIC scratch600_scaled_by_h_only_next_ratio_toy_n14_max_next_h_choices={scaled_by_h_only_next_ratio_toy_n14_max_next_h_choices}");
+    println!("METRIC scratch600_scaled_by_h_only_next_ratio_toy_n14_rank_p99={scaled_by_h_only_next_ratio_toy_n14_rank_p99}");
+    println!("METRIC scratch600_scaled_by_h_only_next_ratio_toy_n14_rank_max={scaled_by_h_only_next_ratio_toy_n14_rank_max}");
+    println!("METRIC scratch600_scaled_by_h_only_next_ratio_toy_n14_rank_mean_milli={scaled_by_h_only_next_ratio_toy_n14_rank_mean_milli}");
     println!("METRIC scratch600_by_consumed_high_update_mean_compute_ccx={by_consumed_high_update_mean_compute_ccx}");
     println!("METRIC scratch600_by_consumed_high_update_compute_uncompute_ccx={by_consumed_high_update_compute_uncompute_ccx}");
     println!("METRIC scratch600_by_consumed_high_q_oracle_total_ccx={by_consumed_high_q_oracle_total_ccx}");
@@ -2586,6 +2614,17 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
             && scaled_by_raw_pattern_ambiguous_a_bits_p99 > 200
             && scaled_by_raw_pattern_exact_two_decoder_gap > 0,
         "raw-pattern scaled-BY streaming now has reversible scratch/decode margin; revisit raw history"
+    );
+    assert!(
+        scaled_by_h_only_model_modular_windows == 35
+            && scaled_by_h_only_model_modular_toffoli < 900_000
+            && scaled_by_h_only_model_peak < 2_800
+            && scaled_by_h_only_model_history_bits == 480
+            && scaled_by_h_only_next_ratio_toy_n14_max_next_h_choices == 16
+            && scaled_by_h_only_next_ratio_toy_n14_rank_p99 >= 28
+            && scaled_by_h_only_next_ratio_toy_n14_rank_mean_milli > 27_000
+            && scaled_by_h_only_next_ratio_toy_n14_ambiguous_keys > 700,
+        "h-only BY next-ratio payload became cheap; revisit compressed history update"
     );
     assert!(
         by_consumed_high_gap_to_2700k > 1_000_000 && by_consumed_high_max_peak_q > GOOGLE_LOW_QUBIT_SCRATCH,

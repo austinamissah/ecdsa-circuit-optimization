@@ -2009,6 +2009,131 @@ mod tests {
         assert!(fail_16 > 0.01, "16-bit/window rank would meet 1% tolerance; revisit h-only path");
     }
 
+    fn by_h_only_next_ratio_payload_stats(
+        n: usize,
+        p: u16,
+        w: usize,
+    ) -> (usize, usize, usize, usize, usize, usize, usize, usize) {
+        use std::collections::{BTreeMap, BTreeSet};
+        let windows = (2 * n).div_ceil(w);
+        let mut groups: BTreeMap<(usize, i64, u64, TransitionMatrix), BTreeSet<u64>> =
+            BTreeMap::new();
+        let mut seqs = Vec::<Vec<(usize, i64, u64, TransitionMatrix)>>::new();
+        for x in 1..p {
+            let mut delta = 1i64;
+            let mut f = SInt::from_u(U256::from(p as u64));
+            let mut g = SInt::from_u(U256::from(x as u64));
+            let mut seq = Vec::with_capacity(windows);
+            for window_idx in 0..windows {
+                let h = low_ratio_of_sints(f, g, w);
+                let f_low = sint_low_i128(f, w);
+                let g_low = sint_low_i128(g, w);
+                let (_, _, _, mtx) = jump_matrix_direct_lowword(w, w, delta, f_low, g_low);
+                let key = (window_idx, delta, h, mtx);
+                for _ in 0..w {
+                    divstep_sint_state(&mut delta, &mut f, &mut g);
+                }
+                let h_next = low_ratio_of_sints(f, g, w);
+                groups.entry(key).or_default().insert(h_next);
+                seq.push(key);
+            }
+            seqs.push(seq);
+        }
+
+        let ceil_log2 = |v: usize| -> usize {
+            if v <= 1 {
+                0
+            } else {
+                usize::BITS as usize - (v - 1).leading_zeros() as usize
+            }
+        };
+        let mut rank_rows = Vec::with_capacity(seqs.len());
+        for seq in &seqs {
+            let mut bits = 0usize;
+            for key in seq {
+                bits += ceil_log2(groups.get(key).expect("h-only key").len());
+            }
+            rank_rows.push(bits);
+        }
+        rank_rows.sort_unstable();
+        let rank_p99 = rank_rows[rank_rows.len() * 99 / 100];
+        let rank_max = *rank_rows.last().unwrap();
+        let rank_mean_milli =
+            rank_rows.iter().sum::<usize>() * 1_000 / rank_rows.len().max(1);
+        let max_next_h_choices = groups.values().map(BTreeSet::len).max().unwrap_or(0);
+        let ambiguous_keys = groups.values().filter(|values| values.len() > 1).count();
+        (
+            windows,
+            groups.len(),
+            ambiguous_keys,
+            max_next_h_choices,
+            rank_p99,
+            rank_max,
+            rank_mean_milli,
+            rank_rows.len(),
+        )
+    }
+
+    #[test]
+    fn h_only_next_ratio_payload_toy_exhaustive_kills_free_update() {
+        // The h-only BY budget deletes the full denominator pair, keeps a
+        // low-ratio h, and assumes compressed matrix history supplies each
+        // modular window.  That is not enough to update h itself: on exact toy
+        // domains, even after charging the current window matrix/pattern, the
+        // next h still needs nearly a full w-bit rank payload per window.
+        let cases = [
+            (8usize, 251u16, 4usize),
+            (10usize, 1021u16, 4usize),
+            (12usize, 4093u16, 4usize),
+            (14usize, 16381u16, 4usize),
+        ];
+        let mut largest_rank_p99 = 0usize;
+        let mut largest_max_choices = 0usize;
+        let mut n14_rank_mean_milli = 0usize;
+        let mut n14_ambiguous_keys = 0usize;
+        for &(n, p, w) in &cases {
+            let (
+                windows,
+                keys,
+                ambiguous_keys,
+                max_next_h_choices,
+                rank_p99,
+                rank_max,
+                rank_mean_milli,
+                traces,
+            ) = by_h_only_next_ratio_payload_stats(n, p, w);
+            eprintln!(
+                "BY h-only next-ratio payload toy: n={n}, w={w}, windows={windows}, traces={traces}, keys={keys}, ambiguous_keys={ambiguous_keys}, max_next_h_choices={max_next_h_choices}, rank_p99={rank_p99}, rank_max={rank_max}, rank_mean_milli={rank_mean_milli}"
+            );
+            if n == 14 {
+                println!("METRIC by_h_only_next_ratio_toy_n14_windows={windows}");
+                println!("METRIC by_h_only_next_ratio_toy_n14_keys={keys}");
+                println!("METRIC by_h_only_next_ratio_toy_n14_ambiguous_keys={ambiguous_keys}");
+                println!("METRIC by_h_only_next_ratio_toy_n14_max_next_h_choices={max_next_h_choices}");
+                println!("METRIC by_h_only_next_ratio_toy_n14_rank_p99={rank_p99}");
+                println!("METRIC by_h_only_next_ratio_toy_n14_rank_max={rank_max}");
+                println!("METRIC by_h_only_next_ratio_toy_n14_rank_mean_milli={rank_mean_milli}");
+                n14_rank_mean_milli = rank_mean_milli;
+                n14_ambiguous_keys = ambiguous_keys;
+            }
+            largest_rank_p99 = largest_rank_p99.max(rank_p99);
+            largest_max_choices = largest_max_choices.max(max_next_h_choices);
+            assert!(
+                max_next_h_choices == (1usize << w),
+                "toy h-only next-ratio rank stopped saturating a full window"
+            );
+        }
+        println!("METRIC by_h_only_next_ratio_toy_largest_rank_p99={largest_rank_p99}");
+        println!("METRIC by_h_only_next_ratio_toy_largest_max_next_h_choices={largest_max_choices}");
+        assert!(
+            largest_rank_p99 >= 28
+                && largest_max_choices == 16
+                && n14_rank_mean_milli > 27_000
+                && n14_ambiguous_keys > 700,
+            "h-only matrix history no longer needs a near-full next-ratio payload; revisit BY h-only update"
+        );
+    }
+
     fn low_signed_sint_for_streaming_test(x: SInt, bits: usize) -> i128 {
         assert!((1..=63).contains(&bits));
         let mask = (1u64 << bits) - 1;
