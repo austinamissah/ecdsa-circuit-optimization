@@ -5980,6 +5980,90 @@ mod tests {
     }
 
     #[test]
+    fn raw_pattern_streaming_parser_still_needs_reversible_delta_history() {
+        // Escape hatch checked after the fixed-ID decoder miss: keep the raw
+        // 560 odd bits and stream only one A control at a time.  The scratch
+        // arithmetic is tempting, but the delta transition for an odd step is
+        // not injective without an A/history bit: delta=1 and delta=-1 both map
+        // to delta'=0.  Adding even one 10-bit checkpoint breaks the 663-bit
+        // Google scratch model, and the current exact clean pattern decoder
+        // already consumes the whole two-fast-replay margin before any
+        // compressed-ID expansion.
+        use std::collections::BTreeMap;
+
+        let mut images: BTreeMap<i64, Vec<i64>> = BTreeMap::new();
+        for delta in -20i64..=20 {
+            let next = if delta > 0 { 1 - delta } else { 1 + delta };
+            images.entry(next).or_default().push(delta);
+        }
+        let collision_images = images.values().filter(|srcs| srcs.len() > 1).count();
+        let worst_collision = images.values().map(Vec::len).max().unwrap_or(0);
+        let zero_sources = images.get(&0).cloned().unwrap_or_default();
+
+        const GOOGLE_LOW_QUBIT_SCRATCH: usize = 663;
+        const STRICT_SCRATCH: usize = 600;
+        const RAW_PATTERN_BITS: usize = 560;
+        const DELTA_BITS: usize = 10;
+        const SINGLE_A_BIT: usize = 1;
+        const WINDOW_A_BITS: usize = 16;
+        const TARGET_LOCAL_WORKSPACE: usize = 90;
+        const EXACT_PATTERN_DECODER_PER_REPLAY: usize = 62_160;
+        const TWO_FAST_REPLAY_BEFORE_BRANCH_DECODE: usize = 2_577_286;
+
+        let raw_single_a_scratch =
+            RAW_PATTERN_BITS + DELTA_BITS + SINGLE_A_BIT + TARGET_LOCAL_WORKSPACE;
+        let raw_with_one_delta_checkpoint = raw_single_a_scratch + DELTA_BITS;
+        let raw_window_a_scratch =
+            RAW_PATTERN_BITS + DELTA_BITS + WINDOW_A_BITS + TARGET_LOCAL_WORKSPACE;
+        let raw_full_a_history_scratch =
+            RAW_PATTERN_BITS + DELTA_BITS + RAW_PATTERN_BITS + TARGET_LOCAL_WORKSPACE;
+        let exact_two_decoder_projected =
+            TWO_FAST_REPLAY_BEFORE_BRANCH_DECODE + 2 * EXACT_PATTERN_DECODER_PER_REPLAY;
+        let exact_two_decoder_gap = exact_two_decoder_projected as isize - 2_700_000isize;
+
+        println!("METRIC by_raw_pattern_single_a_scratch={raw_single_a_scratch}");
+        println!("METRIC by_raw_pattern_one_checkpoint_scratch={raw_with_one_delta_checkpoint}");
+        println!("METRIC by_raw_pattern_window_a_scratch={raw_window_a_scratch}");
+        println!("METRIC by_raw_pattern_full_a_history_scratch={raw_full_a_history_scratch}");
+        println!("METRIC by_raw_pattern_delta_collision_images={collision_images}");
+        println!("METRIC by_raw_pattern_delta_worst_collision={worst_collision}");
+        println!("METRIC by_raw_pattern_exact_two_decoder_projected={exact_two_decoder_projected}");
+        println!("METRIC by_raw_pattern_exact_two_decoder_gap_to_2700k={exact_two_decoder_gap}");
+        eprintln!(
+            "BY raw-pattern streaming parser: singleA_scratch={raw_single_a_scratch}, one_checkpoint={raw_with_one_delta_checkpoint}, windowA={raw_window_a_scratch}, fullA={raw_full_a_history_scratch}, zero_sources={zero_sources:?}, exact_two_decoder_projected={exact_two_decoder_projected}, gap={exact_two_decoder_gap}"
+        );
+
+        assert!(
+            raw_single_a_scratch <= GOOGLE_LOW_QUBIT_SCRATCH,
+            "single-A raw-pattern schedule is no longer the relevant tempting case"
+        );
+        assert!(
+            raw_single_a_scratch > STRICT_SCRATCH,
+            "raw pattern bits unexpectedly fit strict 600 scratch without compression"
+        );
+        assert!(
+            zero_sources.contains(&-1) && zero_sources.contains(&1),
+            "odd-step delta update no longer exhibits the expected local collision"
+        );
+        assert!(
+            collision_images > 0 && worst_collision > 1,
+            "delta update became locally injective; revisit streaming parser"
+        );
+        assert!(
+            raw_with_one_delta_checkpoint > GOOGLE_LOW_QUBIT_SCRATCH,
+            "one delta checkpoint now fits raw-pattern Google scratch; revisit raw streaming"
+        );
+        assert!(
+            raw_window_a_scratch > GOOGLE_LOW_QUBIT_SCRATCH,
+            "window-local A scratch now fits raw-pattern Google scratch"
+        );
+        assert!(
+            exact_two_decoder_projected > 2_700_000,
+            "current exact pattern decoder now leaves compressed-ID margin"
+        );
+    }
+
+    #[test]
     fn actual_matrix_sequence_entropy_supports_sub600_history_target() {
         // Storing raw 22-bit (delta,h) keys costs 770 bits for 35 windows, but
         // actual secp256k1 trajectories are highly non-uniform, especially near

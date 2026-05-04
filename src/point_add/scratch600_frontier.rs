@@ -76,6 +76,12 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
             blocker: "two fast scaled-BY replays project 2637286 before compressed-ID expansion; sampled fixed-ID row-touch floor adds 307603 and misses by 244889, so this needs a structured pattern parser",
         },
         Candidate {
+            name: "scaled_by_raw_pattern_streaming_parser",
+            scratch_bits: 671,
+            charged_toffoli: Some(2_701_606),
+            blocker: "raw 560-bit pattern plus single A only fits 663 scratch if the delta parser is non-reversible; one 10-bit checkpoint breaks scratch, and two exact clean pattern decoders miss by 1606 before compressed expansion",
+        },
+        Candidate {
             name: "streamed_mask_qoffset_replay_body_only",
             scratch_bits: 510,
             charged_toffoli: None,
@@ -229,6 +235,19 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     let scaled_by_pattern_fixed_id_bit_floor_gap =
         (scaled_by_pattern_fixed_id_two_replay_before_decode
             + scaled_by_pattern_fixed_id_nonzero_table_bits) as isize
+            - GOOGLE_LOW_QUBIT_TOFFOLI as isize;
+    let scaled_by_raw_pattern_bits = 560usize;
+    let scaled_by_raw_pattern_delta_bits = 10usize;
+    let scaled_by_raw_pattern_single_a_scratch = 661usize;
+    let scaled_by_raw_pattern_one_checkpoint_scratch = 671usize;
+    let scaled_by_raw_pattern_window_a_scratch = 676usize;
+    let scaled_by_raw_pattern_two_replay_before_branch_decode = 2_577_286usize;
+    let scaled_by_raw_pattern_exact_decoder_per_replay = 62_160usize;
+    let scaled_by_raw_pattern_exact_two_decoder_projection =
+        scaled_by_raw_pattern_two_replay_before_branch_decode
+            + 2 * scaled_by_raw_pattern_exact_decoder_per_replay;
+    let scaled_by_raw_pattern_exact_two_decoder_gap =
+        scaled_by_raw_pattern_exact_two_decoder_projection as isize
             - GOOGLE_LOW_QUBIT_TOFFOLI as isize;
     let by_consumed_high_update_mean_compute_ccx = 515_494usize;
     let by_consumed_high_update_compute_uncompute_ccx = 1_030_988usize;
@@ -830,6 +849,15 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
     println!("METRIC scratch600_scaled_by_pattern_fixed_id_remaining_to_2700k={scaled_by_pattern_fixed_id_remaining_to_2700k}");
     println!("METRIC scratch600_scaled_by_pattern_fixed_id_row_floor_gap={scaled_by_pattern_fixed_id_row_floor_gap}");
     println!("METRIC scratch600_scaled_by_pattern_fixed_id_bit_floor_gap={scaled_by_pattern_fixed_id_bit_floor_gap}");
+    println!("METRIC scratch600_scaled_by_raw_pattern_bits={scaled_by_raw_pattern_bits}");
+    println!("METRIC scratch600_scaled_by_raw_pattern_delta_bits={scaled_by_raw_pattern_delta_bits}");
+    println!("METRIC scratch600_scaled_by_raw_pattern_single_a_scratch={scaled_by_raw_pattern_single_a_scratch}");
+    println!("METRIC scratch600_scaled_by_raw_pattern_one_checkpoint_scratch={scaled_by_raw_pattern_one_checkpoint_scratch}");
+    println!("METRIC scratch600_scaled_by_raw_pattern_window_a_scratch={scaled_by_raw_pattern_window_a_scratch}");
+    println!("METRIC scratch600_scaled_by_raw_pattern_two_replay_before_branch_decode={scaled_by_raw_pattern_two_replay_before_branch_decode}");
+    println!("METRIC scratch600_scaled_by_raw_pattern_exact_decoder_per_replay={scaled_by_raw_pattern_exact_decoder_per_replay}");
+    println!("METRIC scratch600_scaled_by_raw_pattern_exact_two_decoder_projection={scaled_by_raw_pattern_exact_two_decoder_projection}");
+    println!("METRIC scratch600_scaled_by_raw_pattern_exact_two_decoder_gap={scaled_by_raw_pattern_exact_two_decoder_gap}");
     println!("METRIC scratch600_by_consumed_high_update_mean_compute_ccx={by_consumed_high_update_mean_compute_ccx}");
     println!("METRIC scratch600_by_consumed_high_update_compute_uncompute_ccx={by_consumed_high_update_compute_uncompute_ccx}");
     println!("METRIC scratch600_by_consumed_high_q_oracle_total_ccx={by_consumed_high_q_oracle_total_ccx}");
@@ -1305,6 +1333,13 @@ fn scratch600_frontier_requires_selector_or_parser_breakthrough() {
             && scaled_by_pattern_fixed_id_row_floor_gap > 200_000
             && scaled_by_pattern_fixed_id_bit_floor_gap > 2_000_000,
         "compressed scaled-BY pattern IDs now have a generic decoder budget; revisit fixed-ID history"
+    );
+    assert!(
+        scaled_by_raw_pattern_single_a_scratch <= GOOGLE_LOW_QUBIT_SCRATCH
+            && scaled_by_raw_pattern_one_checkpoint_scratch > GOOGLE_LOW_QUBIT_SCRATCH
+            && scaled_by_raw_pattern_window_a_scratch > GOOGLE_LOW_QUBIT_SCRATCH
+            && scaled_by_raw_pattern_exact_two_decoder_gap > 0,
+        "raw-pattern scaled-BY streaming now has reversible scratch/decode margin; revisit raw history"
     );
     assert!(
         by_consumed_high_gap_to_2700k > 1_000_000 && by_consumed_high_max_peak_q > GOOGLE_LOW_QUBIT_SCRATCH,
