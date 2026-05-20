@@ -9024,11 +9024,12 @@ fn kaliski_xor_inv_raw_into_keep_alias_vw(
     iters: usize,
     pair: KalPair,
     inv_keep: &[QubitId],
+    caller_owns_v_w: bool,
 ) {
     let n = v_in.len();
     assert_eq!(alias_v_w.len(), n);
     assert_eq!(inv_keep.len(), n);
-    let st = KaliskiState {
+    let mut st = KaliskiState {
         u: b.alloc_qubits(n),
         v_w: alias_v_w.to_vec(),
         r: b.alloc_qubits(n),
@@ -9037,6 +9038,41 @@ fn kaliski_xor_inv_raw_into_keep_alias_vw(
         f_flag: b.alloc_qubit(),
     };
     let bulk_caps = cleanup_bulk_prefix_caps(pair);
+
+    // H194: mirror with_kal_inv_raw_coeff_caps's keep_u/keep_v/keep_f/free_s
+    // envelope inside the cleanup helper so the forward Kaliski round-trip is
+    // structurally identical to the production primary-helper round-trip.
+    // The defaults match the production envelope (free u/f/s, keep v because
+    // it aliases the caller's register) so the cleanup picks up the same
+    // phase invariants as the first Kaliski; user can flip each component to
+    // bisect.
+    //
+    // env_keep_u/f/s default to "free" (false); env_keep_v always true
+    // because v_w aliases the caller-provided `ty`.
+    let env_keep_u = std::env::var("KAL_PAIR1_INVKEEP_CLEANUP_ENV_KEEP_U")
+        .ok()
+        .as_deref()
+        == Some("1");
+    let env_keep_v = std::env::var("KAL_PAIR1_INVKEEP_CLEANUP_ENV_KEEP_V")
+        .ok()
+        .as_deref()
+        != Some("0");
+    let env_keep_f = std::env::var("KAL_PAIR1_INVKEEP_CLEANUP_ENV_KEEP_F")
+        .ok()
+        .as_deref()
+        == Some("1");
+    let env_free_s = std::env::var("KAL_PAIR1_INVKEEP_CLEANUP_ENV_FREE_S")
+        .ok()
+        .as_deref()
+        != Some("0");
+    // When the helper uses emit_inverse_hmr_safe(forward) for the reverse
+    // pass, forward and backward must see the SAME qubit ids; an envelope
+    // that frees+reallocates would break this.  Disable when the user
+    // requested generalized-reverse mode.
+    let envelope_active = std::env::var("KAL_BULK3_GENERALIZED_REVERSE").is_err();
+    // Honor alias contract: never free the caller-owned v_w.
+    let keep_v_effective = env_keep_v || caller_owns_v_w;
+
     if std::env::var("TRACE_PHASE_LOCAL_PEAK")
         .ok()
         .map(|v| v.starts_with("pair1_invkeep") || v.starts_with("pair1_outside"))
@@ -9046,11 +9082,60 @@ fn kaliski_xor_inv_raw_into_keep_alias_vw(
             "INVKEEP_CLEANUP_BULK_CAPS forward={} backward={}",
             bulk_caps.forward, bulk_caps.backward
         );
+        eprintln!(
+            "INVKEEP_CLEANUP_ENV keep_u={} keep_v={} keep_f={} free_s={} env_active={} caller_owns_v_w={}",
+            env_keep_u, keep_v_effective, env_keep_f, env_free_s, envelope_active, caller_owns_v_w
+        );
     }
+
     kaliski_forward_with_coeff_caps(b, v_in, &st, p, iters, None, bulk_caps);
+
+    // Free envelope components between forward and backward, mirroring
+    // with_kal_inv_raw_coeff_caps.  v_w is never freed here because it aliases
+    // the caller's register (caller_owns_v_w guard).
+    if envelope_active && !env_keep_u {
+        // Forward end-state invariant: u[0] = 1, u[1..] = 0.  X-clear u[0]
+        // then free.
+        b.x(st.u[0]);
+        b.free_vec(&st.u);
+    }
+    if envelope_active && !env_keep_f {
+        b.free(st.f_flag);
+    }
+    if envelope_active && env_free_s {
+        // Forward end-state invariant: s == p.  X-clear bits of p then free.
+        for i in 0..n {
+            if bit(p, i) {
+                b.x(st.s[i]);
+            }
+        }
+        b.free_vec(&st.s);
+    }
+
+    // Body: copy r_low into inv_keep via CNOTs (n-bit fan-out).  r is a
+    // deterministic classical state at this point so the body is phase-free.
     for i in 0..n {
         b.cx(st.r[i], inv_keep[i]);
     }
+
+    // Re-allocate envelope components before backward, exactly mirroring
+    // production.  Note: st.v_w retains the alias; we never touch it.
+    if envelope_active && !env_keep_u {
+        st.u = b.alloc_qubits(n);
+        b.x(st.u[0]);
+    }
+    if envelope_active && !env_keep_f {
+        st.f_flag = b.alloc_qubit();
+    }
+    if envelope_active && env_free_s {
+        st.s = b.alloc_qubits(n);
+        for i in 0..n {
+            if bit(p, i) {
+                b.x(st.s[i]);
+            }
+        }
+    }
+
     if std::env::var("KAL_BULK3_GENERALIZED_REVERSE").is_ok() {
         emit_inverse_hmr_safe(b, |b| {
             kaliski_forward_with_coeff_caps(b, v_in, &st, p, iters, None, bulk_caps)
@@ -9062,6 +9147,9 @@ fn kaliski_xor_inv_raw_into_keep_alias_vw(
     b.free_vec(&st.m_hist);
     b.free_vec(&st.s);
     b.free_vec(&st.r);
+    if !caller_owns_v_w {
+        b.free_vec(&st.v_w);
+    }
     b.free_vec(&st.u);
 }
 
@@ -9820,6 +9908,7 @@ fn build_standard_point_add(
                 pair1_iters,
                 KalPair::Pair1,
                 &inv_keep,
+                /* caller_owns_v_w = */ true,
             );
             b.set_phase("pair1_invkeep_free");
             b.free_vec(&inv_keep);
