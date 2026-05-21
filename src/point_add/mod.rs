@@ -5924,6 +5924,430 @@ fn emit_single_inv_strategy_c_shape_benchmark_scaffold(b: &mut B, p: U256) {
     b.free_vec(&dx);
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// H210-PROJECTIVE-N64-MICROBENCH
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Default-off (gated on POINT_ADD_PROJECTIVE_N64_PROBE=1) microbench that
+// emits two reduced scaffolds at the working n=256 width (the existing
+// modular primitives are baked to n=256, so n=64 in the hypothesis title is
+// reinterpreted as "reduced register set ≈ 64 qubits per operand" — every
+// other parameter is held at the production scale so the per-mul / per-
+// Kaliski Toffoli/peak/owner-table numbers are MEASURED at full scale, not
+// extrapolated from a smaller width that would not actually exercise our
+// shipping primitives).
+//
+// The probe answers three owner-set-keyed kill questions for projective:
+//   1. Does projective remove the Kaliski owner block? (kill if NO)
+//   2. Is projective Toffoli < affine Toffoli at the matched scaffold?
+//      (kill if NO)
+//   3. Is projective peak ≤ affine peak? (kill if NO)
+//
+// Two sub-scaffolds, both running under the same B builder so their op
+// ranges can be sliced for separate Toffoli/peak accounting:
+//
+//   (A) AFFINE baseline:  1 Kaliski + 1 mod_mul (mirrors the per-Kaliski
+//       owner-set you see at pair1 in the real point-add). This is the
+//       minimum scaffold that exhibits the "Kaliski owner block plus an
+//       adjacent multiplier transient" peak pattern.
+//
+//   (B) PROJECTIVE candidate: mixed `madd-2007-bl` (7M + 4S) using existing
+//       schoolbook primitives, FOLLOWED BY a final 1/Z Kaliski + 3M + 1S
+//       affine conversion. This is the EFD-canonical projective scaffold
+//       under the fixed affine-output harness contract — exactly the
+//       scaffold whose owner-set the research-204-210 deep-theory report
+//       predicts will preserve a 'z_inverse_kaliski_forward' owner block.
+//
+// Both sub-scaffolds emit only into freshly-allocated scratch registers
+// (the main point-add's tx/ty are NOT touched) and use init_small_const_reg
+// to load classical-known constants so the entire emission is reversible
+// by symbolic uncompute (the compute / use / uncompute pattern shared with
+// emit_single_inv_strategy_c_shape_benchmark_scaffold).
+//
+// Output lines (greppable):
+//   PROJECTIVE_N64_AFFINE_TOFFOLI=<u64>
+//   PROJECTIVE_N64_PROJECTIVE_TOFFOLI=<u64>
+//   PROJECTIVE_N64_AFFINE_PEAK=<u32>
+//   PROJECTIVE_N64_PROJECTIVE_PEAK=<u32>
+//   PROJECTIVE_N64_VERDICT=CLOSED|OPEN
+//   PROJECTIVE_N64_KILL_TOFFOLI=YES|NO   (proj > affine)
+//   PROJECTIVE_N64_KILL_PEAK=YES|NO      (proj > affine)
+//   PROJECTIVE_N64_KILL_OWNER=YES|NO     (proj preserves a Kaliski owner block)
+//
+// When TRACE_PEAK and TRACE_PEAK_OWNERS are also set, the existing
+// PEAK_OWNER_PHASE / PEAK_OWNER_LABEL reporter will surface the
+// 'z_inverse_kaliski_forward' phase and its owner block automatically — the
+// kill-owner check below is a coarse summary based on whether projective's
+// peak phase contains a "kaliski_forward" substring.
+fn emit_projective_n64_probe(b: &mut B, p: U256) {
+    const ITERS: usize = 404;
+
+    // ─── (A) Affine baseline ────────────────────────────────────────────
+    let affine_start_ops = b.ops.len();
+    let affine_start_peak = b.peak_qubits;
+    let mut affine_peak_phase: &'static str = "";
+
+    b.set_phase("affine_n64_probe_alloc");
+    let a_dx = b.alloc_qubits(N);
+    let a_dy = b.alloc_qubits(N);
+    let a_lam = b.alloc_qubits(N);
+    init_small_const_reg(b, &a_dx, 3);
+    init_small_const_reg(b, &a_dy, 5);
+
+    b.set_phase("affine_n64_kaliski_forward");
+    with_kal_inv_raw(b, &a_dx, p, ITERS, |b, inv_raw| {
+        b.set_phase("affine_n64_lam_mul");
+        // lam += dy * dx^{-1}_raw  (schoolbook full multiply)
+        mod_mul_add_into_acc_schoolbook(b, &a_lam, &a_dy, inv_raw, p);
+        b.set_phase("affine_n64_un_lam_mul");
+        mod_mul_sub_qq(b, &a_lam, &a_dy, inv_raw, p);
+    });
+
+    b.set_phase("affine_n64_probe_free");
+    init_small_const_reg(b, &a_dy, 5);
+    init_small_const_reg(b, &a_dx, 3);
+    b.free_vec(&a_lam);
+    b.free_vec(&a_dy);
+    b.free_vec(&a_dx);
+
+    let affine_end_ops = b.ops.len();
+    let affine_peak_after = b.peak_qubits;
+    // Capture the peak phase if our sub-scaffold drove the global peak up.
+    if affine_peak_after > affine_start_peak {
+        affine_peak_phase = b.peak_phase;
+    }
+    let affine_toffoli: u64 = b.ops[affine_start_ops..affine_end_ops]
+        .iter()
+        .filter(|op| matches!(op.kind, OperationType::CCX | OperationType::CCZ))
+        .count() as u64;
+    // Local affine peak: maximum active-qubits witnessed during the affine
+    // slice. We approximate with b.peak_qubits delta vs start; if our
+    // scaffold didn't drive the global peak, the local peak still equals
+    // start_active + max-additional. We report the SLICE-ATTRIBUTED peak
+    // via the existing peak_log if TRACE_PEAK is set; otherwise we use
+    // the global peak_qubits if it advanced.
+    let affine_local_peak: u32 = if affine_peak_after > affine_start_peak {
+        affine_peak_after
+    } else {
+        // Slice did not drive global peak; approximate via b.next_qubit at
+        // end (an upper bound on cumulative allocation, not active count).
+        // Better: walk peak_log if available.
+        let mut m = affine_start_peak;
+        for (a, _ph, opidx) in &b.peak_log {
+            if *opidx >= affine_start_ops && *opidx < affine_end_ops && *a > m {
+                m = *a;
+            }
+        }
+        m
+    };
+
+    // ─── (B) Projective madd-2007-bl + final 1/Z Kaliski conversion ────
+    let proj_start_ops = b.ops.len();
+    let proj_start_peak = b.peak_qubits;
+    let mut proj_peak_phase: &'static str = "";
+
+    b.set_phase("projective_n64_probe_alloc");
+    // Inputs: projective point (X1,Y1,Z1) and classical-affine Q=(Qx,Qy).
+    // We simulate Qx and Qy as quantum registers loaded from constants
+    // because the existing schoolbook primitives take two QubitId slices.
+    let x1 = b.alloc_qubits(N);
+    let y1 = b.alloc_qubits(N);
+    let z1 = b.alloc_qubits(N);
+    let qx = b.alloc_qubits(N);
+    let qy = b.alloc_qubits(N);
+    // Non-zero constants chosen so no input is 0 (avoids Kaliski degeneracy
+    // on Z3 = 0, but exact correctness of EC math is NOT required here —
+    // we measure only the gate cost / qubit lifetime of the formula
+    // skeleton).
+    init_small_const_reg(b, &x1, 3);
+    init_small_const_reg(b, &y1, 5);
+    init_small_const_reg(b, &z1, 7);
+    init_small_const_reg(b, &qx, 11);
+    init_small_const_reg(b, &qy, 13);
+
+    // ── madd-2007-bl, Z2=1 mixed Jacobian add (EFD; secp256k1 a=0). ──
+    // Z1Z1 = Z1^2                          (1S)
+    // U2   = Qx * Z1Z1                     (1M)   (X2=Qx)
+    // S2   = Qy * Z1 * Z1Z1                (2M)   (Y2=Qy)
+    // H    = U2 - X1
+    // HH   = H^2                           (1S)
+    // I    = 4*HH
+    // J    = H * I                         (1M)
+    // r    = 2*(S2 - Y1)
+    // V    = X1 * I                        (1M)
+    // X3   = r^2 - J - 2V                  (1S + adds)
+    // Y3   = r*(V - X3) - 2*Y1*J           (2M + adds)
+    // Z3   = (Z1 + H)^2 - Z1Z1 - HH        (1S + adds)
+    // Total: 7M + 4S.
+
+    b.set_phase("projective_n64_madd_z1z1");
+    let z1z1 = b.alloc_qubits(N);
+    squaring_add_to_acc_schoolbook(b, &z1z1, &z1, p);
+
+    b.set_phase("projective_n64_madd_u2");
+    let u2 = b.alloc_qubits(N);
+    mod_mul_write_into_zero_acc_schoolbook(b, &u2, &qx, &z1z1, p);
+
+    b.set_phase("projective_n64_madd_s2_tmp");
+    // S2 = Qy * Z1 * Z1Z1: first tmp = Qy * Z1, then S2 = tmp * Z1Z1.
+    let s2_tmp = b.alloc_qubits(N);
+    mod_mul_write_into_zero_acc_schoolbook(b, &s2_tmp, &qy, &z1, p);
+    b.set_phase("projective_n64_madd_s2");
+    let s2 = b.alloc_qubits(N);
+    mod_mul_write_into_zero_acc_schoolbook(b, &s2, &s2_tmp, &z1z1, p);
+
+    b.set_phase("projective_n64_madd_h");
+    // H = U2 - X1, computed into U2 (so U2 becomes H).
+    mod_sub_qq(b, &u2, &x1, p);
+
+    b.set_phase("projective_n64_madd_hh");
+    let hh = b.alloc_qubits(N);
+    squaring_add_to_acc_schoolbook(b, &hh, &u2, p);
+
+    b.set_phase("projective_n64_madd_i");
+    // I = 4*HH. We compute into a new register `i_reg` to keep HH alive
+    // (Z3 needs HH later).
+    let i_reg = b.alloc_qubits(N);
+    mod_add_qq_fast(b, &i_reg, &hh, p);
+    mod_double_inplace_fast(b, &i_reg, p);
+    mod_double_inplace_fast(b, &i_reg, p);
+
+    b.set_phase("projective_n64_madd_j");
+    let j_reg = b.alloc_qubits(N);
+    mod_mul_write_into_zero_acc_schoolbook(b, &j_reg, &u2, &i_reg, p);
+
+    b.set_phase("projective_n64_madd_r");
+    // r = 2*(S2 - Y1). Compute into S2 destructively (S2 ← S2 - Y1, then
+    // double in place; S2 now holds r).
+    mod_sub_qq(b, &s2, &y1, p);
+    mod_double_inplace_fast(b, &s2, p);
+
+    b.set_phase("projective_n64_madd_v");
+    let v_reg = b.alloc_qubits(N);
+    mod_mul_write_into_zero_acc_schoolbook(b, &v_reg, &x1, &i_reg, p);
+
+    b.set_phase("projective_n64_madd_x3");
+    let x3 = b.alloc_qubits(N);
+    squaring_add_to_acc_schoolbook(b, &x3, &s2, p);
+    mod_sub_qq_fast(b, &x3, &j_reg, p);
+    mod_sub_qq_fast(b, &x3, &v_reg, p);
+    mod_sub_qq_fast(b, &x3, &v_reg, p);
+
+    b.set_phase("projective_n64_madd_y3");
+    // Y3 = r*(V - X3) - 2*Y1*J. We compute V - X3 into V destructively.
+    mod_sub_qq(b, &v_reg, &x3, p);
+    let y3 = b.alloc_qubits(N);
+    mod_mul_add_into_acc_schoolbook(b, &y3, &s2, &v_reg, p);
+    // Subtract 2*Y1*J: compute t = Y1*J, double, subtract.
+    let t_y1j = b.alloc_qubits(N);
+    mod_mul_write_into_zero_acc_schoolbook(b, &t_y1j, &y1, &j_reg, p);
+    mod_double_inplace_fast(b, &t_y1j, p);
+    mod_sub_qq_fast(b, &y3, &t_y1j, p);
+    // Restore t_y1j by undoing the double and the mul.
+    mod_halve_inplace_fast(b, &t_y1j, p);
+    mod_mul_sub_qq(b, &t_y1j, &y1, &j_reg, p);
+    b.free_vec(&t_y1j);
+
+    b.set_phase("projective_n64_madd_z3");
+    // Z3 = (Z1 + H)^2 - Z1Z1 - HH. Use temp = Z1 + H, square, subtract.
+    let z3 = b.alloc_qubits(N);
+    let z1h = b.alloc_qubits(N);
+    mod_add_qq_fast(b, &z1h, &z1, p);
+    mod_add_qq_fast(b, &z1h, &u2, p); // u2 currently == H
+    squaring_add_to_acc_schoolbook(b, &z3, &z1h, p);
+    mod_sub_qq_fast(b, &z3, &z1z1, p);
+    mod_sub_qq_fast(b, &z3, &hh, p);
+    // Uncompute z1h: reverse the two adds.
+    mod_sub_qq_fast(b, &z1h, &u2, p);
+    mod_sub_qq_fast(b, &z1h, &z1, p);
+    b.free_vec(&z1h);
+
+    // ── Final affine conversion: 1/Z3 Kaliski + 3M + 1S. ─────────────
+    // Rx_out = X3 * (1/Z3)^2
+    // Ry_out = Y3 * (1/Z3)^3
+    b.set_phase("z_inverse_kaliski_forward");
+    let rx_out = b.alloc_qubits(N);
+    let ry_out = b.alloc_qubits(N);
+    with_kal_inv_raw(b, &z3, p, ITERS, |b, inv_raw| {
+        b.set_phase("projective_n64_conv_inv2");
+        let inv2 = b.alloc_qubits(N);
+        squaring_add_to_acc_schoolbook(b, &inv2, inv_raw, p);
+        b.set_phase("projective_n64_conv_inv3");
+        let inv3 = b.alloc_qubits(N);
+        mod_mul_write_into_zero_acc_schoolbook(b, &inv3, &inv2, inv_raw, p);
+        b.set_phase("projective_n64_conv_rx");
+        mod_mul_add_into_acc_schoolbook(b, &rx_out, &x3, &inv2, p);
+        b.set_phase("projective_n64_conv_ry");
+        mod_mul_add_into_acc_schoolbook(b, &ry_out, &y3, &inv3, p);
+        b.set_phase("projective_n64_conv_un_ry");
+        mod_mul_sub_qq(b, &ry_out, &y3, &inv3, p);
+        b.set_phase("projective_n64_conv_un_rx");
+        mod_mul_sub_qq(b, &rx_out, &x3, &inv2, p);
+        b.set_phase("projective_n64_conv_un_inv3");
+        mod_mul_sub_qq(b, &inv3, &inv2, inv_raw, p);
+        b.free_vec(&inv3);
+        b.set_phase("projective_n64_conv_un_inv2");
+        squaring_sub_from_acc_schoolbook(b, &inv2, inv_raw, p);
+        b.free_vec(&inv2);
+    });
+
+    // ── Uncompute the madd-2007-bl body in reverse. ─────────────────
+    b.set_phase("projective_n64_un_madd_z3");
+    // Recompute z1h (must be live for the un-square), then undo.
+    let z1h2 = b.alloc_qubits(N);
+    mod_add_qq_fast(b, &z1h2, &z1, p);
+    mod_add_qq_fast(b, &z1h2, &u2, p);
+    // Undo z3: add back hh, z1z1, then sub square.
+    mod_add_qq_fast(b, &z3, &hh, p);
+    mod_add_qq_fast(b, &z3, &z1z1, p);
+    squaring_sub_from_acc_schoolbook(b, &z3, &z1h2, p);
+    mod_sub_qq_fast(b, &z1h2, &u2, p);
+    mod_sub_qq_fast(b, &z1h2, &z1, p);
+    b.free_vec(&z1h2);
+    b.free_vec(&z3);
+
+    b.set_phase("projective_n64_un_madd_y3");
+    // Re-allocate t_y1j to undo y3 = ... - 2*Y1*J path symmetrically.
+    let t_y1j2 = b.alloc_qubits(N);
+    mod_mul_add_into_acc_schoolbook(b, &t_y1j2, &y1, &j_reg, p);
+    mod_double_inplace_fast(b, &t_y1j2, p);
+    mod_add_qq_fast(b, &y3, &t_y1j2, p);
+    mod_mul_sub_qq(b, &y3, &s2, &v_reg, p);
+    mod_halve_inplace_fast(b, &t_y1j2, p);
+    mod_mul_sub_qq(b, &t_y1j2, &y1, &j_reg, p);
+    b.free_vec(&t_y1j2);
+    b.free_vec(&y3);
+    // Restore v_reg from V-X3 back to V.
+    mod_add_qq_fast(b, &v_reg, &x3, p);
+
+    b.set_phase("projective_n64_un_madd_x3");
+    mod_add_qq_fast(b, &x3, &v_reg, p);
+    mod_add_qq_fast(b, &x3, &v_reg, p);
+    mod_add_qq_fast(b, &x3, &j_reg, p);
+    squaring_sub_from_acc_schoolbook(b, &x3, &s2, p);
+    b.free_vec(&x3);
+
+    b.set_phase("projective_n64_un_madd_v");
+    mod_mul_sub_qq(b, &v_reg, &x1, &i_reg, p);
+    b.free_vec(&v_reg);
+
+    b.set_phase("projective_n64_un_madd_r");
+    mod_halve_inplace_fast(b, &s2, p);
+    mod_add_qq_fast(b, &s2, &y1, p);
+
+    b.set_phase("projective_n64_un_madd_j");
+    mod_mul_sub_qq(b, &j_reg, &u2, &i_reg, p);
+    b.free_vec(&j_reg);
+
+    b.set_phase("projective_n64_un_madd_i");
+    mod_halve_inplace_fast(b, &i_reg, p);
+    mod_halve_inplace_fast(b, &i_reg, p);
+    mod_sub_qq_fast(b, &i_reg, &hh, p);
+    b.free_vec(&i_reg);
+
+    b.set_phase("projective_n64_un_madd_hh");
+    squaring_sub_from_acc_schoolbook(b, &hh, &u2, p);
+    b.free_vec(&hh);
+
+    b.set_phase("projective_n64_un_madd_h");
+    mod_add_qq_fast(b, &u2, &x1, p);
+
+    b.set_phase("projective_n64_un_madd_s2");
+    mod_mul_sub_qq(b, &s2, &s2_tmp, &z1z1, p);
+    b.free_vec(&s2);
+    mod_mul_sub_qq(b, &s2_tmp, &qy, &z1, p);
+    b.free_vec(&s2_tmp);
+
+    b.set_phase("projective_n64_un_madd_u2");
+    mod_mul_sub_qq(b, &u2, &qx, &z1z1, p);
+    b.free_vec(&u2);
+
+    b.set_phase("projective_n64_un_madd_z1z1");
+    squaring_sub_from_acc_schoolbook(b, &z1z1, &z1, p);
+    b.free_vec(&z1z1);
+
+    b.set_phase("projective_n64_probe_free");
+    // Uncompute ry_out and rx_out: they were computed by Kaliski-internal
+    // mul-add-mul-sub pairs that are already balanced. Their final state is
+    // |0⟩ (the mul-sub at end of Kaliski body un-set them). Verify via X
+    // pattern: since inputs are constants, the un-mul-sub returns rx_out and
+    // ry_out exactly to 0. Free directly.
+    b.free_vec(&ry_out);
+    b.free_vec(&rx_out);
+    // Restore constants in original inputs and free.
+    init_small_const_reg(b, &qy, 13);
+    init_small_const_reg(b, &qx, 11);
+    init_small_const_reg(b, &z1, 7);
+    init_small_const_reg(b, &y1, 5);
+    init_small_const_reg(b, &x1, 3);
+    b.free_vec(&qy);
+    b.free_vec(&qx);
+    b.free_vec(&z1);
+    b.free_vec(&y1);
+    b.free_vec(&x1);
+
+    let proj_end_ops = b.ops.len();
+    let proj_peak_after = b.peak_qubits;
+    if proj_peak_after > proj_start_peak {
+        proj_peak_phase = b.peak_phase;
+    }
+    let projective_toffoli: u64 = b.ops[proj_start_ops..proj_end_ops]
+        .iter()
+        .filter(|op| matches!(op.kind, OperationType::CCX | OperationType::CCZ))
+        .count() as u64;
+    let projective_local_peak: u32 = if proj_peak_after > proj_start_peak {
+        proj_peak_after
+    } else {
+        let mut m = proj_start_peak;
+        for (a, _ph, opidx) in &b.peak_log {
+            if *opidx >= proj_start_ops && *opidx < proj_end_ops && *a > m {
+                m = *a;
+            }
+        }
+        m
+    };
+
+    // ─── Report ────────────────────────────────────────────────────
+    eprintln!("PROJECTIVE_N64_AFFINE_TOFFOLI={}", affine_toffoli);
+    eprintln!(
+        "PROJECTIVE_N64_PROJECTIVE_TOFFOLI={}",
+        projective_toffoli
+    );
+    eprintln!("PROJECTIVE_N64_AFFINE_PEAK={}", affine_local_peak);
+    eprintln!("PROJECTIVE_N64_PROJECTIVE_PEAK={}", projective_local_peak);
+    eprintln!("PROJECTIVE_N64_AFFINE_PEAK_PHASE='{}'", affine_peak_phase);
+    eprintln!(
+        "PROJECTIVE_N64_PROJECTIVE_PEAK_PHASE='{}'",
+        proj_peak_phase
+    );
+
+    let kill_toffoli = projective_toffoli > affine_toffoli;
+    let kill_peak = projective_local_peak > affine_local_peak;
+    // Owner-set kill criterion: projective preserves a Kaliski owner block
+    // iff its peak phase name contains "kaliski_forward". This is a
+    // coarse summary; the precise owner-table is available via the
+    // PEAK_OWNER_PHASE/PEAK_OWNER_LABEL lines when TRACE_PEAK_OWNERS is set.
+    let kill_owner = proj_peak_phase.contains("kaliski_forward")
+        || proj_peak_phase.contains("z_inverse_kaliski");
+    eprintln!(
+        "PROJECTIVE_N64_KILL_TOFFOLI={}",
+        if kill_toffoli { "YES" } else { "NO" }
+    );
+    eprintln!(
+        "PROJECTIVE_N64_KILL_PEAK={}",
+        if kill_peak { "YES" } else { "NO" }
+    );
+    eprintln!(
+        "PROJECTIVE_N64_KILL_OWNER={}",
+        if kill_owner { "YES" } else { "NO" }
+    );
+    let closed = kill_toffoli || kill_peak || kill_owner;
+    eprintln!(
+        "PROJECTIVE_N64_VERDICT={}",
+        if closed { "CLOSED" } else { "OPEN" }
+    );
+}
+
 fn emit_centered_restoring_qbit_benchmark_scaffold(b: &mut B) {
     const WIDTH: usize = 256;
     b.set_phase("centered_restoring_qbit_alloc");
@@ -10316,6 +10740,9 @@ pub fn build() -> Vec<Op> {
     }
     if std::env::var("SINGLE_INV_STRATEGY_C_BENCH").ok().as_deref() == Some("1") {
         emit_single_inv_strategy_c_shape_benchmark_scaffold(b, p);
+    }
+    if std::env::var("POINT_ADD_PROJECTIVE_N64_PROBE").ok().as_deref() == Some("1") {
+        emit_projective_n64_probe(b, p);
     }
     if std::env::var("CENTERED_RESTORING_QBIT_BENCH")
         .ok()
