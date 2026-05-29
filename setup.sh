@@ -41,10 +41,11 @@ pinned_rust_channel() {
 
 installed_toolchain_for_channel() {
   local channel="$1"
-  local line toolchain
+  local line toolchain toolchains
 
   [[ -n "${channel}" ]] || return 1
   command -v rustup >/dev/null 2>&1 || return 1
+  toolchains="$(rustup toolchain list 2>/dev/null || true)"
 
   while IFS= read -r line; do
     toolchain="${line%% *}"
@@ -52,7 +53,7 @@ installed_toolchain_for_channel() {
       printf '%s\n' "${toolchain}"
       return 0
     fi
-  done < <(rustup toolchain list 2>/dev/null)
+  done <<< "${toolchains}"
 
   return 1
 }
