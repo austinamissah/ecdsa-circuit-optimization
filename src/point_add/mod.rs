@@ -430,16 +430,6 @@ fn direct_const_halve_enabled() -> bool {
     env_flag_enabled("KAL_DIRECT_CONST_HALVE", !pair1_mul1_karatsuba_enabled(N))
 }
 
-fn direct_const_modred_enabled() -> bool {
-    // Experiment 001: modular reduction repeatedly adds/subtracts the sparse
-    // Solinas constant c=2^32+977.  The old fast path materialized c (or
-    // ctrl?c:0) into a field-width addend register and then allocated a second
-    // carry bank inside Cuccaro.  The direct constant path keeps only the carry
-    // bank live, so the field-width scratch register is allocated never rather
-    // than early and long-lived across reduction sub-stages.
-    env_flag_enabled("KAL_DIRECT_CONST_MODRED", true)
-}
-
 fn pair1_mul2_karatsuba_enabled(n: usize) -> bool {
     let min_n = std::env::var("POINT_ADD_KARATSUBA_MIN_N")
         .ok()
@@ -794,8 +784,6 @@ fn mod_sub_qq_fast(b: &mut B, acc: &[QubitId], a: &[QubitId], p: U256) {
         );
         b.free(q_clean2[0]);
         b.free(q_clean2[1]);
-    } else if direct_const_modred_enabled() {
-        csub_nbit_const_direct_fast(b, &acc_ext[..n], c, flag);
     } else {
         csub_nbit_const_fast(b, &acc_ext[..n], c, flag);
     }
@@ -1210,17 +1198,6 @@ fn cadd_nbit_const_direct_fast(b: &mut B, acc: &[QubitId], c: U256, ctrl: QubitI
     }
 
     b.free_vec(&carries);
-}
-
-fn add_nbit_const_direct_fast(b: &mut B, acc: &[QubitId], c: U256) {
-    // Unconditional direct constant add.  Use one short-lived |1> control
-    // instead of materializing an n-bit constant register; the direct adder's
-    // carry bank is uncomputed and freed internally.
-    let ctrl = b.alloc_qubit();
-    b.x(ctrl);
-    cadd_nbit_const_direct_fast(b, acc, c, ctrl);
-    b.x(ctrl);
-    b.free(ctrl);
 }
 
 fn add_nbit_const_fast(b: &mut B, acc: &[QubitId], c: U256) {
@@ -1808,8 +1785,6 @@ fn mod_add_qq_fast(b: &mut B, acc: &[QubitId], a: &[QubitId], p: U256) {
         );
         b.free(q_clean2[0]);
         b.free(q_clean2[1]);
-    } else if direct_const_modred_enabled() {
-        add_nbit_const_direct_fast(b, &acc_ext, c);
     } else {
         let n1 = acc_ext.len();
         let ca = load_const(b, n1, c);
@@ -1834,8 +1809,6 @@ fn mod_add_qq_fast(b: &mut B, acc: &[QubitId], a: &[QubitId], p: U256) {
         );
         b.free(q_clean2[0]);
         b.free(q_clean2[1]);
-    } else if direct_const_modred_enabled() {
-        csub_nbit_const_direct_fast(b, &acc_ext, c, flag);
     } else {
         let n1 = acc_ext.len();
         let ca = b.alloc_qubits(n1);
@@ -1895,8 +1868,6 @@ fn mod_add_qq_fast_from_zero(b: &mut B, acc: &[QubitId], a: &[QubitId], p: U256)
         );
         b.free(q_clean2[0]);
         b.free(q_clean2[1]);
-    } else if direct_const_modred_enabled() {
-        add_nbit_const_direct_fast(b, &acc_ext, c);
     } else {
         let n1 = acc_ext.len();
         let ca = load_const(b, n1, c);
@@ -1920,8 +1891,6 @@ fn mod_add_qq_fast_from_zero(b: &mut B, acc: &[QubitId], a: &[QubitId], p: U256)
         );
         b.free(q_clean2[0]);
         b.free(q_clean2[1]);
-    } else if direct_const_modred_enabled() {
-        csub_nbit_const_direct_fast(b, &acc_ext, c, flag);
     } else {
         let n1 = acc_ext.len();
         let ca = b.alloc_qubits(n1);
@@ -3921,7 +3890,7 @@ fn mulmod(a: U256, b: U256, p: U256) -> U256 {
 /// (since max(r,s) doubles per iter starting from max=1, so max ≤ 2^iter_idx).
 /// In that range, mod_double(r)'s Solinas cadd is identity — replace with
 /// a plain shift (0 Toffoli) for ~255 CCX savings per iter.
-const R_SMALL_THRESHOLD: usize = 262;
+const R_SMALL_THRESHOLD: usize = 263;
 
 fn r_small_threshold() -> usize {
     std::env::var("KAL_R_SMALL_THRESHOLD")
@@ -3939,7 +3908,7 @@ fn r_small_threshold() -> usize {
 /// `2^256`. Termination requires reaching `(1, 0)`, i.e. `s = 1`, so any run
 /// needs at least `ceil(log2(s0)) = 256` steps. Therefore the first 256 step
 /// entries are guaranteed bulk / nonterminal.
-const BULK_PREFIX_SAFE_ITERS: usize = 377;
+const BULK_PREFIX_SAFE_ITERS: usize = 394;
 
 fn env_usize(name: &str) -> Option<usize> {
     std::env::var(name).ok().and_then(|s| s.parse::<usize>().ok())
@@ -4049,8 +4018,8 @@ fn bulk_prefix_caps(pair: KalPair) -> BulkPrefixCaps {
         && env_usize("KAL_PAIR1_BULK3_FWD_ITERS").is_none()
         && env_usize("KAL_PAIR1_BULK3_BK_ITERS").is_none()
     {
-        forward = 378;
-        backward = 378;
+        forward = 394;
+        backward = 394;
     }
 
     BulkPrefixCaps { forward, backward }
@@ -9353,6 +9322,7 @@ fn pow_mod_2_k(p: U256, k: usize) -> U256 {
     r
 }
 
+#[allow(dead_code)]
 fn secp256k1_curve() -> WeierstrassEllipticCurve {
     WeierstrassEllipticCurve {
         modulus: U256::from_str_radix(
@@ -9380,6 +9350,7 @@ fn secp256k1_curve() -> WeierstrassEllipticCurve {
     }
 }
 
+#[allow(dead_code)]
 fn alt_seed_xof(ops: &[Op], tag: u64) -> sha3::Shake256Reader {
     let mut hasher = Shake256::default();
     hasher.update(b"quantum_ecc-alt-seed-v1");
@@ -9470,7 +9441,7 @@ fn build_standard_point_add(
     let pair1_iters = std::env::var("KAL_PAIR1_ITERS")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
-        .unwrap_or(404);
+        .unwrap_or(399);
     // The tagged validation paths change the op stream / Fiat-Shamir seed;
     // keep pair2 at the prior robust 404 setting to avoid conflating the
     // algebra probe with an iteration-threshold phase cliff.  Env overrides are
@@ -9481,7 +9452,7 @@ fn build_standard_point_add(
     let pair2_default = if tagged_div_validate || pair2_branch_inv {
         404
     } else {
-        400
+        398
     };
     let pair2_iters = std::env::var("KAL_PAIR2_ITERS")
         .ok()
