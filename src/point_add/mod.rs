@@ -2825,7 +2825,7 @@ fn mod_mul_add_into_acc_karatsuba_lowq_with_tmp_ext(
     }
     mod_add_qq_fast(b, acc, &hi, p);
     let (spill, flag_inv, ovf) = mod_shift_left_by_k(b, &hi, p, 22);
-    mod_add_qq(b, acc, &hi, p);
+    mod_add_qq_fast_lowscratch(b, acc, &hi, p);
     mod_shift_right_by_k(b, &hi, p, 22, spill, flag_inv, ovf);
     for _ in 0..10 {
         mod_halve_inplace_fast(b, &hi, p);
@@ -3415,7 +3415,7 @@ fn mod_add_solinas_ext_product(b: &mut B, acc: &[QubitId], tmp_ext: &[QubitId], 
     }
     mod_add_qq_fast(b, acc, &hi, p);
     let (spill, flag_inv, ovf) = mod_shift_left_by_k(b, &hi, p, 22);
-    mod_add_qq(b, acc, &hi, p);
+    mod_add_qq_fast_lowscratch(b, acc, &hi, p);
     mod_shift_right_by_k(b, &hi, p, 22, spill, flag_inv, ovf);
     for _ in 0..10 {
         mod_halve_inplace_fast(b, &hi, p);
@@ -3965,15 +3965,17 @@ fn mulmod(a: U256, b: U256, p: U256) -> U256 {
 /// WITHIN this function, via the conjugate pattern. The persistent flags
 /// `a_f, b_f, add_f` carry no data across iterations (each iteration resets
 /// them via classical uncomputation).
-/// Threshold: for iter_idx below the selected small-r cap, r's top bit is guaranteed 0
+/// Threshold: for iter_idx < r_small_threshold(), r's top bit is guaranteed 0
 /// (since max(r,s) doubles per iter starting from max=1, so max ≤ 2^iter_idx).
 /// In that range, mod_double(r)'s Solinas cadd is identity — replace with
 /// a plain shift (0 Toffoli) for ~255 CCX savings per iter.
 const R_SMALL_THRESHOLD: usize = 326;
-const R_SMALL_THRESHOLD_PAIR1_BK: usize = 327;
 
-fn env_usize(name: &str) -> Option<usize> {
-    std::env::var(name).ok().and_then(|s| s.parse::<usize>().ok())
+fn r_small_threshold() -> usize {
+    std::env::var("KAL_R_SMALL_THRESHOLD")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(R_SMALL_THRESHOLD)
 }
 
 /// For nonzero secp256k1 inputs, the first 256 Kaliski iterations are always
@@ -3987,6 +3989,10 @@ fn env_usize(name: &str) -> Option<usize> {
 /// entries are guaranteed bulk / nonterminal.
 const BULK_PREFIX_SAFE_ITERS: usize = 394;
 
+fn env_usize(name: &str) -> Option<usize> {
+    std::env::var(name).ok().and_then(|s| s.parse::<usize>().ok())
+}
+
 #[derive(Clone, Copy)]
 enum KalPair {
     Default,
@@ -3995,62 +4001,7 @@ enum KalPair {
 }
 
 #[derive(Clone, Copy)]
-enum KalPass {
-    Forward,
-    Backward,
-}
-
-fn r_small_threshold_for(pair: KalPair, pass: KalPass) -> usize {
-    let default = match (pair, pass) {
-        (KalPair::Pair1, KalPass::Backward) => R_SMALL_THRESHOLD_PAIR1_BK,
-        _ => R_SMALL_THRESHOLD,
-    };
-    let mut threshold = env_usize("KAL_R_SMALL_THRESHOLD").unwrap_or(default);
-
-    let global_pass = match pass {
-        KalPass::Forward => "KAL_R_SMALL_THRESHOLD_FWD",
-        KalPass::Backward => "KAL_R_SMALL_THRESHOLD_BK",
-    };
-    if let Some(v) = env_usize(global_pass) {
-        threshold = v;
-    }
-
-    let (pair_all, pair_pass) = match (pair, pass) {
-        (KalPair::Pair1, KalPass::Forward) => (
-            Some("KAL_PAIR1_R_SMALL_THRESHOLD"),
-            Some("KAL_PAIR1_R_SMALL_THRESHOLD_FWD"),
-        ),
-        (KalPair::Pair1, KalPass::Backward) => (
-            Some("KAL_PAIR1_R_SMALL_THRESHOLD"),
-            Some("KAL_PAIR1_R_SMALL_THRESHOLD_BK"),
-        ),
-        (KalPair::Pair2, KalPass::Forward) => (
-            Some("KAL_PAIR2_R_SMALL_THRESHOLD"),
-            Some("KAL_PAIR2_R_SMALL_THRESHOLD_FWD"),
-        ),
-        (KalPair::Pair2, KalPass::Backward) => (
-            Some("KAL_PAIR2_R_SMALL_THRESHOLD"),
-            Some("KAL_PAIR2_R_SMALL_THRESHOLD_BK"),
-        ),
-        (KalPair::Default, _) => (None, None),
-    };
-    if let Some(name) = pair_all {
-        if let Some(v) = env_usize(name) {
-            threshold = v;
-        }
-    }
-    if let Some(name) = pair_pass {
-        if let Some(v) = env_usize(name) {
-            threshold = v;
-        }
-    }
-
-    threshold
-}
-
-#[derive(Clone, Copy)]
 struct BulkPrefixCaps {
-    pair: KalPair,
     forward: usize,
     backward: usize,
 }
@@ -4150,7 +4101,7 @@ fn bulk_prefix_caps(pair: KalPair) -> BulkPrefixCaps {
         backward = 394;
     }
 
-    BulkPrefixCaps { pair, forward, backward }
+    BulkPrefixCaps { forward, backward }
 }
 
 fn bulk_prefix_enabled() -> bool {
@@ -6483,7 +6434,6 @@ fn kaliski_iteration_bulk_prefix3(
     s: &[QubitId],
     m_i: QubitId,
     iter_idx: usize,
-    r_small_threshold: usize,
     coeff: Option<(&[QubitId], &[QubitId])>,
 ) {
     let a_f = b.alloc_qubit();
@@ -6631,7 +6581,7 @@ fn kaliski_iteration_bulk_prefix3(
     for i in 0..(u.len() - 1) {
         b.swap(v_w[i], v_w[i + 1]);
     }
-    if iter_idx < r_small_threshold {
+    if iter_idx < r_small_threshold() {
         mod_double_no_corr(b, r);
     } else {
         mod_double_inplace_fast(b, r, p);
@@ -6686,7 +6636,6 @@ fn kaliski_iteration(
     m_i: QubitId,
     f: QubitId,
     iter_idx: usize,
-    r_small_threshold: usize,
     coeff: Option<(&[QubitId], &[QubitId])>,
 ) {
     let n = u.len();
@@ -6877,10 +6826,10 @@ fn kaliski_iteration(
     }
 
     // ─── STEP 7 + 8: r := 2*r mod p ───────────────────────────────────
-    // For iter_idx < r_small_threshold, r's top bit is guaranteed 0 (since
+    // For iter_idx < r_small_threshold(), r's top bit is guaranteed 0 (since
     // max(r,s) ≤ 2^iter_idx by induction). mod_double's Solinas correction
     // is identity; a plain shift suffices. Saves ~255 CCX per small iter.
-    if iter_idx < r_small_threshold {
+    if iter_idx < r_small_threshold() {
         mod_double_no_corr(b, r);
     } else {
         mod_double_inplace_fast(b, r, p);
@@ -7175,7 +7124,6 @@ fn kaliski_forward_with_coeff_caps(
 
     // ─── Iterations ───
     let use_bulk_prefix3 = bulk_prefix_enabled();
-    let r_small_threshold = r_small_threshold_for(bulk_caps.pair, KalPass::Forward);
     for i in 0..iters {
         if use_bulk_prefix3 && i < bulk_caps.forward {
             kaliski_iteration_bulk_prefix3(
@@ -7187,7 +7135,6 @@ fn kaliski_forward_with_coeff_caps(
                 &st.s,
                 st.m_hist[i],
                 i,
-                r_small_threshold,
                 coeff,
             );
         } else {
@@ -7201,7 +7148,6 @@ fn kaliski_forward_with_coeff_caps(
                 st.m_hist[i],
                 st.f_flag,
                 i,
-                r_small_threshold,
                 coeff,
             );
         }
@@ -7281,7 +7227,6 @@ fn kaliski_iteration_bulk_prefix3_backward(
     s: &[QubitId],
     m_i: QubitId,
     iter_idx: usize,
-    r_small_threshold: usize,
 ) {
     let n = u.len();
     let a_f = b.alloc_qubit();
@@ -7315,7 +7260,7 @@ fn kaliski_iteration_bulk_prefix3_backward(
     // Previously unconditional mod_halve_no_corr was a latent bug that
     // happened not to manifest in tested seeds.
     b.set_phase("bk_bulk_step6_7_8");
-    if iter_idx < r_small_threshold {
+    if iter_idx < r_small_threshold() {
         mod_halve_no_corr(b, r);
     } else {
         let mut dirty: Vec<QubitId> = u.to_vec();
@@ -7451,7 +7396,6 @@ fn kaliski_iteration_backward(
     m_i: QubitId,
     f: QubitId,
     iter_idx: usize,
-    r_small_threshold: usize,
 ) {
     let n = u.len();
     // Iter-local flags alloc'd fresh (zero at iter start in the backward
@@ -7481,9 +7425,9 @@ fn kaliski_iteration_backward(
 
     b.set_phase("bk_step6_7_8");
     // Reverse STEP 8 + 7 ─────────────────────────────────────────────
-    // For iter_idx < r_small_threshold, forward used mod_double_no_corr —
+    // For iter_idx < r_small_threshold(), forward used mod_double_no_corr —
     // r is guaranteed even (bit 0 = 0), so a plain shift-right inverts it.
-    if iter_idx < r_small_threshold {
+    if iter_idx < r_small_threshold() {
         mod_halve_no_corr(b, r);
     } else {
         let mut dirty: Vec<QubitId> = u.to_vec();
@@ -7683,7 +7627,6 @@ fn kaliski_backward_caps(
     debug_assert!(iters <= st.m_hist.len());
 
     let use_bulk_prefix3 = bulk_prefix_enabled();
-    let r_small_threshold = r_small_threshold_for(bulk_caps.pair, KalPass::Backward);
     // ─── Reverse iterations (in reverse order) ───
     for i in (0..iters).rev() {
         if use_bulk_prefix3 && i < bulk_caps.backward {
@@ -7696,7 +7639,6 @@ fn kaliski_backward_caps(
                 &st.s,
                 st.m_hist[i],
                 i,
-                r_small_threshold,
             );
         } else {
             kaliski_iteration_backward(
@@ -7709,7 +7651,6 @@ fn kaliski_backward_caps(
                 st.m_hist[i],
                 st.f_flag,
                 i,
-                r_small_threshold,
             );
         }
     }
@@ -8762,7 +8703,6 @@ fn kaliski_forward_alias_v_w_caps(
     b.x(st.f_flag);
 
     let use_bulk_prefix3 = bulk_prefix_enabled();
-    let r_small_threshold = r_small_threshold_for(bulk_caps.pair, KalPass::Forward);
     for i in 0..iters {
         if use_bulk_prefix3 && i < bulk_caps.forward {
             kaliski_iteration_bulk_prefix3(
@@ -8774,7 +8714,6 @@ fn kaliski_forward_alias_v_w_caps(
                 &st.s,
                 st.m_hist[i],
                 i,
-                r_small_threshold,
                 None,
             );
         } else {
@@ -8788,7 +8727,6 @@ fn kaliski_forward_alias_v_w_caps(
                 st.m_hist[i],
                 st.f_flag,
                 i,
-                r_small_threshold,
                 None,
             );
         }
@@ -8805,7 +8743,6 @@ fn kaliski_backward_alias_v_w_caps(
     debug_assert!(iters <= st.m_hist.len());
 
     let use_bulk_prefix3 = bulk_prefix_enabled();
-    let r_small_threshold = r_small_threshold_for(bulk_caps.pair, KalPass::Backward);
     for i in (0..iters).rev() {
         if use_bulk_prefix3 && i < bulk_caps.backward {
             kaliski_iteration_bulk_prefix3_backward(
@@ -8817,7 +8754,6 @@ fn kaliski_backward_alias_v_w_caps(
                 &st.s,
                 st.m_hist[i],
                 i,
-                r_small_threshold,
             );
         } else {
             kaliski_iteration_backward(
@@ -8830,7 +8766,6 @@ fn kaliski_backward_alias_v_w_caps(
                 st.m_hist[i],
                 st.f_flag,
                 i,
-                r_small_threshold,
             );
         }
     }
@@ -8959,7 +8894,6 @@ fn kaliski_forward_prescaled_kind(
 
     let use_bulk_prefix3 = bulk_prefix_enabled();
     let bulk_prefix_iters = bulk_prefix_safe_iters();
-    let r_small_threshold = r_small_threshold_for(KalPair::Default, KalPass::Forward);
     for i in 0..iters {
         if use_bulk_prefix3 && i < bulk_prefix_iters {
             kaliski_iteration_bulk_prefix3(
@@ -8971,7 +8905,6 @@ fn kaliski_forward_prescaled_kind(
                 &st.s,
                 st.m_hist[i],
                 i,
-                r_small_threshold,
                 None,
             );
         } else {
@@ -8985,7 +8918,6 @@ fn kaliski_forward_prescaled_kind(
                 st.m_hist[i],
                 st.f_flag,
                 i,
-                r_small_threshold,
                 None,
             );
         }
@@ -9028,7 +8960,6 @@ fn kaliski_backward_prescaled_kind(
 
     let use_bulk_prefix3 = bulk_prefix_enabled();
     let bulk_prefix_iters = bulk_prefix_safe_iters();
-    let r_small_threshold = r_small_threshold_for(KalPair::Default, KalPass::Backward);
     for i in (0..iters).rev() {
         if use_bulk_prefix3 && i < bulk_prefix_iters {
             kaliski_iteration_bulk_prefix3_backward(
@@ -9040,7 +8971,6 @@ fn kaliski_backward_prescaled_kind(
                 &st.s,
                 st.m_hist[i],
                 i,
-                r_small_threshold,
             );
         } else {
             kaliski_iteration_backward(
@@ -9053,7 +8983,6 @@ fn kaliski_backward_prescaled_kind(
                 st.m_hist[i],
                 st.f_flag,
                 i,
-                r_small_threshold,
             );
         }
     }
@@ -9187,7 +9116,6 @@ fn cleanup_bulk_prefix_caps(pair: KalPair) -> BulkPrefixCaps {
     // both forward and backward.  Explicit env override wins.
     let override_val = env_usize("KAL_PAIR1_INVKEEP_CLEANUP_BULK_ITERS").unwrap_or(0);
     BulkPrefixCaps {
-        pair,
         forward: override_val,
         backward: override_val,
     }
