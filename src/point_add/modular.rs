@@ -437,7 +437,13 @@ pub(crate) fn mod_double_inplace_fast(b: &mut B, v: &[QubitId], p: U256) {
     // `ovf` and the low register holds T mod 2^n for T = 2*v. If ovf=1 then
     // T = 2^n + low and T mod p = low + c; otherwise T mod p = low.
     let c = U256::MAX.wrapping_sub(p).wrapping_add(U256::from(1));
-    if std::env::var("KAL_DIRECT_CONST_DOUBLE").ok().as_deref() == Some("1") {
+    // T-squeeze: KAL_DIRECT_CONST_DOUBLE default-ON. mod_double's reduction constant
+    // here is the SPARSE Solinas c = 2^32+977, so routing it through the register-free
+    // direct const-add lets the carry-tail SUB/ADD truncation (now both-path on this
+    // base) clip its borrow/carry chain to W bits — across all ~800 mod_double calls
+    // of the two Kaliski passes. With carry-tail W=36 this is -84,576 avg-exec Toffoli
+    // vs the carry-register variant, flat peak 2309, 9024-clean. Set =0 to restore.
+    if std::env::var("KAL_DIRECT_CONST_DOUBLE").ok().as_deref() != Some("0") {
         cadd_nbit_const_direct_fast(b, v, c, ovf);
     } else {
         cadd_nbit_const_fast(b, v, c, ovf);

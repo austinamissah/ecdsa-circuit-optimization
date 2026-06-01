@@ -249,8 +249,13 @@ pub(crate) fn kal_carrytail_w() -> usize {
     // (0/0/0): avg-exec 2,547,490 Toffoli × 2309 = 5,882,154,410, below the
     // sub-only baseline 5,935,088,235. W∈{32,36,40,49,60,90,140} reject the
     // Fiat-Shamir island lottery here. Sub-only fallbacks retained for overrides.
+    // T-squeeze: with KAL_DIRECT_CONST_DOUBLE default-ON (mod_double routed through a
+    // truncatable sparse direct const-add), the both-path clean carry-tail floor drops
+    // 44->36 (chain to bit 33+36=69; the direct-double's extra truncated sites re-roll
+    // the island so W=36 lands clean — W∈{32,33,34,35,37,40,44} reject with DOUBLE on).
+    // DOUBLE + W=36 = 2,462,914 × 2309 = 5,686,868,426 (9024-clean, flat peak 2309).
     let default = if kal_carrytail_add_enabled() {
-        44
+        36
     } else if kal_cswap_wtrunc_enabled() {
         26
     } else {
