@@ -101,10 +101,10 @@ pub(crate) fn build_standard_point_add(
     let pair2_default = if tagged_div_validate || pair2_branch_inv {
         404
     } else if stack_2565_enabled() {
-        // With the uv-cswap merge default-on at safe_iters=254, pair2=398 is
-        // the clean low-Toffoli island on the modular shift22/sol-ext base.
-        // 397 and 399 each hit a one-shot mismatch on this circuit shape.
-        398
+        // With the uv-cswap merge default-on at safe_iters=254, the follow-up
+        // island sweep found pair2=397 clean and lower-Toffoli than pair2=398;
+        // 396/399 fail on this circuit shape.
+        397
     } else {
         398
     };
