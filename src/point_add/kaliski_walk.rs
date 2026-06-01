@@ -37,12 +37,6 @@ pub(crate) fn kaliski_iteration_bulk_prefix3(
     let a_f = b.alloc_qubit();
     let b_f = b.alloc_qubit();
     let add_f = b.alloc_qubit();
-    // f1 is a constant |1> ancilla whose only use is cz_if(f1, b_f, sm) in
-    // STEP 5. Restored to the peak-2310 form (revert of the f1-drop): the
-    // bxue-l2 island is at peak 2310 with pair2=397, and our algebraic wins
-    // (shift22-collapse + sol-ext-pos32-fast) compose cleanly on it.
-    let f1 = b.alloc_qubit();
-    b.x(f1);
 
     let _kal_saved_phase = b.phase;
 
@@ -261,7 +255,7 @@ pub(crate) fn kaliski_iteration_bulk_prefix3(
     {
         let sm = b.alloc_bit();
         b.hmr(add_f, sm);
-        b.cz_if(f1, b_f, sm);
+        b.z_if(b_f, sm);
     }
     b.x(b_f);
     b.cx(m_i, b_f);
@@ -327,8 +321,6 @@ pub(crate) fn kaliski_iteration_bulk_prefix3(
         b.x(s[0]);
     }
 
-    b.x(f1);
-    b.free(f1);
     b.free(add_f);
     b.free(b_f);
     b.free(a_f);
