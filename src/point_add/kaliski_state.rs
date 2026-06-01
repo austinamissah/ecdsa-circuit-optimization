@@ -75,10 +75,11 @@ pub(crate) fn kal_wtrunc_k0() -> usize {
 }
 
 pub(crate) fn kal_wtrunc_margin() -> usize {
-    // Sweep after the UV STEP1 fanout found a narrow clean island at margin=20.
-    // Neighboring margins 17-19 and 21-23 reject on the trusted 9024-shot scorer,
-    // so keep this as a banked exact island, not as a monotone safety margin.
-    env_usize("KAL_WTRUNC_MARGIN").unwrap_or(20)
+    // Banked: margin=10 (optimizer-20260601-021354; T -41,700 vs margin=20; 6,865,358,936).
+    // Sweep after the UV STEP1 fanout found a narrow clean island at margin=20;
+    // the next 9024-shot-valid step down is margin=10 (margins 5/12 reject).
+    // KAL_WTRUNC_MARGIN env override remains available.
+    env_usize("KAL_WTRUNC_MARGIN").unwrap_or(10)
 }
 
 /// Empirical-bound truncation width for a CCX-bearing Kaliski width loop at
