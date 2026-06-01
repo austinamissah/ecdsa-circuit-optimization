@@ -34,7 +34,7 @@ use super::*;
 /// a plain shift (0 Toffoli) for ~255 CCX savings per iter.
 // bxue-l2 island (peak 2310 after reverting the f1-drop): R_SMALL=326,
 // BULK_PREFIX_SAFE_ITERS=400, pair1=399, pair2=397.
-pub(crate) const R_SMALL_THRESHOLD: usize = 326;
+pub(crate) const R_SMALL_THRESHOLD: usize = 325;
 
 pub(crate) fn r_small_threshold() -> usize {
     std::env::var("KAL_R_SMALL_THRESHOLD")
@@ -71,7 +71,7 @@ pub(crate) fn kal_wtrunc_enabled() -> bool {
 }
 
 pub(crate) fn kal_wtrunc_k0() -> usize {
-    env_usize("KAL_WTRUNC_K0").unwrap_or(26)
+    env_usize("KAL_WTRUNC_K0").unwrap_or(24)
 }
 
 pub(crate) fn kal_wtrunc_margin() -> usize {
@@ -83,7 +83,7 @@ pub(crate) fn kal_wtrunc_margin() -> usize {
     // -4,380 avg-exec Toffoli vs margin=4, peak-neutral 2309. Validated clean;
     // score 6,616,811,249. (Carry-tail base had margin=4; pre-carry-tail it was
     // 0.) KAL_WTRUNC_MARGIN env override remains available.
-    env_usize("KAL_WTRUNC_MARGIN").unwrap_or(3)
+    env_usize("KAL_WTRUNC_MARGIN").unwrap_or(0)
 }
 
 /// Empirical-bound truncation width for a CCX-bearing Kaliski width loop at
@@ -217,18 +217,6 @@ pub(crate) fn kal_carrytail_sub_enabled() -> bool {
 /// 9024-clean (also clean with truncations off). KAL_MAJFOLD_SUB=0 disables.
 pub(crate) fn majfold_sub_enabled() -> bool {
     std::env::var("KAL_MAJFOLD_SUB").ok().as_deref() != Some("0")
-}
-
-/// MAJ-FOLD (ADD path): mirror of [`majfold_sub_enabled`] for the direct
-/// const-ADD forward AND inverse carry majorities in
-/// `cadd_nbit_const_direct_fast`. Forward carry is maj(acc_i, ctrl, carry_i);
-/// inverse carry is maj(!acc_i_final, ctrl, carry_i). Both fold to 1 CCX + free
-/// CX using the carry-in `ci` as the pivot (maj(a,b,d)=d^(a^d)&(b^d)). The
-/// computed carry value is identical to the 3-CCX form, so the sum XOR and the
-/// backward Hmr cz_if measurement-uncompute are byte-unchanged.
-/// KAL_MAJFOLD_ADD=0 disables. Default-ON (validated 9024-clean).
-pub(crate) fn majfold_add_enabled() -> bool {
-    std::env::var("KAL_MAJFOLD_ADD").ok().as_deref() != Some("0")
 }
 
 pub(crate) fn kal_carrytail_w() -> usize {
