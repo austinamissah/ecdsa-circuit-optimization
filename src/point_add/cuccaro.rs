@@ -801,7 +801,8 @@ pub(crate) fn cadd_nbit_const_direct_fast(b: &mut B, acc: &[QubitId], c: U256, c
         if bit(c, i) {
             if let Some(ci) = carry_in {
                 // MAJ(acc[i], ctrl, ci) -> fold to 1 CCX + free CX (ci pivot):
-                // maj(a,b,d)=d^(a^d)&(b^d). Value identical -> backward Hmr unchanged.
+                // maj(a,b,d)=d^(a^d)&(b^d). Value identical -> backward Hmr
+                // measurement-uncompute (cz_if) unchanged.
                 if majfold {
                     b.cx(ci, acc[i]);
                     b.cx(ci, ctrl);
