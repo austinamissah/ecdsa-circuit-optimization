@@ -32,13 +32,11 @@ use super::*;
 /// (since max(r,s) doubles per iter starting from max=1, so max ≤ 2^iter_idx).
 /// In that range, mod_double(r)'s Solinas cadd is identity — replace with
 /// a plain shift (0 Toffoli) for ~255 CCX savings per iter.
-// bxue-l2 island (peak 2310 after reverting the f1-drop): R_SMALL=326,
-// BULK_PREFIX_SAFE_ITERS=400, pair1=399, pair2=397.
-// T-squeeze: R_SMALL=325 — the re-roll value that lands K0=25 clean on the
-// cswap-base a25248f margin=0 island (with K0=26/R=326 only W=26 is clean at
-// 2,574,129; dropping to K0=25 needs the R=325 re-roll → 2,570,415). R=324/326/327
-// reject at this depth. Stacks: margin=0 + K0=25 + R=325 + W=26 = 5,935,088,235.
-pub(crate) const R_SMALL_THRESHOLD: usize = 325;
+// T-squeeze-5: R_SMALL=319 — re-roll opens a W staircase (both-path + direct-double base).
+// Full W-sweep at R=319 found clean islands at W∈{35,33,29,27,25,23}; W=23 is the floor
+// (W=22/21/20 reject). R∈{318,316,315,310,308,306,305} all reject at W=23; R=319 is
+// unique. Score: 2,448,307 T × 2309 = 5,651,540,863. UV_CSWAP_MARGIN island-invariant.
+pub(crate) const R_SMALL_THRESHOLD: usize = 319;
 
 pub(crate) fn r_small_threshold() -> usize {
     std::env::var("KAL_R_SMALL_THRESHOLD")
@@ -75,8 +73,7 @@ pub(crate) fn kal_wtrunc_enabled() -> bool {
 }
 
 pub(crate) fn kal_wtrunc_k0() -> usize {
-    // T-squeeze: K0=25 (was 26) — envelope decay starts 1 iter earlier. Validates on
-    // the cswap-base margin=0 island only with the R=325 re-roll (K0=24 rejects).
+    // K0=25 — unchanged. R=319 re-roll at W=23 doesn't open K0 below 25 (K0=24/23 reject).
     env_usize("KAL_WTRUNC_K0").unwrap_or(25)
 }
 
@@ -249,13 +246,13 @@ pub(crate) fn kal_carrytail_w() -> usize {
     // (0/0/0): avg-exec 2,547,490 Toffoli × 2309 = 5,882,154,410, below the
     // sub-only baseline 5,935,088,235. W∈{32,36,40,49,60,90,140} reject the
     // Fiat-Shamir island lottery here. Sub-only fallbacks retained for overrides.
-    // T-squeeze: with KAL_DIRECT_CONST_DOUBLE default-ON (mod_double routed through a
-    // truncatable sparse direct const-add), the both-path clean carry-tail floor drops
-    // 44->36 (chain to bit 33+36=69; the direct-double's extra truncated sites re-roll
-    // the island so W=36 lands clean — W∈{32,33,34,35,37,40,44} reject with DOUBLE on).
-    // DOUBLE + W=36 = 2,462,914 × 2309 = 5,686,868,426 (9024-clean, flat peak 2309).
+    // T-squeeze-5: R=319 re-roll opens W=23 as the new floor (chain to bit 33+23=56,
+    // 4 bits above the 19-bit MC max borrow run → arithmetically exact). W-staircase
+    // at R=319: {35,33,29,27,25,23} all clean; W=22 rejects. Baseline W=36 gives
+    // 2,462,914 at R=325; W=23 at R=319 gives 2,448,307 (-14,607 T).
+    // Score: 2,448,307 × 2309 = 5,651,540,863 (9024-clean, 0/0/0).
     let default = if kal_carrytail_add_enabled() {
-        36
+        23
     } else if kal_cswap_wtrunc_enabled() {
         26
     } else {
