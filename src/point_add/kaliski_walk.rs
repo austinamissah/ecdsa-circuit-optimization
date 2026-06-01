@@ -64,8 +64,19 @@ pub(crate) fn kaliski_iteration_bulk_prefix3(
         // u/v are conditionally exchanged by frame_in. Correct STEP-1 flags
         // to canonical basis by toggling on frame_in & (u0 xor v0).
         b.cx(v_w[0], u[0]);
-        b.ccx(frame_in, u[0], a_f);
-        b.ccx(frame_in, u[0], m_i);
+        if env_flag_enabled("KAL_UV_STEP1_FANOUT", true) {
+            let t = b.alloc_qubit();
+            b.ccx(frame_in, u[0], t);
+            b.cx(t, a_f);
+            b.cx(t, m_i);
+            let tm = b.alloc_bit();
+            b.hmr(t, tm);
+            b.cz_if(frame_in, u[0], tm);
+            b.free(t);
+        } else {
+            b.ccx(frame_in, u[0], a_f);
+            b.ccx(frame_in, u[0], m_i);
+        }
         b.cx(v_w[0], u[0]);
     }
     b.cx(a_f, b_f);
@@ -887,8 +898,19 @@ pub(crate) fn kaliski_iteration_bulk_prefix3_backward(
     b.cx(a_f, b_f);
     if let Some(frame_out) = uv_frame_out {
         b.cx(v_w[0], u[0]);
-        b.ccx(frame_out, u[0], m_i);
-        b.ccx(frame_out, u[0], a_f);
+        if env_flag_enabled("KAL_UV_STEP1_FANOUT", true) {
+            let t = b.alloc_qubit();
+            b.ccx(frame_out, u[0], t);
+            b.cx(t, m_i);
+            b.cx(t, a_f);
+            let tm = b.alloc_bit();
+            b.hmr(t, tm);
+            b.cz_if(frame_out, u[0], tm);
+            b.free(t);
+        } else {
+            b.ccx(frame_out, u[0], m_i);
+            b.ccx(frame_out, u[0], a_f);
+        }
         b.cx(v_w[0], u[0]);
     }
     b.x(v_w[0]);
