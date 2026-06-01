@@ -156,11 +156,8 @@ pub(crate) fn kaliski_iteration_bulk_prefix3(
         // frame_in ^= NOT(a_f ? r[0] : s[0]):
         b.cx(s[0], frame_in);
         b.x(frame_in); // frame_in ^= NOT s[0]
-        // CCX-ELIM: frame_in ^= a_f&(r[0]^s[0]) — fold 2 CCX -> 1 CCX + free CX
-        // (distribute the AND over the XOR using s[0] as a transient pivot on r[0]).
-        b.cx(s[0], r[0]);
         b.ccx(a_f, r[0], frame_in);
-        b.cx(s[0], r[0]);
+        b.ccx(a_f, s[0], frame_in); // frame_in ^= a_f & (r[0] ^ s[0])
         b.free(frame_in); // frame_in now |0⟩
         *frame = None;
     } else {
@@ -447,10 +444,8 @@ pub(crate) fn kaliski_iteration(
         // a_k (= a_f) as select: frame_in ^= NOT(a_f ? r[0] : s[0]).
         b.cx(s[0], frame_in);
         b.x(frame_in);
-        // CCX-ELIM: frame_in ^= a_f&(r[0]^s[0]) — fold 2 CCX -> 1 CCX + free CX.
-        b.cx(s[0], r[0]);
         b.ccx(a_f, r[0], frame_in);
-        b.cx(s[0], r[0]);
+        b.ccx(a_f, s[0], frame_in);
         b.free(frame_in);
         *frame = None;
     } else {
@@ -851,10 +846,8 @@ pub(crate) fn kaliski_iteration_bulk_prefix3_backward(
     if merge_rs && iter_idx != 0 {
         let frame_out = b.alloc_qubit();
         // Reverse reroute (recreate frame_out = a_{k-1}), a_f = a_k as select.
-        // CCX-ELIM: frame_out ^= a_f&(r[0]^s[0]) — fold 2 CCX -> 1 CCX + free CX.
-        b.cx(s[0], r[0]);
+        b.ccx(a_f, s[0], frame_out);
         b.ccx(a_f, r[0], frame_out);
-        b.cx(s[0], r[0]);
         b.x(frame_out);
         b.cx(s[0], frame_out);
         // Reverse the merged cswap: control a_{k-1} ⊕ a_k.
@@ -1111,10 +1104,8 @@ pub(crate) fn kaliski_iteration_backward(
     if merge_rs && iter_idx != 0 {
         let frame_out = b.alloc_qubit();
         // Reverse reroute (recreate frame_out = a_{k-1}), a_f = a_k as select.
-        // CCX-ELIM: frame_out ^= a_f&(r[0]^s[0]) — fold 2 CCX -> 1 CCX + free CX.
-        b.cx(s[0], r[0]);
+        b.ccx(a_f, s[0], frame_out);
         b.ccx(a_f, r[0], frame_out);
-        b.cx(s[0], r[0]);
         b.x(frame_out);
         b.cx(s[0], frame_out);
         b.cx(frame_out, a_f); // a_f = a_{k-1} ⊕ a_k
