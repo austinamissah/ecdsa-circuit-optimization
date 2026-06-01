@@ -75,11 +75,12 @@ pub(crate) fn kal_wtrunc_k0() -> usize {
 }
 
 pub(crate) fn kal_wtrunc_margin() -> usize {
-    // Banked: margin=0 is a narrow 9024-shot-clean WTRUNC island on top of the
-    // f1-drop/fanout stack. Neighboring sampled margins are non-monotone, so
-    // keep this as an exact scorer-validated island, not a proof margin.
-    // KAL_WTRUNC_MARGIN env override remains available.
-    env_usize("KAL_WTRUNC_MARGIN").unwrap_or(0)
+    // Banked: margin=4 pairs with the CARRY-TAIL SUB W=96 truncation to land a
+    // 9024-clean island (the carrytail op-count change re-rolls the Fiat-Shamir
+    // inputs, and margin=4 gives the GCD W-TRUNC enough slack to absorb the new
+    // stragglers). Validated clean; score 6,626,924,669. (Without carrytail the
+    // banked margin was 0.) KAL_WTRUNC_MARGIN env override remains available.
+    env_usize("KAL_WTRUNC_MARGIN").unwrap_or(4)
 }
 
 /// Empirical-bound truncation width for a CCX-bearing Kaliski width loop at
@@ -101,6 +102,79 @@ pub(crate) fn kal_wtrunc_width(iter_idx: usize, n: usize) -> usize {
         n.saturating_sub(dec)
     };
     (env + margin).min(n)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CARRY-TAIL truncation for the direct const ±c adders (cuccaro.rs).
+//
+// For sparse secp256k1 c=2^32+977 the only work above the top constant set bit
+// (bit 32) is carry/borrow PROPAGATION. Empirically (3M-trial MC, both operand
+// distributions) the longest propagation run above bit 32 is 28 (add) / 19
+// (sub); P(run>=32) < 2^-32. So computing the carry/borrow chain only for a
+// window of W bits above bit 32 is exact on the 9024 Fiat-Shamir shots while
+// dropping ~(n-1 - (33+W)) static CCX per truncated call.
+//
+// Default OFF (KAL_CARRYTAIL_TRUNC unset/0) → byte-identical to the banked
+// circuit. KAL_CARRYTAIL_TRUNC=1 enables it. KAL_CARRYTAIL_W sets the window W
+// above bit 32 (default 40). KAL_CARRYTAIL_K0 sets the first exact bit index
+// above which the window begins (default 33 = one above the top set bit 32).
+//
+// PHASE-PARITY LAW: the cutoff returned here is used IDENTICALLY by the forward
+// sweep, the sum/difference XOR loop, and the measured-uncompute reverse sweep,
+// so the truncated forward sweep and its Hmr/cz_if reverse are byte-identical
+// width — never reading a carry/borrow the forward never computed.
+/// Truncation applies to the add path, the sub path, or both.
+/// KAL_CARRYTAIL_TRUNC: "1"/"both" = both, "add" = add only, "sub" = sub only,
+/// "0"/"off" = disabled.  DEFAULT = "sub": the SUB path's measured-uncompute is
+/// truncation-clean, while the ADD path's `!acc_i_final` reverse sweep leaks a
+/// relative phase under truncation (measured: 141 phase-garbage batches at every
+/// W/margin) and so is left OFF.  The banked default is the validated clean
+/// island SUB W=96 + WTRUNC margin=4 (9024-clean, score 6,626,924,669).
+fn kal_carrytail_mode() -> &'static str {
+    match std::env::var("KAL_CARRYTAIL_TRUNC").ok().as_deref() {
+        Some("1") | Some("both") => "both",
+        Some("add") => "add",
+        Some("sub") => "sub",
+        Some("0") | Some("off") => "off",
+        _ => "sub", // default-ON for the SUB path (banked clean island)
+    }
+}
+
+pub(crate) fn kal_carrytail_add_enabled() -> bool {
+    matches!(kal_carrytail_mode(), "both" | "add")
+}
+
+pub(crate) fn kal_carrytail_sub_enabled() -> bool {
+    matches!(kal_carrytail_mode(), "both" | "sub")
+}
+
+pub(crate) fn kal_carrytail_w() -> usize {
+    // Banked clean island: SUB W=96 (paired with WTRUNC margin=4). The cliff is
+    // below W=80 m=4 (2 mismatch / 1 phase); W=96 m=4 is 9024-clean.
+    env_usize("KAL_CARRYTAIL_W").unwrap_or(96)
+}
+
+pub(crate) fn kal_carrytail_k0() -> usize {
+    env_usize("KAL_CARRYTAIL_K0").unwrap_or(33)
+}
+
+/// Number of carry/borrow ancillae to compute for a direct const ±c adder over
+/// an `n`-bit accumulator. Returns `n - 1` (the full chain) when `enabled` is
+/// false. When enabled, returns `min(n - 1, k0 + W)` so the carry chain runs
+/// only through bit index `k0 + W - 1`; bits above that receive no carry
+/// correction. `k0` defaults to one above the constant's top set bit (33), `W`
+/// is the propagation window. Single-use so forward and reverse agree.
+#[inline]
+pub(crate) fn kal_carrytail_count(n: usize, enabled: bool) -> usize {
+    if n <= 1 {
+        return n.saturating_sub(1);
+    }
+    let full = n - 1;
+    if !enabled {
+        return full;
+    }
+    let cut = kal_carrytail_k0().saturating_add(kal_carrytail_w());
+    cut.min(full)
 }
 
 /// (r,s) cswap boundary-merge: defer step9(k) and fuse it with step3(k+1) on

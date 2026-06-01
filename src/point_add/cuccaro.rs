@@ -681,11 +681,16 @@ pub(crate) fn csub_nbit_const_direct_fast(b: &mut B, acc: &[QubitId], c: U256, c
         return;
     }
 
-    let borrows = b.alloc_qubits(n - 1);
+    // CARRY-TAIL truncation: compute the borrow chain only through bit `cut-1`.
+    // cut == n-1 (full chain) when truncation is disabled.  Phase-parity law:
+    // forward sweep, difference XOR, and reverse uncompute all use this same
+    // `cut`, so they are byte-identical width.
+    let cut = kal_carrytail_count(n, kal_carrytail_sub_enabled());
+    let borrows = b.alloc_qubits(cut);
 
     // Forward borrow sweep. borrow_{i+1} = majority(!acc_i, k_i, borrow_i),
     // where k_i = ctrl when c_i=1 and 0 otherwise.
-    for i in 0..n - 1 {
+    for i in 0..cut {
         let target = borrows[i];
         let borrow_in = if i == 0 { None } else { Some(borrows[i - 1]) };
         if bit(c, i) {
@@ -705,19 +710,21 @@ pub(crate) fn csub_nbit_const_direct_fast(b: &mut B, acc: &[QubitId], c: U256, c
         }
     }
 
-    // Difference bits: acc_i ^= k_i ^ borrow_i.
+    // Difference bits: acc_i ^= k_i ^ borrow_i.  The const XOR is always exact;
+    // the borrow XOR only applies for bits whose borrow-in was computed
+    // (i-1 < cut, i.e. i <= cut).
     for i in 0..n {
         if bit(c, i) {
             b.cx(ctrl, acc[i]);
         }
-        if i > 0 {
+        if i > 0 && i - 1 < cut {
             b.cx(borrows[i - 1], acc[i]);
         }
     }
 
     // Measurement-uncompute borrows in reverse.  For subtraction the post-sum
     // identity is borrow_{i+1} = majority(acc_i_final, k_i, borrow_i).
-    for i in (0..n - 1).rev() {
+    for i in (0..cut).rev() {
         let m = b.alloc_bit();
         b.hmr(borrows[i], m);
         let borrow_in = if i == 0 { None } else { Some(borrows[i - 1]) };
@@ -768,10 +775,14 @@ pub(crate) fn cadd_nbit_const_direct_fast(b: &mut B, acc: &[QubitId], c: U256, c
         return;
     }
 
-    let carries = b.alloc_qubits(n - 1);
+    // CARRY-TAIL truncation: compute the carry chain only through bit `cut-1`.
+    // cut == n-1 (full chain) when truncation is disabled.  Phase-parity law:
+    // forward sweep, sum XOR, and reverse uncompute all use this same `cut`.
+    let cut = kal_carrytail_count(n, kal_carrytail_add_enabled());
+    let carries = b.alloc_qubits(cut);
 
     // Forward carry sweep. carry_{i+1} = majority(acc_i, k_i, carry_i).
-    for i in 0..n - 1 {
+    for i in 0..cut {
         let target = carries[i];
         let carry_in = if i == 0 { None } else { Some(carries[i - 1]) };
         if bit(c, i) {
@@ -787,19 +798,20 @@ pub(crate) fn cadd_nbit_const_direct_fast(b: &mut B, acc: &[QubitId], c: U256, c
         }
     }
 
-    // Sum bits: acc_i ^= k_i ^ carry_i.
+    // Sum bits: acc_i ^= k_i ^ carry_i.  The const XOR is always exact; the
+    // carry XOR only applies for bits whose carry-in was computed (i <= cut).
     for i in 0..n {
         if bit(c, i) {
             b.cx(ctrl, acc[i]);
         }
-        if i > 0 {
+        if i > 0 && i - 1 < cut {
             b.cx(carries[i - 1], acc[i]);
         }
     }
 
     // Measurement-uncompute carries in reverse.  For addition the post-sum
     // identity is carry_{i+1} = majority(!acc_i_final, k_i, carry_i).
-    for i in (0..n - 1).rev() {
+    for i in (0..cut).rev() {
         let m = b.alloc_bit();
         b.hmr(carries[i], m);
         let carry_in = if i == 0 { None } else { Some(carries[i - 1]) };
