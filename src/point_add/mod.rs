@@ -29014,7 +29014,11 @@ fn configure_ecdsafail_submission_route() {
     set_default_env("DIALOG_GCD_COMPRESSED_SIDECAR_LOG", "1");
     set_default_env("DIALOG_GCD_COMPRESSED_BLOCK_LIFECYCLE", "1");
     set_default_env("DIALOG_GCD_PA9024_COMPARE_SCHEDULE", "1");
-    set_default_env("DIALOG_GCD_PA9024_COMPARE_SCHEDULE_MARGIN", "8");
+    // PA9024 compare-schedule margin tightened 8 -> 5 (trims a comparator-width
+    // bit/step, -1,868 executed Toffoli). The tighter margin needs a clean
+    // Fiat-Shamir island, found by a 2D reroll search (DIALOG_REROLL=3 +
+    // DIALOG_POST_SUB_REROLL=18 below) — 1D reroll sweeps miss it. 0/0/0 @ 1571.
+    set_default_env("DIALOG_GCD_PA9024_COMPARE_SCHEDULE_MARGIN", "5");
     set_default_env("KAL_DOUBLE_CARRY_TRUNC_W", "20");
     set_default_env("KAL_FOLD_CARRY_TRUNC_W", "20");
     set_default_env("DIALOG_GCD_ROUND763_DEDUP", "1");
@@ -29056,8 +29060,8 @@ fn configure_ecdsafail_submission_route() {
     set_default_env("DIALOG_GCD_APPLY_WINDOW_BLOCKS", "2");
     // New low-bit body op stream needs its own clean Fiat-Shamir island:
     // REROLL=1, POST_SUB_REROLL=12 validates 0/0/0 over 9024.
-    set_default_env("DIALOG_REROLL", "1");
-    set_default_env("DIALOG_POST_SUB_REROLL", "12");
+    set_default_env("DIALOG_REROLL", "3");
+    set_default_env("DIALOG_POST_SUB_REROLL", "18");
     // Fuse the branch-bit comparator with the b0-controlled log update: derive
     // b0_and_b1 from the in-flight comparator carry instead of materializing a
     // separate cmp qubit and recomputing the comparator for uncompute. Pure
