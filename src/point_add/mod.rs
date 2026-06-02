@@ -28497,7 +28497,7 @@ fn configure_ecdsafail_submission_route() {
     set_default_env("DIALOG_GCD_COMPRESSED_SIDECAR_LOG", "1");
     set_default_env("DIALOG_GCD_COMPRESSED_BLOCK_LIFECYCLE", "1");
     set_default_env("DIALOG_GCD_PA9024_COMPARE_SCHEDULE", "1");
-    set_default_env("DIALOG_GCD_PA9024_COMPARE_SCHEDULE_MARGIN", "7");
+    set_default_env("DIALOG_GCD_PA9024_COMPARE_SCHEDULE_MARGIN", "6");
     set_default_env("KAL_DOUBLE_CARRY_TRUNC_W", "20");
     set_default_env("KAL_FOLD_CARRY_TRUNC_W", "20");
     set_default_env("DIALOG_GCD_ROUND763_DEDUP", "1");
@@ -28529,10 +28529,7 @@ fn configure_ecdsafail_submission_route() {
     // the materialized add/sub clean predicates with the measured comparator.
     // Pure Toffoli reduction (1697569 -> 1673629), peak-neutral at 1698.
     // (Validated 0/0/0 over 9024 via eval_circuit.)
-    // Compare schedule margin 7 composes with the a16 carry-tail route when
-    // co-tuned to reroll 4. Pure Toffoli reduction (1668753 -> 1668241),
-    // peak-neutral at 1698. (Validated 0/0/0 over 9024 via eval_circuit.)
-    set_default_env("DIALOG_REROLL", "4");
+    set_default_env("DIALOG_REROLL", "29");
     // Fuse the branch-bit comparator with the b0-controlled log update: derive
     // b0_and_b1 from the in-flight comparator carry instead of materializing a
     // separate cmp qubit and recomputing the comparator for uncompute. Pure
