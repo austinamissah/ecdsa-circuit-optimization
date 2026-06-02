@@ -84,10 +84,8 @@ pub(crate) fn kal_wtrunc_k0() -> usize {
     // flat peak 2309, avg-exec 2,410,038 T × 2309 = 5,564,777,742. The baked
     // KAL_REROLL default (=12) is CO-TUNED to this K0; changing either re-rolls
     // the Fiat-Shamir input set and must be re-searched.
-    // SHIFT22_FOLD_DIRTY re-roll: the dirty-fold + affine mfw234 stream has NO clean
-    // margin=0 island at K0=20 (rr 0-80 all FAIL). K0=21 (one extra full-width prefix
-    // iter — cheaper than KAL_WTRUNC_MARGIN=1) restores a clean margin=0 island at
-    // rr=3, peak 2006, avg-exec 2,575,683 T × 2006 = 5,166,820,098 (validated 0/0/0).
+    // SHIFT22_FOLD_DIRTY re-roll: ... K0=21 restores clean margin=0 island at
+    // rr=27 + shift22 W=35 (tiny T win), peak 2006, 2,575,667 T × 2006 = 5,166,788,002.
     env_usize("KAL_WTRUNC_K0").unwrap_or(21)
 }
 
@@ -105,10 +103,8 @@ pub(crate) fn kal_wtrunc_margin() -> usize {
     // 2,574,129 × 2309 = 5,943,663,861 (validated 9024-clean, peak 2309). These
     // Kaliski-inverse truncation levers are ORTHOGONAL to the cswap/mul-layer wins
     // and STACK on top of them. KAL_WTRUNC_MARGIN env override remains available.
-    // SHIFT22_FOLD_DIRTY re-roll: the dirty-fold + affine mfw234 stream re-rolls the
-    // Fiat-Shamir island. margin=0 at the prior K0=20 had NO clean reroll, but K0=21
-    // (one extra full-width prefix iter, cheaper than margin=1) DOES — so margin stays
-    // at the 0 floor. See kal_wtrunc_k0 (rr=3, peak 2006, score 5,166,820,098).
+    // SHIFT22_FOLD_DIRTY re-roll: ... K0=21 DOES — margin stays 0. See kal_wtrunc_k0
+    // (rr=27 + W=35, peak 2006, score 5,166,788,002).
     env_usize("KAL_WTRUNC_MARGIN").unwrap_or(0)
 }
 
