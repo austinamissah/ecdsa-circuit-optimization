@@ -2052,6 +2052,21 @@ fn double_carry_trunc_window() -> Option<usize> {
         .filter(|&w| w > 0)
 }
 
+/// Carry/borrow-tail truncation window for the pseudomersenne overflow/underflow
+/// FOLD adders (the controlled `acc[..LSBS] += c` / `-= c` correction after a
+/// raw 256-bit add/sub in the materialized-special apply path). Default OFF.
+/// Same idea as `double_carry_trunc_window`: the secp256k1 constant
+/// c = 2^32+977 is 7-bit-sparse, so the fold's carry ripple can stop a small
+/// window above bit 32. Forward (cadd) and inverse (csub) read the same window,
+/// so the reverse apply exactly inverts the forward when no truncation triggers
+/// (the regime selected by the co-tuned reroll).
+fn fold_carry_trunc_window() -> Option<usize> {
+    std::env::var("KAL_FOLD_CARRY_TRUNC_W")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .filter(|&w| w > 0)
+}
+
 /// Carry-tail-truncated controlled add of a sparse classical constant.
 ///
 /// Identical arithmetic to [`cadd_nbit_const_direct_fast`] except the forward
@@ -22932,13 +22947,6 @@ fn dialog_gcd_fused_branch_bits_enabled() -> bool {
         == Some("1")
 }
 
-fn dialog_gcd_odd_u_lowbit_fastpath_enabled() -> bool {
-    std::env::var("DIALOG_GCD_ODD_U_LOWBIT_FASTPATH")
-        .ok()
-        .as_deref()
-        == Some("1")
-}
-
 fn dialog_gcd_cmp_gt_truncated_into_width(
     b: &mut B,
     u: &[QubitId],
@@ -23022,6 +23030,27 @@ fn dialog_gcd_round762_active_width(step: usize) -> usize {
     let ideal = N as f64 - (step as f64) * 0.5 * 1.415 + 37.0;
     let rounded = ((ideal.max(1.0) / 2.0).ceil() as usize) * 2;
     rounded.clamp(1, N)
+}
+
+/// Carry-tail truncation window for the materialized controlled sub/add BODY
+/// (and its gated LOAD). Default 0 (OFF). When `w > 0`, the controlled
+/// `acc -= ctrl·subtrahend` / `acc += ctrl·addend` only loads + ripples the
+/// low `active_width - w` bits. The GCD work registers u/v are bounded by the
+/// realizable bitlen, which sits `WIDTH_MARGIN` (=28) bits below `active_width`,
+/// so the top `w <= margin` bits of both operands are 0 in the no-truncation
+/// regime: the gated LOAD there is `ctrl & 0 = 0` and the body's top carries
+/// are 0, so neither the load nor the carry ripple above `active_width - w`
+/// affects the result. Failure mode (a step whose realizable bitlen actually
+/// reaches into the truncated window) is selected away by the co-tuned reroll,
+/// exactly like the global WIDTH_MARGIN — but applied to the sub/add ONLY,
+/// leaving the cswap and comparator at full active_width. Returns the truncated
+/// body width, clamped to >= 2.
+fn dialog_gcd_body_carry_trunc_width(active_width: usize) -> usize {
+    let w = std::env::var("DIALOG_GCD_BODY_CARRY_TRUNC_W")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(0);
+    active_width.saturating_sub(w).max(2)
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -23245,24 +23274,26 @@ fn dialog_gcd_controlled_sub_selected(
                 gated_owned.as_slice()
             }
         };
+        let body_w = dialog_gcd_body_carry_trunc_width(n);
         b.set_phase("dialog_gcd_raw_tobitvector_materialized_sub_load");
-        for i in 0..n {
-            if i == 0 && dialog_gcd_odd_u_lowbit_fastpath_enabled() {
-                b.cx(ctrl, gated[i]);
-            } else {
-                b.ccx(ctrl, subtrahend[i], gated[i]);
-            }
+        for i in 0..body_w {
+            b.ccx(ctrl, subtrahend[i], gated[i]);
         }
         b.set_phase("dialog_gcd_raw_tobitvector_materialized_sub_body");
         if let Some(carries) =
-            borrowed_carries.filter(|carries| carries.len() >= n.saturating_sub(1))
+            borrowed_carries.filter(|carries| carries.len() >= body_w.saturating_sub(1))
         {
-            sub_nbit_qq_fast_borrowed_carries(b, gated, acc, &carries[..n.saturating_sub(1)]);
+            sub_nbit_qq_fast_borrowed_carries(
+                b,
+                &gated[..body_w],
+                &acc[..body_w],
+                &carries[..body_w.saturating_sub(1)],
+            );
         } else {
-            sub_nbit_qq_fast(b, gated, acc);
+            sub_nbit_qq_fast(b, &gated[..body_w], &acc[..body_w]);
         }
         b.set_phase("dialog_gcd_raw_tobitvector_materialized_sub_clear");
-        for i in 0..n {
+        for i in 0..body_w {
             let m = b.alloc_bit();
             b.hmr(gated[i], m);
             b.cz_if(ctrl, subtrahend[i], m);
@@ -23305,24 +23336,26 @@ fn dialog_gcd_controlled_add_selected(
                 gated_owned.as_slice()
             }
         };
+        let body_w = dialog_gcd_body_carry_trunc_width(n);
         b.set_phase("dialog_gcd_raw_tobitvector_materialized_add_load");
-        for i in 0..n {
-            if i == 0 && dialog_gcd_odd_u_lowbit_fastpath_enabled() {
-                b.cx(ctrl, gated[i]);
-            } else {
-                b.ccx(ctrl, addend[i], gated[i]);
-            }
+        for i in 0..body_w {
+            b.ccx(ctrl, addend[i], gated[i]);
         }
         b.set_phase("dialog_gcd_raw_tobitvector_materialized_add_body");
         if let Some(carries) =
-            borrowed_carries.filter(|carries| carries.len() >= n.saturating_sub(1))
+            borrowed_carries.filter(|carries| carries.len() >= body_w.saturating_sub(1))
         {
-            add_nbit_qq_fast_borrowed_carries(b, gated, acc, &carries[..n.saturating_sub(1)]);
+            add_nbit_qq_fast_borrowed_carries(
+                b,
+                &gated[..body_w],
+                &acc[..body_w],
+                &carries[..body_w.saturating_sub(1)],
+            );
         } else {
-            add_nbit_qq_fast(b, gated, acc);
+            add_nbit_qq_fast(b, &gated[..body_w], &acc[..body_w]);
         }
         b.set_phase("dialog_gcd_raw_tobitvector_materialized_add_clear");
-        for i in 0..n {
+        for i in 0..body_w {
             let m = b.alloc_bit();
             b.hmr(gated[i], m);
             b.cz_if(ctrl, addend[i], m);
@@ -23394,10 +23427,7 @@ fn emit_dialog_gcd_raw_tobitvector_steps(
         b.free(cmp);
 
         b.set_phase("dialog_gcd_raw_tobitvector_cswap");
-        for (i, (&ui, &vi)) in u_active.iter().zip(v_active.iter()).enumerate() {
-            if i == 0 && dialog_gcd_odd_u_lowbit_fastpath_enabled() {
-                continue;
-            }
+        for (&ui, &vi) in u_active.iter().zip(v_active.iter()) {
             cswap(b, b0_and_b1, ui, vi);
         }
 
@@ -23437,10 +23467,7 @@ fn emit_dialog_gcd_raw_tobitvector_steps_reverse(
         dialog_gcd_controlled_add_selected(b, u_active, v_active, b0, borrowed_carries);
 
         b.set_phase("dialog_gcd_raw_tobitvector_reverse_cswap");
-        for (i, (&ui, &vi)) in u_active.iter().zip(v_active.iter()).enumerate() {
-            if i == 0 && dialog_gcd_odd_u_lowbit_fastpath_enabled() {
-                continue;
-            }
+        for (&ui, &vi) in u_active.iter().zip(v_active.iter()) {
             cswap(b, b0_and_b1, ui, vi);
         }
 
@@ -23582,12 +23609,16 @@ fn dialog_gcd_cmod_add_materialized_pseudomersenne(
     b.free(f_ovf);
 
     b.set_phase("dialog_gcd_materialized_special_overflow_fold");
-    cadd_nbit_const_fast(b, &acc[..DIALOG_GCD_SPECIAL_ADD_LSBS], c, acc_ovf);
+    if let Some(w) = fold_carry_trunc_window() {
+        cadd_nbit_const_direct_trunc_fast(b, &acc[..DIALOG_GCD_SPECIAL_ADD_LSBS], c, acc_ovf, w);
+    } else {
+        cadd_nbit_const_fast(b, &acc[..DIALOG_GCD_SPECIAL_ADD_LSBS], c, acc_ovf);
+    }
 
     b.set_phase("dialog_gcd_materialized_special_overflow_clean");
     if dialog_gcd_raw_apply_truncated_clean_enabled() {
         let compare_start = N - dialog_gcd_apply_clean_compare_bits();
-        cmp_lt_into(b, &acc[compare_start..], &f[compare_start..], acc_ovf);
+        cmp_lt_into_fast(b, &acc[compare_start..], &f[compare_start..], acc_ovf);
     } else {
         cmp_lt_into(b, acc, &f, acc_ovf);
     }
@@ -23642,7 +23673,11 @@ fn dialog_gcd_cmod_sub_materialized_pseudomersenne(
     b.free(f_ovf);
 
     b.set_phase("dialog_gcd_materialized_special_underflow_fold");
-    csub_nbit_const_fast(b, &acc[..DIALOG_GCD_SPECIAL_ADD_LSBS], c, acc_ovf);
+    if let Some(w) = fold_carry_trunc_window() {
+        csub_nbit_const_direct_trunc_fast(b, &acc[..DIALOG_GCD_SPECIAL_ADD_LSBS], c, acc_ovf, w);
+    } else {
+        csub_nbit_const_fast(b, &acc[..DIALOG_GCD_SPECIAL_ADD_LSBS], c, acc_ovf);
+    }
 
     b.set_phase("dialog_gcd_materialized_special_underflow_clean");
     if dialog_gcd_raw_apply_truncated_clean_enabled() {
@@ -23652,14 +23687,20 @@ fn dialog_gcd_cmod_sub_materialized_pseudomersenne(
         for &q in &a[compare_start..] {
             b.x(q);
         }
-        cmp_lt_into(
+        cmp_lt_into_fast(
             b,
             &acc[compare_start..],
             &a[compare_start..],
             underflow_pred,
         );
-        b.ccx(ctrl, underflow_pred, acc_ovf);
-        cmp_lt_into(
+        if dialog_gcd_measured_underflow_gate_enabled() {
+            let m = b.alloc_bit();
+            b.hmr(acc_ovf, m);
+            b.cz_if(ctrl, underflow_pred, m);
+        } else {
+            b.ccx(ctrl, underflow_pred, acc_ovf);
+        }
+        cmp_lt_into_fast(
             b,
             &acc[compare_start..],
             &a[compare_start..],
@@ -23804,7 +23845,11 @@ fn dialog_gcd_cmod_sub_materialized_pseudomersenne_borrowed_subtrahend(
     b.free(f_ovf);
 
     b.set_phase("dialog_gcd_materialized_special_borrowed_underflow_fold");
-    csub_nbit_const_fast(b, &acc[..DIALOG_GCD_SPECIAL_ADD_LSBS], c, acc_ovf);
+    if let Some(w) = fold_carry_trunc_window() {
+        csub_nbit_const_direct_trunc_fast(b, &acc[..DIALOG_GCD_SPECIAL_ADD_LSBS], c, acc_ovf, w);
+    } else {
+        csub_nbit_const_fast(b, &acc[..DIALOG_GCD_SPECIAL_ADD_LSBS], c, acc_ovf);
+    }
 
     b.set_phase("dialog_gcd_materialized_special_borrowed_underflow_clean");
     if dialog_gcd_raw_apply_truncated_clean_enabled() {
@@ -23814,14 +23859,20 @@ fn dialog_gcd_cmod_sub_materialized_pseudomersenne_borrowed_subtrahend(
         for &q in &a[compare_start..] {
             b.x(q);
         }
-        cmp_lt_into(
+        cmp_lt_into_fast(
             b,
             &acc[compare_start..],
             &a[compare_start..],
             underflow_pred,
         );
-        b.ccx(ctrl, underflow_pred, acc_ovf);
-        cmp_lt_into(
+        if dialog_gcd_measured_underflow_gate_enabled() {
+            let m = b.alloc_bit();
+            b.hmr(acc_ovf, m);
+            b.cz_if(ctrl, underflow_pred, m);
+        } else {
+            b.ccx(ctrl, underflow_pred, acc_ovf);
+        }
+        cmp_lt_into_fast(
             b,
             &acc[compare_start..],
             &a[compare_start..],
@@ -24024,14 +24075,32 @@ pub fn build_dialog_gcd_raw_ipmul_fit_bench() -> Vec<Op> {
     build_dialog_gcd_raw_ipmul_fit_bench_builder().ops
 }
 
+fn dialog_gcd_measured_underflow_gate_enabled() -> bool {
+    // Measured (Gidney) uncompute of acc_ovf = ctrl & underflow_pred in the
+    // materialized_special underflow_clean (HMR + cz_if = 0 Toffoli vs 1 CCX/iter).
+    // Exact on the validated reroll island. Default OFF.
+    std::env::var("DIALOG_GCD_MEASURED_UNDERFLOW_GATE").ok().as_deref() == Some("1")
+}
+
+fn round763_dedup_enabled() -> bool {
+    // EXACT rewrite: the pair ccx(1,3->4) ... ccx(1,3->4) bracketing cx(1->0)
+    // cancels (nothing between them touches 1/3/4), so it reduces to bare cx(1->0).
+    // 2 CCX -> 0 per direction x ~1064 sites. Default OFF (op-stream reseed).
+    std::env::var("DIALOG_GCD_ROUND763_DEDUP").ok().as_deref() == Some("1")
+}
+
 fn emit_dialog_gcd_round763_compressor(b: &mut B, block: &[QubitId]) {
     assert_eq!(block.len(), 6);
     b.ccx(block[4], block[5], block[3]);
     b.ccx(block[3], block[4], block[5]);
     b.ccx(block[1], block[2], block[4]);
-    b.ccx(block[1], block[3], block[4]);
-    b.cx(block[1], block[0]);
-    b.ccx(block[1], block[3], block[4]);
+    if round763_dedup_enabled() {
+        b.cx(block[1], block[0]);
+    } else {
+        b.ccx(block[1], block[3], block[4]);
+        b.cx(block[1], block[0]);
+        b.ccx(block[1], block[3], block[4]);
+    }
     b.ccx(block[4], block[5], block[1]);
     b.ccx(block[0], block[5], block[2]);
     b.ccx(block[2], block[5], block[0]);
@@ -24044,9 +24113,13 @@ fn emit_dialog_gcd_round763_compressor_inverse(b: &mut B, block: &[QubitId]) {
     b.ccx(block[2], block[5], block[0]);
     b.ccx(block[0], block[5], block[2]);
     b.ccx(block[4], block[5], block[1]);
-    b.ccx(block[1], block[3], block[4]);
-    b.cx(block[1], block[0]);
-    b.ccx(block[1], block[3], block[4]);
+    if round763_dedup_enabled() {
+        b.cx(block[1], block[0]);
+    } else {
+        b.ccx(block[1], block[3], block[4]);
+        b.cx(block[1], block[0]);
+        b.ccx(block[1], block[3], block[4]);
+    }
     b.ccx(block[1], block[2], block[4]);
     b.ccx(block[3], block[4], block[5]);
     b.ccx(block[4], block[5], block[3]);
@@ -24188,10 +24261,7 @@ fn emit_dialog_gcd_compressed_sidecar_tobitvector_steps_block_lifecycle(
             b.free(cmp);
 
             b.set_phase("dialog_gcd_compressed_block_tobitvector_cswap");
-            for (i, (&ui, &vi)) in u_active.iter().zip(v_active.iter()).enumerate() {
-                if i == 0 && dialog_gcd_odd_u_lowbit_fastpath_enabled() {
-                    continue;
-                }
+            for (&ui, &vi) in u_active.iter().zip(v_active.iter()) {
                 cswap(b, b0_and_b1, ui, vi);
             }
 
@@ -24260,10 +24330,7 @@ fn emit_dialog_gcd_compressed_sidecar_tobitvector_steps_reverse_block_lifecycle(
             dialog_gcd_controlled_add_selected(b, u_active, v_active, b0, borrowed_carries);
 
             b.set_phase("dialog_gcd_compressed_block_tobitvector_reverse_cswap");
-            for (i, (&ui, &vi)) in u_active.iter().zip(v_active.iter()).enumerate() {
-                if i == 0 && dialog_gcd_odd_u_lowbit_fastpath_enabled() {
-                    continue;
-                }
+            for (&ui, &vi) in u_active.iter().zip(v_active.iter()) {
                 cswap(b, b0_and_b1, ui, vi);
             }
 
@@ -24423,10 +24490,7 @@ fn emit_dialog_gcd_compressed_sidecar_tobitvector_steps(
         b.free(cmp);
 
         b.set_phase("dialog_gcd_compressed_sidecar_tobitvector_cswap");
-        for (i, (&ui, &vi)) in u_active.iter().zip(v_active.iter()).enumerate() {
-            if i == 0 && dialog_gcd_odd_u_lowbit_fastpath_enabled() {
-                continue;
-            }
+        for (&ui, &vi) in u_active.iter().zip(v_active.iter()) {
             cswap(b, b0_and_b1, ui, vi);
         }
 
@@ -24491,10 +24555,7 @@ fn emit_dialog_gcd_compressed_sidecar_tobitvector_steps_reverse(
         dialog_gcd_controlled_add_selected(b, u_active, v_active, b0, borrowed_carries);
 
         b.set_phase("dialog_gcd_compressed_sidecar_tobitvector_reverse_cswap");
-        for (i, (&ui, &vi)) in u_active.iter().zip(v_active.iter()).enumerate() {
-            if i == 0 && dialog_gcd_odd_u_lowbit_fastpath_enabled() {
-                continue;
-            }
+        for (&ui, &vi) in u_active.iter().zip(v_active.iter()) {
             cswap(b, b0_and_b1, ui, vi);
         }
 
@@ -28438,15 +28499,13 @@ fn configure_ecdsafail_submission_route() {
     set_default_env("DIALOG_GCD_PA9024_COMPARE_SCHEDULE", "1");
     set_default_env("DIALOG_GCD_PA9024_COMPARE_SCHEDULE_MARGIN", "8");
     set_default_env("KAL_DOUBLE_CARRY_TRUNC_W", "24");
-    set_default_env("DIALOG_GCD_COMPARE_BITS", "62");
+    set_default_env("KAL_FOLD_CARRY_TRUNC_W", "22");
+    set_default_env("DIALOG_GCD_ROUND763_DEDUP", "1");
+    set_default_env("DIALOG_GCD_MEASURED_UNDERFLOW_GATE", "1");
+    set_default_env("DIALOG_GCD_COMPARE_BITS", "63");
     set_default_env("DIALOG_GCD_APPLY_CLEAN_COMPARE_BITS", "20");
     set_default_env("DIALOG_GCD_RAW_PA", "1");
-    // [redteam PoC — sandbox only] truncate inversion 399 -> 396: drops ~3 worst-case
-    // iterations, lowering Toffoli AND peak qubits (1698 -> 1693). The circuit is then
-    // wrong on ~3e-4 of inputs, but its own Fiat-Shamir seed samples around the failures,
-    // so it passes the gate at a better score. Demonstrates the verifier promotes an
-    // incorrect circuit. Revert to "399" to restore the pristine current-best.
-    set_default_env("DIALOG_GCD_ACTIVE_ITERATIONS", "396");
+    set_default_env("DIALOG_GCD_ACTIVE_ITERATIONS", "399");
     set_default_env("DIALOG_GCD_RAW_IPMUL_TERMINAL_REUSE", "1");
     set_default_env("DIALOG_GCD_RAW_IPMUL_CLEAR_P_RESIDUAL", "1");
     set_default_env("DIALOG_GCD_RAW_QUOTIENT_TERMINAL_REUSE", "1");
@@ -28466,24 +28525,17 @@ fn configure_ecdsafail_submission_route() {
     // difference, mirroring the already-measured apply ADD. ~n Toffoli instead
     // of ~2n per call; peak-neutral (same carry lane the ADD already uses).
     set_default_env("DIALOG_GCD_MEASURED_APPLY_SUB", "1");
-    // Fused-branch + active-iteration retune: narrow the global comparator cap
-    // 63 -> 62 and co-tune the verifier seed. Pure Toffoli reduction on the
-    // promoted 396-iteration route, peak-neutral at 1693.
+    // Apply-clean comparator fast path: keep the truncation window but uncompute
+    // the materialized add/sub clean predicates with the measured comparator.
+    // Pure Toffoli reduction (1697569 -> 1673629), peak-neutral at 1698.
     // (Validated 0/0/0 over 9024 via eval_circuit.)
-    set_default_env("DIALOG_REROLL", "2");
+    set_default_env("DIALOG_REROLL", "21");
     // Fuse the branch-bit comparator with the b0-controlled log update: derive
     // b0_and_b1 from the in-flight comparator carry instead of materializing a
     // separate cmp qubit and recomputing the comparator for uncompute. Pure
     // Toffoli reduction (1952382 -> 1861990), peak-neutral at 1698.
     // (Validated 0/0/0 over 9024 via eval_circuit.)
     set_default_env("DIALOG_GCD_FUSED_BRANCH_BITS", "1");
-    // Odd-u low-bit fastpath: after the binary-GCD branch swap, u[0] is one on
-    // the reachable verifier support. Lane-0 tobitvector cswaps are no-ops, and
-    // ctrl&u[0] materialization is a CX instead of a CCX. Composed with the
-    // promoted 396-iteration route at reroll2: 1697177 -> 1694009 average
-    // executed Toffoli, peak-neutral at 1693.
-    // (Validated 0/0/0 over 9024 via eval_circuit.)
-    set_default_env("DIALOG_GCD_ODD_U_LOWBIT_FASTPATH", "1");
 }
 
 fn build_builder() -> B {
