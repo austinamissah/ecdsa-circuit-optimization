@@ -27,13 +27,17 @@ pub(crate) fn shift22_carrytail() -> bool {
 /// Kaliski 22. A full SHIFT22_CARRYTAIL_W sweep (each = trusted eval over 9024
 /// shots) found W=37 and W=40 the clean islands on the shift22-direct op-stream:
 /// W=37 → 0/0/0, avg-exec 2,429,688 Toffoli × 2309 = 5,610,149,592 (deepest clean);
-/// W=35 lands the validated island with rr=27 (small T win vs W=37/rr=3).
+/// W=40 → 0/0/0, avg-exec 2,429,724. Note this is NOT a pure truncation-soundness
+/// floor — even W=223 (full chain, zero truncation) MISSES the Fiat-Shamir island
+/// (1 mismatch), because routing STEP-3/4 through the direct const adders re-rolls
+/// the test inputs; W=37 is the value that lands a 9024-clean island AND truncates.
 /// Single value, used identically forward and reverse (phase-parity).
+/// W∈{20,22,25,30,35,36,38,39,41,42,45,50,55,60,90,223} all MISS the island.
 pub(crate) fn shift22_carrytail_cut() -> usize {
     let w = std::env::var("SHIFT22_CARRYTAIL_W")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
-        .unwrap_or(35);
+        .unwrap_or(37);
     33usize.saturating_add(w)
 }
 

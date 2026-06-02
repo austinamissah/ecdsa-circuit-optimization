@@ -346,6 +346,23 @@ pub(crate) fn cuccaro_sub_fast_borrow(
     // carries borrowed: restored to |0>, NOT freed.
 }
 
+/// Borrow-carry `acc += a mod 2^n`: hosts the fast-Cuccaro carry register on
+/// `carry_src` (clean |0>, restored). Flat Toffoli, no new peak width.
+pub(crate) fn add_nbit_qq_fast_borrow(b: &mut B, a: &[QubitId], acc: &[QubitId], carry_src: &[QubitId]) {
+    assert_eq!(a.len(), acc.len());
+    let c_in = b.alloc_qubit();
+    cuccaro_add_fast_borrow(b, a, acc, c_in, carry_src);
+    b.free(c_in);
+}
+
+/// Borrow-carry `acc -= a mod 2^n`. Companion to [`add_nbit_qq_fast_borrow`].
+pub(crate) fn sub_nbit_qq_fast_borrow(b: &mut B, a: &[QubitId], acc: &[QubitId], carry_src: &[QubitId]) {
+    assert_eq!(a.len(), acc.len());
+    let c_in = b.alloc_qubit();
+    cuccaro_sub_fast_borrow(b, a, acc, c_in, carry_src);
+    b.free(c_in);
+}
+
 /// Build a width-(n-1) clean-|0> carry register for a fast-Cuccaro add/sub of
 /// width n, hosting as many bits as possible on `m_future` (clean |0> bits that
 /// belong to the caller and are restored to |0> on exit), and freshly
