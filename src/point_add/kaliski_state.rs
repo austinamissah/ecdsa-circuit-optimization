@@ -550,9 +550,10 @@ pub(crate) fn kal_cswap_uv_merge_enabled() -> bool {
 pub(crate) fn kal_cswap_uv_merge_safe_iters() -> usize {
     // The cheap l_gt correction `gt ^= frame` is valid only while u != v_w is
     // guaranteed. With gcd=1, equality implies (u,v_w)=(1,1), which can appear
-    // near the terminal precursor. 254 is the highest clean 9024-shot prefix
-    // on the modular shift22/sol-ext island; keep tunable for future sweeps.
-    env_usize("KAL_CSWAP_UV_MERGE_SAFE_ITERS").unwrap_or(254)
+    // near the terminal precursor. 256 is the highest clean 9024-shot prefix
+    // on the dirty-SHIFT22 + slack=0 + mfw232 island; paired with KAL_REROLL=38.
+    // Each +1 UV merge step saves ~384 avg-exec Toffoli at flat peak 2002.
+    env_usize("KAL_CSWAP_UV_MERGE_SAFE_ITERS").unwrap_or(256)
 }
 
 /// For nonzero secp256k1 inputs, the first 256 Kaliski iterations are always
