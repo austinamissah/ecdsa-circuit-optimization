@@ -86,12 +86,7 @@ pub(crate) fn build_standard_point_add(
     // at peak) AND avg Toffoli 3653471->3638875, and it is robust on the pair2
     // axis (clean for pair2 in {403,404,405,406}; 403 is the established floor).
     // C1 = 399; stack_2565 default was 401 but sweep found 399 is also clean and saves Toffoli.
-    // Lottery re-roll: at the cswap-on/W-TRUNC base, the (pair1=397, pair2=396)
-    // PAIR lands a 9024-clean Fiat-Shamir island (neither drop is clean alone:
-    // p1=397 → 1 mismatch, p2=396 → 5; the combined op-stream re-rolls onto a
-    // lenient input set). Validated 0/0/0, avg-exec 2,409,129 Toffoli × 2309 =
-    // 5,562,678,861 (−0.22% vs the 399/397 baseline 5,574,826,510).
-    let pair1_default = if stack_2565_enabled() { 397 } else { 399 };
+    let pair1_default = if stack_2565_enabled() { 399 } else { 399 };
     let pair1_iters = std::env::var("KAL_PAIR1_ITERS")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
@@ -108,10 +103,8 @@ pub(crate) fn build_standard_point_add(
     } else if stack_2565_enabled() {
         // With the uv-cswap merge default-on at safe_iters=254, the follow-up
         // island sweep found pair2=397 clean and lower-Toffoli than pair2=398;
-        // 396/399 fail on this circuit shape ALONE — but paired with pair1=397
-        // the (397,396) combination re-rolls onto a fresh 9024-clean island
-        // (see pair1_default note above). 396 is the new default in that pairing.
-        396
+        // 396/399 fail on this circuit shape.
+        397
     } else {
         398
     };
