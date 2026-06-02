@@ -6082,7 +6082,14 @@ fn squaring_sub_from_acc_karatsuba(b: &mut B, acc: &[QubitId], x: &[QubitId], p:
     let x_hi: Vec<QubitId> = x[h..n].to_vec();
 
     // z1_reg holds z1 = (lo+hi)^2, width 2*(h+1).
-    let z1_reg = b.alloc_qubits(2 * (h + 1));
+    let mut z1_reg = b.alloc_qubits(2 * (h + 1));
+    // KARA_FREE_Z1_TOPBIT: after the two cross-term subtractions z1 -= z0; z1 -= z2,
+    // z1_reg holds exactly 2*lo*hi < 2^257, so its top bit (index 2(h+1)-1 = 257) is
+    // PROVABLY 0 throughout the Solinas-reduction peak region (r84k_sol_subadd ..
+    // r84k_sol_halve). We free that known-zero qubit before the combine and re-grab a
+    // fresh zero qubit before z1 += z2 (which can re-set bit 257) restores z1 to
+    // (lo+hi)^2 for the inverse uncompute. Bennett-clean: free zero, alloc zero.
+    let free_z1_top = std::env::var("KARA_FREE_Z1_TOPBIT").ok().as_deref() == Some("1");
 
     // ── Forward z1 = (lo+hi)^2 FIRST (tmp_ext not yet allocated → low peak). ──
     {
@@ -6123,8 +6130,13 @@ fn squaring_sub_from_acc_karatsuba(b: &mut B, acc: &[QubitId], x: &[QubitId], p:
         sub_nbit_qq(b, &z2_ext, &z1_reg);
         b.free_vec(&pad);
     }
+    // z1_reg == 2*lo*hi < 2^257 here ⇒ bit 257 is 0. Release it for the peak window.
+    if free_z1_top {
+        let top = z1_reg.pop().expect("z1_reg has width 2*(h+1) >= 2");
+        b.free(top);
+    }
     {
-        let pad = b.alloc_qubits(3 * h - 2 * (h + 1));
+        let pad = b.alloc_qubits(3 * h - z1_reg.len());
         let mut z1_ext: Vec<QubitId> = z1_reg.to_vec();
         z1_ext.extend_from_slice(&pad);
         let acc_slice: Vec<QubitId> = tmp_ext[h..4 * h].to_vec();
@@ -6176,6 +6188,7 @@ fn squaring_sub_from_acc_karatsuba(b: &mut B, acc: &[QubitId], x: &[QubitId], p:
             mod_halve_inplace_direct_const_fast(b, v, p);
         }
     };
+    b.set_phase("r84k_sol_subadd");
     mod_sub(b, acc, &lo);
     mod_sub(b, acc, &hi);
     for _ in 0..4 {
@@ -6190,51 +6203,66 @@ fn squaring_sub_from_acc_karatsuba(b: &mut B, acc: &[QubitId], x: &[QubitId], p:
         mod_dbl(b, &hi);
     }
     mod_sub(b, acc, &hi);
-    // 2^32 Solinas term: `acc -= hi·2^32`. Two value-identical realizations,
-    // selected by KARA_SOL_SHIFT22_DOUBLES:
-    //  • DOUBLES (default ON): 22 mod-p doublings → sub → 22 mod-p halvings.
-    //    Uses the direct-const dbl/hlv lanes (255-wide carry sweep, NO spill
-    //    register), so this block allocates none of the shift's 24 persistent
-    //    flags. That removes the SOLE global peak binder (the shift parked
-    //    spill(22)+ovf+flag_inv = 24 qubits live across the mid sub, whose
-    //    const-correction transient ≈load_const(257) coexisting with them hit
-    //    1567). Square phase drops to 1543; global peak 1567 → 1558. Cost
-    //    +4,788 avg executed Toffoli for −9 peak ⇒ score 2,638,694,805 →
-    //    2,630,999,274. Validated 0/0/0 over 9024 (co-tuned reroll below).
-    //  • SHIFT (=0): original shift-by-22 path (binds peak at 1567).
-    if std::env::var("KARA_SOL_SHIFT22_DOUBLES").ok().as_deref() == Some("1") {
+    b.set_phase("r84k_sol_shift");
+    // The shift-by-22 lane binds the affine-square phase peak: its lowq form
+    // allocates a ~(n+1)-wide `padded` scratch on top of the live z1_reg+tmp_ext,
+    // overflowing the free pool. `acc` (tx) is idle and value-preserved during the
+    // shift itself, so the dirty-borrow form hosts that scratch on `acc` (venting
+    // 2-clean), dropping the phase peak well under the GCD-apply binder. Same value
+    // on `acc`; gated so it can be A/B compared.
+    let shift_dirty = std::env::var("ROUND84_XTAIL_BORROW_CARRIES").ok().as_deref() == Some("1");
+    if shift_dirty {
+        // Dirty-doubles form of `acc -= hi * 2^22 mod p`: 22 in-place doubles
+        // (each borrows `acc` via Gidney venting) avoid the shift's persistent
+        // k-wide `spill` lane that — stacked on the live z1_reg+tmp_ext base —
+        // pushed the shift/mid-sub over the GCD-apply binder. `acc` is idle and
+        // value-preserved during each double/halve, so the phase peak drops well
+        // under 1558. Mirrors the schoolbook_peak_lowq D1 reduction lane.
+        b.set_phase("r84k_sol_dbl22");
         for _ in 0..22 {
             mod_dbl(b, &hi);
         }
-        mod_sub(b, acc, &hi);
+        b.set_phase("r84k_sol_midsub");
+        mod_sub_qq(b, acc, &hi, p);
+        b.set_phase("r84k_sol_hlv22");
         for _ in 0..22 {
             mod_hlv(b, &hi);
         }
     } else {
+        b.set_phase("r84k_sol_shiftL");
         let (spill, flag_inv, ovf) = if shift_fast {
             mod_shift_left_by_k(b, &hi, p, 22)
         } else {
             mod_shift_left_by_k_lowq(b, &hi, p, 22)
         };
+        b.set_phase("r84k_sol_midsub");
         mod_sub_qq(b, acc, &hi, p);
+        b.set_phase("r84k_sol_shiftR");
         if shift_fast {
             mod_shift_right_by_k(b, &hi, p, 22, spill, flag_inv, ovf);
         } else {
             mod_shift_right_by_k_lowq(b, &hi, p, 22, spill, flag_inv, ovf);
         }
     }
+    b.set_phase("r84k_sol_halve");
     for _ in 0..10 {
         mod_hlv(b, &hi);
     }
 
     // ── Inverse combine: mid -= z1; z1 += z2; z1 += z0. ──
+    b.set_phase("r84k_inv_combine");
     {
-        let pad = b.alloc_qubits(3 * h - 2 * (h + 1));
+        let pad = b.alloc_qubits(3 * h - z1_reg.len());
         let mut z1_ext: Vec<QubitId> = z1_reg.to_vec();
         z1_ext.extend_from_slice(&pad);
         let acc_slice: Vec<QubitId> = tmp_ext[h..4 * h].to_vec();
         sub_nbit_qq(b, &z1_ext, &acc_slice);
         b.free_vec(&pad);
+    }
+    // Restore z1_reg top bit (fresh zero) before z1 += z2 can re-set it.
+    if free_z1_top {
+        let top = b.alloc_qubit();
+        z1_reg.push(top);
     }
     {
         let pad = b.alloc_qubits(2);
@@ -6252,6 +6280,7 @@ fn squaring_sub_from_acc_karatsuba(b: &mut B, acc: &[QubitId], x: &[QubitId], p:
     }
 
     // Uncompute z2, z0 (reverse of forward compute order), then free tmp_ext.
+    b.set_phase("r84k_z_inv_squares");
     {
         let slice: Vec<QubitId> = tmp_ext[2 * h..4 * h].to_vec();
         schoolbook_square_symmetric_inverse(b, &x_hi, &slice);
@@ -29271,17 +29300,30 @@ fn configure_ecdsafail_submission_route() {
     // bit/step, -1,868 executed Toffoli). The tighter margin needs a clean
     // Fiat-Shamir island, found by a 2D reroll search (DIALOG_REROLL=3 +
     // DIALOG_POST_SUB_REROLL=18 below) — 1D reroll sweeps miss it. 0/0/0 @ 1571.
-    set_default_env("DIALOG_GCD_PA9024_COMPARE_SCHEDULE_MARGIN", "5");
+    // KARA_FREE_Z1_TOPBIT (peak 1543 -> 1542): the ROUND84 x-tail Karatsuba square's
+    // z1_reg top bit (index 257) is provably 0 across the whole Solinas-reduction peak
+    // window (z1_reg == 2*lo*hi < 2^257 there), so that qubit is freed for the window
+    // and re-grabbed (fresh zero) before the inverse combine restores z1 = (lo+hi)^2.
+    // Bennett-clean (free zero, alloc zero); 0 added Toffoli. Drops the square phase to
+    // 1541 and moves the global binder to the GCD body at 1542. The +1 free op re-rolls
+    // the Fiat-Shamir island; a 2-D reroll search (DR x PR x MARGIN) lands a clean
+    // 0/0/0 over 9024 only at MARGIN=7, DR=6, PR=0 (MARGIN=5 has no clean island for
+    // this op stream; MARGIN=7 costs +592 executed Toffoli vs the 1,695,087 base).
+    // Score 1,695,679 * 1542 = 2,614,737,018 < live 2,615,919,441.
+    set_default_env("KARA_FREE_Z1_TOPBIT", "1");
+    set_default_env("DIALOG_GCD_PA9024_COMPARE_SCHEDULE_MARGIN", "7");
     set_default_env("KAL_DOUBLE_CARRY_TRUNC_W", "20");
     set_default_env("KAL_FOLD_CARRY_TRUNC_W", "20");
     set_default_env("DIALOG_GCD_ROUND763_DEDUP", "1");
     set_default_env("DIALOG_GCD_ROUND763_COMPRESS_LEVER", "1");
     set_default_env("DIALOG_GCD_MEASURED_UNDERFLOW_GATE", "1");
-    // Branch comparator width tightened to 58 on the F_CUT=79 peak-1543 route.
-    // The earlier KARA/F_CUT=70 stream used cb59 because cb58 had no clean island
-    // in a small 2-D scan. Re-scanning after the F_CUT=79 stream change found
-    // cb58 + REROLL=10/POST_SUB=7 clean: -952 executed Toffoli at the same 1543q.
-    set_default_env("DIALOG_GCD_COMPARE_BITS", "58");
+    // Branch comparator width tightened 63 -> 61 (−1,160 executed Toffoli),
+    // STACKED on the PA9024 margin-5 cut. Two within-budget truncations coexist
+    // via the 2-D reroll island (DIALOG_REROLL=1, DIALOG_POST_SUB_REROLL=0).
+    // Branch comparator width tightened 61 -> 59 (−1,600 executed Toffoli),
+    // stacked on the chunked-apply + round763 + acc=19 base via the 2-D reroll
+    // island (DIALOG_REROLL=0, DIALOG_POST_SUB_REROLL=10). Validated 0/0/0 @ 1567.
+    set_default_env("DIALOG_GCD_COMPARE_BITS", "59");
     set_default_env("DIALOG_GCD_APPLY_CLEAN_COMPARE_BITS", "19");
     set_default_env("DIALOG_GCD_RAW_PA", "1");
     set_default_env("DIALOG_GCD_ACTIVE_ITERATIONS", "399");
@@ -29316,30 +29358,33 @@ fn configure_ecdsafail_submission_route() {
     // (1,668,753 -> 1,770,897) but peak -126 => score 2,833,542,594 -> 2,783,850,084.
     set_default_env("DIALOG_GCD_HOST_GATED", "1");
     set_default_env("DIALOG_GCD_APPLY_WINDOW_BLOCKS", "2");
+    // ROUND84 x-tail square: replace the 2^32 Solinas term's shift-by-22
+    // (mod_shift_left_by_k(22) -> mid_sub -> shift_right_by_k(22)) with the
+    // value-identical 22x mod-p doubling -> mid_sub -> 22x mod-p halving
+    // (x*2^22 mod p == x<<22 mod p). The direct-const doubling/halving lanes
+    // carry-sweep in place with no spill register, so the block never parks the
+    // 24 persistent flags (spill=22 + ovf + flag_inv) that pinned the square
+    // phase at 1567. Square phase drops to 1543; the global peak falls
+    // 1567 -> 1543. Costs +~6,384 avg-executed Toffoli (see F_CUT below).
+    set_default_env("ROUND84_XTAIL_BORROW_CARRIES", "1");
     // Chunked apply materializes ctrl&a only for the active carry window, so the
-    // apply phase drops under the ROUND84 peak binder. The asymmetric first cut
-    // trims boundary-clear comparators while staying peak-safe (1567q).
+    // apply phase drops under the ROUND84 peak binder. After the ROUND84 square
+    // dropped to 1543, the apply raw sum/difference phases (block 1 = [F_CUT,257),
+    // f + carry lane) became the 1558 binder. The chunked sub/add is EXACT
+    // regardless of F_CUT (full cuccaro + exact [..F_CUT] boundary clear), so
+    // widening the first cut 70 -> 78 rebalances the blocks (block 1 narrows to
+    // 257-78) and drops the apply phase to 1543 == the ROUND84 floor. Global peak
+    // 1558 -> 1543. F_CUT only reseeds + grows the boundary comparator (+~6,384
+    // avg-executed Toffoli, 1,688,703 -> 1,695,087); peak-neutral for any cut>=78.
     set_default_env("DIALOG_GCD_APPLY_CHUNKED_F_BLOCKS", "2");
-    // F_CUT=79 (not 82 or 70): rebalances the chunked apply add/sub split so the
-    // big chunk shrinks to [79,257)=178 wide. Peak = base + 2·(big-chunk width),
-    // so this drops the apply peak 1558→1540 and the global peak 1558→1543 (now
-    // bound by round84 x-tail square at 1543). F_CUT=79 is the LOWEST cut whose
-    // apply peak (1540) clears the 1543 square binder, so it is the cheapest
-    // peak-1543 cut: +7,182 executed Toffoli vs the cut=70 base (the boundary-
-    // clear comparator widens 70→79 bits × 399 steps × 2), which is −2,394 cheaper
-    // than the cut=82 route. Needs its own Fiat-Shamir island: REROLL=0 +
-    // POST_SUB_REROLL=26 validates 0/0/0 over 9024 at 1543q, 1,695,885 avg
-    // executed Toffoli ⇒ score 2,616,750,555 (found by a 2-D reroll grid search;
-    // cut=78 had no clean island in a 250-config grid, cut=79 lands at rr0/p26).
-    set_default_env("DIALOG_GCD_APPLY_CHUNKED_F_CUT", "79");
-    // ROUND84 x-tail square 2^32-term: replace shift-by-22 with 22 mod-p
-    // doublings + sub + 22 halvings. Removes the shift's 24 persistent spill
-    // flags that bound the global peak at 1567 → peak 1558 (−9), +4,788 Toffoli.
-    set_default_env("KARA_SOL_SHIFT22_DOUBLES", "1");
-    // Fiat-Shamir island co-tuned for F_CUT=79 + cb58: REROLL=10,
-    // POST_SUB_REROLL=7 validates 0/0/0 over 9024 at 1543q, 1,694,933 Toffoli.
-    set_default_env("DIALOG_REROLL", "10");
-    set_default_env("DIALOG_POST_SUB_REROLL", "7");
+    set_default_env("DIALOG_GCD_APPLY_CHUNKED_F_CUT", "78");
+    // The ROUND84 doublings + F_CUT=78 op-stream re-rolls the Fiat-Shamir island.
+    // 2-D (DIALOG_REROLL x DIALOG_POST_SUB_REROLL) search lands 28/5 clean 0/0/0
+    // over 9024 at 1543q and 1,695,087 avg executed Toffoli (score 2,615,519,241).
+    // Reroll island co-tuned with KARA_FREE_Z1_TOPBIT + MARGIN=7 above: DR=6, PR=0
+    // lands the unique clean 0/0/0-over-9024 island at peak 1542.
+    set_default_env("DIALOG_REROLL", "6");
+    set_default_env("DIALOG_POST_SUB_REROLL", "0");
     // Fuse the branch-bit comparator with the b0-controlled log update: derive
     // b0_and_b1 from the in-flight comparator carry instead of materializing a
     // separate cmp qubit and recomputing the comparator for uncompute. Pure
