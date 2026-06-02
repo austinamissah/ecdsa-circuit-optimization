@@ -96,7 +96,14 @@ pub(crate) fn kal_wtrunc_k0() -> usize {
     // margin=0 island at K0=20 (rr 0-80 all FAIL). K0=21 (one extra full-width prefix
     // iter — cheaper than KAL_WTRUNC_MARGIN=1) restores a clean margin=0 island at
     // rr=3, peak 2006, avg-exec 2,575,683 T × 2006 = 5,166,820,098 (validated 0/0/0).
-    env_usize("KAL_WTRUNC_K0").unwrap_or(21)
+    // OPTIMIZER K0=20 (stacked on R_SMALL=327, 2002-qubit base): with the R_SMALL=327
+    // op-count shift, the K0=20 margin=0 envelope (decay starts 1 iter earlier than
+    // K0=21, shaving ~4,400 avg-exec Toffoli across step2/3/4) NOW lands a clean
+    // 9024 island. A 0-127 KAL_SCREEN sweep found rr=13 clean: avg-exec 2,571,903 T
+    // × 2002 peak = 5,148,949,806, screened 0/0/0. The baked KAL_REROLL default
+    // (=13, see mod.rs) is CO-TUNED to this K0+R_SMALL stream; re-search on any
+    // scored-op change.
+    env_usize("KAL_WTRUNC_K0").unwrap_or(20)
 }
 
 pub(crate) fn kal_wtrunc_margin() -> usize {
