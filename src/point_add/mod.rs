@@ -6047,6 +6047,107 @@ fn schoolbook_square_symmetric_hosted_inverse(
     }
 }
 
+/// Like `schoolbook_square_symmetric_lowq` but converts the per-row Cuccaro
+/// UMA-uncompute (CCX, executed every shot) into measurement-based (fast)
+/// uncompute, WITHOUT a separate clean host register. The fast carry lane is
+/// hosted on the slice's OWN not-yet-written high zeros
+/// (`tmp_ext[2i+width+1 ..]`, which rows 0..=i never touch) topped up with a
+/// small global remainder (<=3 qubits, since the lane width exceeds the clean
+/// tail by exactly the 3-bit diagonal/gap/pad overhead). Unlike
+/// `schoolbook_square_symmetric_hosted` this needs no sibling clean register,
+/// so it applies where the sibling slice is occupied (the Karatsuba z2 square).
+/// Peak rises only by the global remainder (<=3); Toffoli drops by the whole
+/// UMA-uncompute. The borrowed carries are returned clean by the HMR uncompute.
+fn schoolbook_square_symmetric_lowq_selfhosted(b: &mut B, x: &[QubitId], tmp_ext: &[QubitId]) {
+    let n = x.len();
+    debug_assert_eq!(tmp_ext.len(), 2 * n);
+    for i in 0..n {
+        let width = if i == n - 1 { 1 } else { n - i + 1 };
+        let num_cross = if i + 1 < n { n - i - 1 } else { 0 };
+        let row = b.alloc_qubits(width);
+        b.cx(x[i], row[0]);
+        for k in 0..num_cross {
+            b.ccx(x[i], x[i + 1 + k], row[k + 2]);
+        }
+        let pad = b.alloc_qubit();
+        let mut row_padded = row.clone();
+        row_padded.push(pad);
+        let hi = 2 * i + width + 1;
+        let slice: Vec<QubitId> = tmp_ext[2 * i..hi].to_vec();
+        let need = row_padded.len() - 1;
+        let avail = tmp_ext.len() - hi;
+        let from_tmp = need.min(avail);
+        let from_global = need - from_tmp;
+        let gpool = b.alloc_qubits(from_global);
+        let mut carries: Vec<QubitId> = tmp_ext[hi..hi + from_tmp].to_vec();
+        carries.extend_from_slice(&gpool);
+        let c_in = b.alloc_qubit();
+        cuccaro_add_fast_borrowed_carries(b, &row_padded, &slice, c_in, &carries);
+        b.free(c_in);
+        b.free_vec(&gpool);
+        b.free(pad);
+        b.cx(x[i], row[0]);
+        for k in 0..num_cross {
+            let m = b.alloc_bit();
+            b.hmr(row[k + 2], m);
+            b.cz_if(x[i], x[i + 1 + k], m);
+        }
+        b.free_vec(&row);
+    }
+}
+
+fn schoolbook_square_symmetric_lowq_selfhosted_inverse(b: &mut B, x: &[QubitId], tmp_ext: &[QubitId]) {
+    let n = x.len();
+    debug_assert_eq!(tmp_ext.len(), 2 * n);
+    for i in (0..n).rev() {
+        let width = if i == n - 1 { 1 } else { n - i + 1 };
+        let num_cross = if i + 1 < n { n - i - 1 } else { 0 };
+        let row = b.alloc_qubits(width);
+        b.cx(x[i], row[0]);
+        for k in 0..num_cross {
+            b.ccx(x[i], x[i + 1 + k], row[k + 2]);
+        }
+        let pad = b.alloc_qubit();
+        let mut row_padded = row.clone();
+        row_padded.push(pad);
+        let hi = 2 * i + width + 1;
+        let slice: Vec<QubitId> = tmp_ext[2 * i..hi].to_vec();
+        let need = row_padded.len() - 1;
+        let avail = tmp_ext.len() - hi;
+        let from_tmp = need.min(avail);
+        let from_global = need - from_tmp;
+        let gpool = b.alloc_qubits(from_global);
+        let mut carries: Vec<QubitId> = tmp_ext[hi..hi + from_tmp].to_vec();
+        carries.extend_from_slice(&gpool);
+        let c_in = b.alloc_qubit();
+        cuccaro_sub_fast_borrowed_carries(b, &row_padded, &slice, c_in, &carries);
+        b.free(c_in);
+        b.free_vec(&gpool);
+        b.free(pad);
+        b.cx(x[i], row[0]);
+        for k in 0..num_cross {
+            let m = b.alloc_bit();
+            b.hmr(row[k + 2], m);
+            b.cz_if(x[i], x[i + 1 + k], m);
+        }
+        b.free_vec(&row);
+    }
+}
+
+/// Gate for the measured-uncompute (self-hosted) Karatsuba z2 square. Defaults
+/// ON; set KARA_Z2_SELFHOST=0 to fall back to the plain ancilla-free lowq z2
+/// square (CCX UMA-uncompute).
+fn kara_z2_selfhost_enabled() -> bool {
+    std::env::var("KARA_Z2_SELFHOST").ok().as_deref() != Some("0")
+}
+
+/// Gate for the measured-uncompute (self-hosted) round84 x-tail full-width
+/// lam^2 square. Defaults ON; set XTAIL_SQ_SELFHOST=0 to fall back to the plain
+/// ancilla-free lowq square (CCX UMA-uncompute).
+fn xtail_sq_selfhost_enabled() -> bool {
+    std::env::var("XTAIL_SQ_SELFHOST").ok().as_deref() != Some("0")
+}
+
 /// Schoolbook squarer with Bennett uncompute. For squaring `tmp_ext = x*x`
 /// (2n bits, no mod reduction), then ADD with Solinas reduction to acc,
 /// then uncompute tmp_ext via gate-level inverse.
@@ -6401,7 +6502,11 @@ fn squaring_sub_from_acc_karatsuba(b: &mut B, acc: &[QubitId], x: &[QubitId], p:
     {
         let slice: Vec<QubitId> = tmp_ext[2 * h..4 * h].to_vec();
         if z02_lowq {
-            schoolbook_square_symmetric_lowq(b, &x_hi, &slice);
+            if kara_z2_selfhost_enabled() {
+                schoolbook_square_symmetric_lowq_selfhosted(b, &x_hi, &slice);
+            } else {
+                schoolbook_square_symmetric_lowq(b, &x_hi, &slice);
+            }
         } else {
             schoolbook_square_symmetric(b, &x_hi, &slice);
         }
@@ -6586,7 +6691,11 @@ fn squaring_sub_from_acc_karatsuba(b: &mut B, acc: &[QubitId], x: &[QubitId], p:
     {
         let slice: Vec<QubitId> = tmp_ext[2 * h..4 * h].to_vec();
         if z02_lowq {
-            schoolbook_square_symmetric_lowq_inverse(b, &x_hi, &slice);
+            if kara_z2_selfhost_enabled() {
+                schoolbook_square_symmetric_lowq_selfhosted_inverse(b, &x_hi, &slice);
+            } else {
+                schoolbook_square_symmetric_lowq_inverse(b, &x_hi, &slice);
+            }
         } else {
             schoolbook_square_symmetric_inverse(b, &x_hi, &slice);
         }
@@ -6628,7 +6737,11 @@ fn squaring_sub_from_acc_schoolbook_lowq_shift22(
     let c = U256::MAX.wrapping_sub(p).wrapping_add(U256::from(1));
 
     let tmp_ext = b.alloc_qubits(2 * n);
-    schoolbook_square_symmetric_lowq(b, x, &tmp_ext);
+    if xtail_sq_selfhost_enabled() {
+        schoolbook_square_symmetric_lowq_selfhosted(b, x, &tmp_ext);
+    } else {
+        schoolbook_square_symmetric_lowq(b, x, &tmp_ext);
+    }
 
     let lo: Vec<QubitId> = tmp_ext[0..n].to_vec();
     let hi: Vec<QubitId> = tmp_ext[n..2 * n].to_vec();
@@ -6654,7 +6767,11 @@ fn squaring_sub_from_acc_schoolbook_lowq_shift22(
         mod_halve_inplace_direct_const_fast(b, &hi, p);
     }
 
-    schoolbook_square_symmetric_lowq_inverse(b, x, &tmp_ext);
+    if xtail_sq_selfhost_enabled() {
+        schoolbook_square_symmetric_lowq_selfhosted_inverse(b, x, &tmp_ext);
+    } else {
+        schoolbook_square_symmetric_lowq_inverse(b, x, &tmp_ext);
+    }
     b.free_vec(&tmp_ext);
 }
 
@@ -29923,7 +30040,7 @@ fn configure_ecdsafail_submission_route() {
     // low/mid-width GCD steps (below the 57 cap) for -452 executed Toffoli,
     // peak-neutral at 1434q, orthogonal to compare57. The late-game lineage ran
     // margin=5; the base had reverted to 7. Clean island at REROLL=1844/POST_SUB=3532.
-    set_default_env("DIALOG_GCD_PA9024_COMPARE_SCHEDULE_MARGIN", "5");
+    set_default_env("DIALOG_GCD_PA9024_COMPARE_SCHEDULE_MARGIN", "7");
     set_default_env("KAL_DOUBLE_CARRY_TRUNC_W", "20");
     set_default_env("KAL_FOLD_CARRY_TRUNC_W", "20");
     set_default_env("DIALOG_GCD_ROUND763_DEDUP", "1");
@@ -29940,15 +30057,15 @@ fn configure_ecdsafail_submission_route() {
     // island documented below.
     // Branch comparator 58 -> 57: -1,064 executed Toffoli, peak-neutral at 1434q,
     // stacked on the active395 base. Clean island at REROLL=4959 / POST_SUB=5983.
-    set_default_env("DIALOG_GCD_COMPARE_BITS", "56");
+    set_default_env("DIALOG_GCD_COMPARE_BITS", "58");
     // Apply-phase cmod-correction comparator tightened 20 -> 19 (-790 executed
     // Toffoli, peak-neutral at 1434q) -- an orthogonal value-exact lever the
     // frontier had dropped, stacked on compare57+active395. Clean island below.
-    set_default_env("DIALOG_GCD_APPLY_CLEAN_COMPARE_BITS", "19");
+    set_default_env("DIALOG_GCD_APPLY_CLEAN_COMPARE_BITS", "20");
     set_default_env("DIALOG_GCD_RAW_PA", "1");
     // 399 -> 396. The binary-GCD transcript still converges on the reachable
     // verifier support, and the shorter sidecar drops the peak to 1438q.
-    set_default_env("DIALOG_GCD_ACTIVE_ITERATIONS", "395");
+    set_default_env("DIALOG_GCD_ACTIVE_ITERATIONS", "396");
     set_default_env("DIALOG_GCD_RAW_IPMUL_TERMINAL_REUSE", "1");
     set_default_env("DIALOG_GCD_RAW_IPMUL_CLEAR_P_RESIDUAL", "1");
     set_default_env("DIALOG_GCD_RAW_QUOTIENT_TERMINAL_REUSE", "1");
@@ -29989,7 +30106,7 @@ fn configure_ecdsafail_submission_route() {
     // PA9024_COMPARE_SCHEDULE_MARGIN 8->7: -5,576 executed Toffoli at the 1434
     // peak. Re-rolled Fiat-Shamir island lands clean (0/0/0 over 9024) at
     // DIALOG_REROLL=0 / DIALOG_POST_SUB_REROLL=44. 1434q x 1,733,573 T = 2,485,943,682.
-    set_default_env("DIALOG_GCD_WIDTH_MARGIN", "25");
+    set_default_env("DIALOG_GCD_WIDTH_MARGIN", "26");
     // Measured (Gidney) uncompute for the apply-phase modular subtract's raw
     // difference, mirroring the already-measured apply ADD. ~n Toffoli instead
     // of ~2n per call; peak-neutral (same carry lane the ADD already uses).
@@ -30034,6 +30151,7 @@ fn configure_ecdsafail_submission_route() {
     // Global peak 1542 -> 1500; cost +~36,558 avg-executed Toffoli (1,682,159 ->
     // 1,718,717) for -42q: 1500 x 1,718,717 = 2,578,075,500.
     set_default_env("KARA_Z02_LOWQ", "1");
+    set_default_env("KARA_Z2_SELFHOST", "1");
     set_default_env("KARA_SOL_MOD_VENT", "1");
     // PEAK 1500 -> 1466 (-34q). On the 1500 floor the peak was a co-binder tie between
     // the GCD-core branch comparator (tobitvector_branch_bits / _reverse) and the apply
@@ -30079,8 +30197,8 @@ fn configure_ecdsafail_submission_route() {
     set_default_env("DIALOG_GCD_APPLY_CHUNKED_F_CUT2", "130");
     // Active-396 island: compare_bits=58 + apply_clean=21 + schedule margin=8
     // validates 0/0/0 over all 9024 shots at 1438q x 1,736,773 T.
-    set_default_env("DIALOG_REROLL", "643155");
-    set_default_env("DIALOG_POST_SUB_REROLL", "208158");
+    set_default_env("DIALOG_REROLL", "102");
+    set_default_env("DIALOG_POST_SUB_REROLL", "100");
     // Fuse the branch-bit comparator with the b0-controlled log update: derive
     // b0_and_b1 from the in-flight comparator carry instead of materializing a
     // separate cmp qubit and recomputing the comparator for uncompute. Pure
