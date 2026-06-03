@@ -3551,6 +3551,79 @@ fn ccx_cmp_lt_into_fast(b: &mut B, u: &[QubitId], v: &[QubitId], ctrl: QubitId, 
     b.free(c_in);
 }
 
+fn ccx_cmp_lt_into_fast_prefix_targets(
+    b: &mut B,
+    u: &[QubitId],
+    v: &[QubitId],
+    ctrl: QubitId,
+    targets: &[(QubitId, usize)],
+) {
+    if targets.is_empty() {
+        return;
+    }
+    if kal_vent_modadd_enabled() {
+        for &(target, n) in targets {
+            ccx_cmp_lt_into_fast(b, &u[..n], &v[..n], ctrl, target);
+        }
+        return;
+    }
+
+    let n = targets.last().expect("non-empty targets").1;
+    assert_eq!(u.len(), n);
+    assert_eq!(v.len(), n);
+    assert!(n > 0);
+    assert!(targets.iter().all(|&(_, p)| (1..=n).contains(&p)));
+    assert!(targets.windows(2).all(|w| w[0].1 < w[1].1));
+
+    let c_in = b.alloc_qubit();
+    let carries = b.alloc_qubits(n);
+    for &q in u {
+        b.x(q);
+    }
+
+    b.cx(u[0], v[0]);
+    b.cx(u[0], c_in);
+    b.ccx(c_in, v[0], carries[0]);
+    b.cx(carries[0], u[0]);
+    let mut next_target = 0;
+    while next_target < targets.len() && targets[next_target].1 == 1 {
+        b.ccx(ctrl, u[0], targets[next_target].0);
+        next_target += 1;
+    }
+    for i in 1..n {
+        b.cx(u[i], v[i]);
+        b.cx(u[i], u[i - 1]);
+        b.ccx(u[i - 1], v[i], carries[i]);
+        b.cx(carries[i], u[i]);
+        while next_target < targets.len() && targets[next_target].1 == i + 1 {
+            b.ccx(ctrl, u[i], targets[next_target].0);
+            next_target += 1;
+        }
+    }
+    assert_eq!(next_target, targets.len());
+
+    for i in (1..n).rev() {
+        b.cx(carries[i], u[i]);
+        let m = b.alloc_bit();
+        b.hmr(carries[i], m);
+        b.cz_if(u[i - 1], v[i], m);
+        b.cx(u[i], u[i - 1]);
+        b.cx(u[i], v[i]);
+    }
+    b.cx(carries[0], u[0]);
+    let m0 = b.alloc_bit();
+    b.hmr(carries[0], m0);
+    b.cz_if(c_in, v[0], m0);
+    b.cx(u[0], c_in);
+    b.cx(u[0], v[0]);
+
+    for &q in u {
+        b.x(q);
+    }
+    b.free_vec(&carries);
+    b.free(c_in);
+}
+
 /// Like `mod_add_qq` but uses `cmp_lt_into_fast` for the flag uncompute.
 /// NOT safe inside emit_inverse blocks.
 fn mod_add_qq_fast(b: &mut B, acc: &[QubitId], a: &[QubitId], p: U256) {
@@ -23417,6 +23490,27 @@ fn dialog_gcd_apply_chunked_f_cut() -> Option<usize> {
         .filter(|&cut| (1..N).contains(&cut))
 }
 
+fn dialog_gcd_apply_chunked_f_cut2() -> Option<usize> {
+    std::env::var("DIALOG_GCD_APPLY_CHUNKED_F_CUT2")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .filter(|&cut| (1..N).contains(&cut))
+}
+
+fn dialog_gcd_apply_chunked_f_reuse_cin_zero_enabled() -> bool {
+    std::env::var("DIALOG_GCD_APPLY_CHUNKED_F_REUSE_CIN_ZERO")
+        .ok()
+        .as_deref()
+        != Some("0")
+}
+
+fn dialog_gcd_apply_chunked_f_fuse_boundary_clears_enabled() -> bool {
+    std::env::var("DIALOG_GCD_APPLY_CHUNKED_F_FUSE_BOUNDARY_CLEARS")
+        .ok()
+        .as_deref()
+        != Some("0")
+}
+
 fn dialog_gcd_raw_tobitvector_fit_bench_enabled() -> bool {
     std::env::var(DIALOG_GCD_RAW_TOBITVECTOR_FIT_BENCH_ENV)
         .ok()
@@ -24614,8 +24708,13 @@ fn dialog_gcd_clear_controlled_slice_hmr(
 }
 
 fn dialog_gcd_chunk_hi(blocks: usize, block: usize, ext_n: usize) -> usize {
-    if blocks == 2 && block == 0 {
+    if block == 0 && blocks <= 3 {
         return dialog_gcd_apply_chunked_f_cut().unwrap_or(ext_n / 2).min(ext_n - 1);
+    }
+    if blocks == 3 && block == 1 {
+        return dialog_gcd_apply_chunked_f_cut2()
+            .unwrap_or(2 * ext_n / 3)
+            .min(ext_n - 1);
     }
     ((block + 1) * ext_n) / blocks
 }
@@ -24651,14 +24750,21 @@ fn dialog_gcd_add_ctrl_chunked_low_to_ext(
 
         assert!(hi <= n);
         let f = dialog_gcd_load_controlled_slice(b, ctrl, source, lo, hi);
-        let zero = b.alloc_qubit();
+        let owned_zero = if carry == c_in || !dialog_gcd_apply_chunked_f_reuse_cin_zero_enabled() {
+            Some(b.alloc_qubit())
+        } else {
+            None
+        };
+        let zero = owned_zero.unwrap_or(c_in);
         let cout = b.alloc_qubit();
         let mut a_block = f.clone();
         a_block.push(zero);
         let mut acc_block = acc_ext[lo..hi].to_vec();
         acc_block.push(cout);
         cuccaro_add_fast(b, &a_block, &acc_block, carry);
-        b.free(zero);
+        if let Some(zero) = owned_zero {
+            b.free(zero);
+        }
         dialog_gcd_clear_controlled_slice_hmr(b, ctrl, source, lo, &f);
         b.free_vec(&f);
         couts.push((cout, hi));
@@ -24666,8 +24772,22 @@ fn dialog_gcd_add_ctrl_chunked_low_to_ext(
         lo = hi;
     }
 
-    for &(cout, p) in couts.iter().rev() {
-        ccx_cmp_lt_into_fast(b, &acc_ext[..p], &source[..p], ctrl, cout);
+    if dialog_gcd_apply_chunked_f_fuse_boundary_clears_enabled() {
+        if let Some(&(_, p)) = couts.last() {
+            ccx_cmp_lt_into_fast_prefix_targets(
+                b,
+                &acc_ext[..p],
+                &source[..p],
+                ctrl,
+                &couts,
+            );
+        }
+    } else {
+        for &(cout, p) in couts.iter().rev() {
+            ccx_cmp_lt_into_fast(b, &acc_ext[..p], &source[..p], ctrl, cout);
+        }
+    }
+    for &(cout, _) in couts.iter().rev() {
         b.free(cout);
     }
 }
@@ -24703,14 +24823,21 @@ fn dialog_gcd_sub_ctrl_chunked_low_to_ext(
 
         assert!(hi <= n);
         let f = dialog_gcd_load_controlled_slice(b, ctrl, source, lo, hi);
-        let zero = b.alloc_qubit();
+        let owned_zero = if borrow == c_in || !dialog_gcd_apply_chunked_f_reuse_cin_zero_enabled() {
+            Some(b.alloc_qubit())
+        } else {
+            None
+        };
+        let zero = owned_zero.unwrap_or(c_in);
         let bout = b.alloc_qubit();
         let mut a_block = f.clone();
         a_block.push(zero);
         let mut acc_block = acc_ext[lo..hi].to_vec();
         acc_block.push(bout);
         cuccaro_sub_fast(b, &a_block, &acc_block, borrow);
-        b.free(zero);
+        if let Some(zero) = owned_zero {
+            b.free(zero);
+        }
         dialog_gcd_clear_controlled_slice_hmr(b, ctrl, source, lo, &f);
         b.free_vec(&f);
         bouts.push((bout, hi));
@@ -24718,14 +24845,34 @@ fn dialog_gcd_sub_ctrl_chunked_low_to_ext(
         lo = hi;
     }
 
-    for &(bout, p) in bouts.iter().rev() {
-        for i in 0..p {
-            b.x(source[i]);
+    if dialog_gcd_apply_chunked_f_fuse_boundary_clears_enabled() {
+        if let Some(&(_, p)) = bouts.last() {
+            for i in 0..p {
+                b.x(source[i]);
+            }
+            ccx_cmp_lt_into_fast_prefix_targets(
+                b,
+                &source[..p],
+                &acc_ext[..p],
+                ctrl,
+                &bouts,
+            );
+            for i in 0..p {
+                b.x(source[i]);
+            }
         }
-        ccx_cmp_lt_into_fast(b, &source[..p], &acc_ext[..p], ctrl, bout);
-        for i in 0..p {
-            b.x(source[i]);
+    } else {
+        for &(bout, p) in bouts.iter().rev() {
+            for i in 0..p {
+                b.x(source[i]);
+            }
+            ccx_cmp_lt_into_fast(b, &source[..p], &acc_ext[..p], ctrl, bout);
+            for i in 0..p {
+                b.x(source[i]);
+            }
         }
+    }
+    for &(bout, _) in bouts.iter().rev() {
         b.free(bout);
     }
 }
@@ -29859,7 +30006,7 @@ fn configure_ecdsafail_submission_route() {
     // 257-78) and drops the apply phase to 1543 == the ROUND84 floor. Global peak
     // 1558 -> 1543. F_CUT only reseeds + grows the boundary comparator (+~6,384
     // avg-executed Toffoli, 1,688,703 -> 1,695,087); peak-neutral for any cut>=78.
-    set_default_env("DIALOG_GCD_APPLY_CHUNKED_F_BLOCKS", "2");
+    set_default_env("DIALOG_GCD_APPLY_CHUNKED_F_BLOCKS", "3");
     // PEAK-QUBIT CUT 1542 -> 1500 (-42q). Two co-binders dropped together:
     //  (1) ROUND84 Karatsuba square (z0=lo^2 / z2=hi^2 schoolbook squares parked a
     //      ~130-wide cuccaro_add_fast carry lane, and the Solinas mid_sub/sub_add's
@@ -29915,11 +30062,12 @@ fn configure_ecdsafail_submission_route() {
     // 399 T/qubit, far inside break-even. Score 1446 x 1,740,263 = 2,516,420,298.
     set_default_env("DIALOG_GCD_BODY_HOST_CIN", "1");
     set_default_env("DIALOG_GCD_LATE_BORROW_UV_HIGH", "1");
-    set_default_env("DIALOG_GCD_APPLY_CHUNKED_F_CUT", "128");
+    set_default_env("DIALOG_GCD_APPLY_CHUNKED_F_CUT", "124");
+    set_default_env("DIALOG_GCD_APPLY_CHUNKED_F_CUT2", "130");
     // Active-396 island: compare_bits=58 + apply_clean=21 + schedule margin=8
     // validates 0/0/0 over all 9024 shots at 1438q x 1,736,773 T.
-    set_default_env("DIALOG_REROLL", "3");
-    set_default_env("DIALOG_POST_SUB_REROLL", "51");
+    set_default_env("DIALOG_REROLL", "214");
+    set_default_env("DIALOG_POST_SUB_REROLL", "466");
     // Fuse the branch-bit comparator with the b0-controlled log update: derive
     // b0_and_b1 from the in-flight comparator carry instead of materializing a
     // separate cmp qubit and recomputing the comparator for uncompute. Pure
