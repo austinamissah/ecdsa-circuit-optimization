@@ -29773,7 +29773,7 @@ fn configure_ecdsafail_submission_route() {
     // bit/step, -1,868 executed Toffoli). The tighter margin needs a clean
     // Fiat-Shamir island, found by a 2D reroll search (DIALOG_REROLL=3 +
     // DIALOG_POST_SUB_REROLL=18 below) — 1D reroll sweeps miss it. 0/0/0 @ 1571.
-    set_default_env("DIALOG_GCD_PA9024_COMPARE_SCHEDULE_MARGIN", "5");
+    set_default_env("DIALOG_GCD_PA9024_COMPARE_SCHEDULE_MARGIN", "4");
     set_default_env("KAL_DOUBLE_CARRY_TRUNC_W", "20");
     set_default_env("KAL_FOLD_CARRY_TRUNC_W", "20");
     set_default_env("DIALOG_GCD_ROUND763_DEDUP", "1");
@@ -29925,8 +29925,8 @@ fn configure_ecdsafail_submission_route() {
     // same 1446 peak. The combined op-stream re-rolls the Fiat-Shamir island; a 2-D
     // (DIALOG_REROLL x DIALOG_POST_SUB_REROLL) search lands 37/1 clean 0/0/0 over all
     // 9024 shots. Validated via eval_circuit: 1446q x 1,735,059 T = 2,508,895,314.
-    set_default_env("DIALOG_REROLL", "52");
-    set_default_env("DIALOG_POST_SUB_REROLL", "7");
+    set_default_env("DIALOG_REROLL", "50");
+    set_default_env("DIALOG_POST_SUB_REROLL", "39");
     // Fuse the branch-bit comparator with the b0-controlled log update: derive
     // b0_and_b1 from the in-flight comparator carry instead of materializing a
     // separate cmp qubit and recomputing the comparator for uncompute. Pure
