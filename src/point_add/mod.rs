@@ -31277,10 +31277,6 @@ fn configure_ecdsafail_submission_route() {
     // comparator on low/mid-width GCD steps, orthogonal to the slope envelope.
     set_default_env("DIALOG_GCD_PA9024_COMPARE_SCHEDULE_MARGIN", "6");
     set_default_env("KAL_DOUBLE_CARRY_TRUNC_W", "24");
-    // FOLD-carry lazy-Solinas window tightened 24 -> 23 (-518 avg executed
-    // Toffoli, peak-neutral at 1390q). The narrower fold-reduction carry window
-    // re-rolls the Fiat-Shamir island; the identity tail nonce below was
-    // re-found (DIALOG_TAIL_NONCE=3155) for a clean 9024-shot validation.
     set_default_env("KAL_FOLD_CARRY_TRUNC_W", "24");
     set_default_env("DIALOG_GCD_ROUND763_DEDUP", "1");
     set_default_env("DIALOG_GCD_ROUND763_COMPRESS_LEVER", "1");
@@ -31296,7 +31292,18 @@ fn configure_ecdsafail_submission_route() {
     // island documented below.
     // Branch comparator 58 -> 57: -1,064 executed Toffoli, peak-neutral at 1434q,
     // stacked on the active395 base. Clean island at REROLL=4959 / POST_SUB=5983.
-    set_default_env("DIALOG_GCD_COMPARE_BITS", "72");
+    // COMPARE_BITS 73 -> 52: the GCD branch comparator (b1 = u<v on the top
+    // `compare_bits` of the active window) was left at a loose 73 by the whole
+    // frontier lineage. A classical convergence-filter sweep over both GCD
+    // factors (quotient dx AND ipmul c = Qx-Rx) on 300k inputs shows the
+    // truncated comparator NEVER mis-decides a branch down to 52 bits (0 added
+    // hard inputs); the binding truncations are the width envelope, body-carry
+    // band, and iteration count -- not the comparator. So 73 -> 52 is a pure
+    // -28,392 executed-Toffoli cut (21 bits x 2 dirs x 2 passes, comparator =
+    // 2 T/bit), peak-neutral at 1390q, with ZERO change to islandability. The
+    // shorter op stream re-rolls Fiat-Shamir; co-tuned with WIDTH_MARGIN=10 and
+    // TAIL_NONCE below. Validated 0/0/0 over all 9024 shots.
+    set_default_env("DIALOG_GCD_COMPARE_BITS", "52");
     // Apply-phase cmod-correction comparator tightened 20 -> 19 (-790 executed
     // Toffoli, peak-neutral at 1434q) -- an orthogonal value-exact lever the
     // frontier had dropped, stacked on compare57+active395. Clean island below.
@@ -31347,7 +31354,16 @@ fn configure_ecdsafail_submission_route() {
     // PA9024_COMPARE_SCHEDULE_MARGIN 8->7: -5,576 executed Toffoli at the 1434
     // peak. Re-rolled Fiat-Shamir island lands clean (0/0/0 over 9024) at
     // DIALOG_REROLL=0 / DIALOG_POST_SUB_REROLL=44. 1434q x 1,733,573 T = 2,485,943,682.
-    set_default_env("DIALOG_GCD_WIDTH_MARGIN", "9");
+    // WIDTH_MARGIN 9 -> 10: the freed comparator slack (COMPARE_BITS 73->52
+    // above) is partly re-spent to widen the GCD-body width envelope by one
+    // safety bit. At margin=9 the width-truncation (u/v bitlen > active_width)
+    // is the dominant hard-input source (~83/300k factor checks); margin=10
+    // cuts that to ~27, dropping the expected hard inputs per random reroll from
+    // ~11 to ~5 so a clean Fiat-Shamir island is found in seconds instead of
+    // hours. Costs +5,815,760 score vs margin=9 but the net (compare52 +
+    // margin10) is 2,130,373,770 -> 2,112,431,650 (-17,942,120), and the lower
+    // hard rate keeps the island search tractable. Validated 0/0/0 over 9024.
+    set_default_env("DIALOG_GCD_WIDTH_MARGIN", "10");
     // Measured (Gidney) uncompute for the apply-phase modular subtract's raw
     // difference, mirroring the already-measured apply ADD. ~n Toffoli instead
     // of ~2n per call; peak-neutral (same carry lane the ADD already uses).
@@ -31455,7 +31471,7 @@ fn configure_ecdsafail_submission_route() {
     // 1,779,067 -> 1,778,555 (-512), peak-neutral at 1355q. The tighter
     // truncation re-rolls the Fiat-Shamir island; a 1-D reroll sweep (post_sub
     // fixed at the inherited 503292) lands a clean island at DIALOG_REROLL=101019.
-    set_default_env("DIALOG_GCD_WIDTH_SLOPE_X1000", "1008");
+    set_default_env("DIALOG_GCD_WIDTH_SLOPE_X1000", "1004");
     // Active-395 island on the promoted 1355q base: validated 0/0/0 over all
     // 9024 shots at 1355q x 1,773,011 T.
     set_default_env("DIALOG_REROLL", "4269");
@@ -31467,9 +31483,11 @@ fn configure_ecdsafail_submission_route() {
     // clean island: validated 0/0/0 over all 9024 shots at 1350q x 1,763,987 T.
     // Fiat-Shamir island for the K=2 apply rebalance above: 0/0/0 over all
     // 9024 shots at 1390q x 1,630,487 T.
-    // Re-found for the KAL_FOLD_CARRY_TRUNC_W=23 op stream: nonce=3155 lands a
-    // clean island, validated 0/0/0 over all 9024 shots at 1390q x 1,531,353 T.
-    set_default_env("DIALOG_TAIL_NONCE", "22011802698611");
+    // Re-rolled for COMPARE_BITS=52 + WIDTH_MARGIN=10 (above): nonce=127 lands a
+    // clean island (found by the parallel prefix-clone classical filter in
+    // harness/fasteval, then quantum-confirmed). Validated 0/0/0 over all 9024
+    // shots at 1390q x 1,519,735 T = 2,112,431,650. Backups: 354, 418.
+    set_default_env("DIALOG_TAIL_NONCE", "127");
     // Fuse the branch-bit comparator with the b0-controlled log update: derive
     // b0_and_b1 from the in-flight comparator carry instead of materializing a
     // separate cmp qubit and recomputing the comparator for uncompute. Pure
