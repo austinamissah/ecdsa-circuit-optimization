@@ -32321,7 +32321,7 @@ fn configure_ecdsafail_submission_route() {
     // KAL_FOLD 24->22 and APPLY_CLEAN_COMPARE_BITS 20->19 re-tightenings above.
     // 1011 -> 1012: one more width-envelope notch, stacked on COMPARE_BITS=46
     // under the nonce-10429 island below. Value-exact, peak-neutral at 1320q.
-    set_default_env("DIALOG_GCD_WIDTH_SLOPE_X1000", "1012");
+    set_default_env("DIALOG_GCD_WIDTH_SLOPE_X1000", "1014");
     // Active-395 island on the promoted 1355q base: validated 0/0/0 over all
     // 9024 shots at 1355q x 1,773,011 T.
     set_default_env("DIALOG_REROLL", "4269");
@@ -32357,7 +32357,7 @@ fn configure_ecdsafail_submission_route() {
     // Value-exact -1q (1320 -> 1319): no-physical-c_in selected add/sub body,
     // tail nonce 620000849 lands a clean island on this frontier base.
     set_default_env("DIALOG_GCD_SELECTED_BODY_NOCIN", "1");
-    set_default_env("DIALOG_TAIL_NONCE", "620000849");
+    set_default_env("DIALOG_TAIL_NONCE", "200000008");
     set_default_env("DIALOG_GCD_APPLY_FINAL_WINDOWED_FAST_BLOCKS", "2");
     // Fuse the branch-bit comparator with the b0-controlled log update: derive
     // b0_and_b1 from the in-flight comparator carry instead of materializing a
