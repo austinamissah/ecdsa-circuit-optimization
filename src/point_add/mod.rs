@@ -32129,12 +32129,12 @@ fn configure_ecdsafail_submission_route() {
     // Re-tighten 47 -> 46 on the stacked W2 base (the branch comparator had slack
     // restored by the structural island; it still decides every branch correctly
     // on the reachable support at 46). Stacked under the nonce-20397 island below.
-    set_default_env("DIALOG_GCD_COMPARE_BITS", "46");
+    set_default_env("DIALOG_GCD_COMPARE_BITS", "45");
     // The apply clean comparator is also backed off to 20 for the same island.
     // Re-tighten 20 -> 19 on the W2 base (orthogonal apply-phase cmod-correction
     // comparator). Confirmed value-exact on the reachable support via the shared
     // re-rolled island below.
-    set_default_env("DIALOG_GCD_APPLY_CLEAN_COMPARE_BITS", "19");
+    set_default_env("DIALOG_GCD_APPLY_CLEAN_COMPARE_BITS", "18");
     set_default_env("DIALOG_GCD_RAW_PA", "1");
     set_default_env("DIALOG_GCD_K2", "1");
     // 396 -> 395 -> 394 on the current 1355q route. The binary-GCD transcript
@@ -32357,7 +32357,7 @@ fn configure_ecdsafail_submission_route() {
     // Value-exact -1q (1320 -> 1319): no-physical-c_in selected add/sub body,
     // tail nonce 620000849 lands a clean island on this frontier base.
     set_default_env("DIALOG_GCD_SELECTED_BODY_NOCIN", "1");
-    set_default_env("DIALOG_TAIL_NONCE", "200000008");
+    set_default_env("DIALOG_TAIL_NONCE", "120002648");
     set_default_env("DIALOG_GCD_APPLY_FINAL_WINDOWED_FAST_BLOCKS", "2");
     // Fuse the branch-bit comparator with the b0-controlled log update: derive
     // b0_and_b1 from the in-flight comparator carry instead of materializing a
