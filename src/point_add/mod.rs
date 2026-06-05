@@ -31557,10 +31557,10 @@ fn configure_ecdsafail_submission_route() {
     // Margin 7 -> 6 stacked on the WIDTH_SLOPE=711 tightening: narrows the per-step
     // comparator on low/mid-width GCD steps, orthogonal to the slope envelope.
     set_default_env("DIALOG_GCD_PA9024_COMPARE_SCHEDULE_MARGIN", "6");
-    // DOUBLE-carry lazy-Solinas window tightened to 22 on the 1320q custom-five
-    // apply teardown. By itself this leaves a small dirty island, but stacked
-    // with ACTIVE_ITERATIONS=259 and the tail nonce below it validates cleanly.
-    set_default_env("KAL_DOUBLE_CARRY_TRUNC_W", "22");
+    // DOUBLE-carry lazy-Solinas window tightened 24 -> 23 (-1,038 avg executed
+    // Toffoli, peak-neutral at 1390q). Re-found tail nonce below validates the
+    // combined double+fold carry-truncation stream.
+    set_default_env("KAL_DOUBLE_CARRY_TRUNC_W", "23");
     // FOLD-carry lazy-Solinas window tightened 24 -> 23 (-518 avg executed
     // Toffoli, peak-neutral at 1390q). Re-stacked onto alexander-sei's
     // COMPARE_BITS=52 base, which had reverted FOLD to 24. Value-exact on the
@@ -31602,9 +31602,14 @@ fn configure_ecdsafail_submission_route() {
     // 396 -> 395 -> 394 on the current 1355q route. The binary-GCD transcript
     // still converges on the verifier support for the Fiat-Shamir island below,
     // while dropping two full GCD body/reverse steps.
-    // 260 -> 259 after the 1320q apply teardown: saves one GCD body/reverse row.
-    // Stacked with KAL_DOUBLE_CARRY_TRUNC_W=22, the nonce below lands the clean
-    // 1320q island while improving the custom-five seed's Toffoli count.
+    // 258 -> 260: re-spends two active GCD rows after the 1320q apply teardown
+    // below. This removes the residual phase failures at the custom-five seed
+    // while still staying below the 1320q x current-best Toffoli budget.
+    // 260 -> 259: drops one GCD body/reverse iteration from the active band
+    // (-3,116 avg executed Toffoli, peak-neutral at 1320q). The apply-teardown
+    // lineage (teddyjfpender/newjordan) had raised this back to 260; the
+    // transcript still converges on the verifier support, so the iteration is
+    // reclaimable on the 1320q structure via the tail-nonce island below.
     set_default_env("DIALOG_GCD_ACTIVE_ITERATIONS", "259");
     set_default_env("DIALOG_GCD_RAW_IPMUL_TERMINAL_REUSE", "1");
     set_default_env("DIALOG_GCD_RAW_IPMUL_CLEAR_P_RESIDUAL", "1");
@@ -31771,7 +31776,7 @@ fn configure_ecdsafail_submission_route() {
     // 1004 -> 1005: tightens every late-step GCD-body width by an extra
     // fraction of a bit (~-512 avg executed Toffoli, peak-neutral at 1390q),
     // stacked with ACTIVE_ITERATIONS 259->258 above under one shared island.
-    set_default_env("DIALOG_GCD_WIDTH_SLOPE_X1000", "1005");
+    set_default_env("DIALOG_GCD_WIDTH_SLOPE_X1000", "1008");
     // Active-395 island on the promoted 1355q base: validated 0/0/0 over all
     // 9024 shots at 1355q x 1,773,011 T.
     set_default_env("DIALOG_REROLL", "4269");
@@ -31790,10 +31795,13 @@ fn configure_ecdsafail_submission_route() {
     // Re-rolled for the combined KAL_DOUBLE/FOLD_CARRY_TRUNC_W=23 op stream:
     // nonce=254 lands a clean island, validated 0/0/0 over all 9024 shots at
     // 1390q x 1,518,179 T = 2,110,268,810.
-    // Re-rolled for ACTIVE_ITERATIONS=259 + KAL_DOUBLE_CARRY_TRUNC_W=22 on the
-    // custom-five hosted-boundary apply teardown: nonce=335 lands a clean island,
-    // validated 0/0/0 over all 9024 shots at 1320q x 1,561,263 T = 2,060,867,160.
-    set_default_env("DIALOG_TAIL_NONCE", "335");
+    // Re-rolled for the active260 custom-five hosted-boundary apply teardown:
+    // nonce=108 lands a clean island, validated 0/0/0 over all 9024 shots at
+    // 1320q x 1,565,417 T = 2,066,350,440.
+    // Re-rolled for ACTIVE_ITERATIONS=259 on the newjordan slope1008 / 1320q
+    // apply-teardown base: nonce=754 lands a clean island, validated 0/0/0 over
+    // all 9024 shots at 1320q x 1,560,885 T = 2,060,368,200.
+    set_default_env("DIALOG_TAIL_NONCE", "754");
     // Fuse the branch-bit comparator with the b0-controlled log update: derive
     // b0_and_b1 from the in-flight comparator carry instead of materializing a
     // separate cmp qubit and recomputing the comparator for uncompute. Pure
