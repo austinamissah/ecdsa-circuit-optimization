@@ -31484,10 +31484,11 @@ fn configure_ecdsafail_submission_route() {
     // 1,779,067 -> 1,778,555 (-512), peak-neutral at 1355q. The tighter
     // truncation re-rolls the Fiat-Shamir island; a 1-D reroll sweep (post_sub
     // fixed at the inherited 503292) lands a clean island at DIALOG_REROLL=101019.
-    // 1004 -> 1005: tightens every late-step GCD-body width by an extra
-    // fraction of a bit (~-512 avg executed Toffoli, peak-neutral at 1390q),
-    // stacked with ACTIVE_ITERATIONS 259->258 above under one shared island.
-    set_default_env("DIALOG_GCD_WIDTH_SLOPE_X1000", "1005");
+    // 1004 -> 1005 -> 1006: tightens every late-step GCD-body width by an extra
+    // fraction of a bit per notch (~-512 / -544 avg executed Toffoli per notch,
+    // peak-neutral at 1382q). 1005 was stacked with ACTIVE_ITERATIONS 259->258
+    // under a shared island; 1006 then re-rolled to its own island below.
+    set_default_env("DIALOG_GCD_WIDTH_SLOPE_X1000", "1006");
     // Active-395 island on the promoted 1355q base: validated 0/0/0 over all
     // 9024 shots at 1355q x 1,773,011 T.
     set_default_env("DIALOG_REROLL", "4269");
@@ -31506,10 +31507,12 @@ fn configure_ecdsafail_submission_route() {
     // Re-rolled for the combined KAL_DOUBLE/FOLD_CARRY_TRUNC_W=23 op stream:
     // nonce=254 lands a clean island, validated 0/0/0 over all 9024 shots at
     // 1390q x 1,518,179 T = 2,110,268,810.
-    // Re-rolled for the WIDTH_SLOPE=1005 + ACTIVE_ITERATIONS=258 op stream
-    // (above): nonce=3577 lands a clean island, validated 0/0/0 over all 9024
-    // shots at 1390q x 1,514,221 T = 2,104,767,190.
-    set_default_env("DIALOG_TAIL_NONCE", "3577");
+    // Re-rolled for the WIDTH_SLOPE=1005 + ACTIVE_ITERATIONS=258 op stream:
+    // nonce=3577 was clean at 1382q x 1,514,221 T = 2,092,653,422.
+    // Re-rolled again for WIDTH_SLOPE=1006 (above): nonce=13555 lands a clean
+    // island, validated 0/0/0 over all 9024 shots at 1382q x 1,513,677 T =
+    // 2,091,901,614.
+    set_default_env("DIALOG_TAIL_NONCE", "13555");
     // Fuse the branch-bit comparator with the b0-controlled log update: derive
     // b0_and_b1 from the in-flight comparator carry instead of materializing a
     // separate cmp qubit and recomputing the comparator for uncompute. Pure
