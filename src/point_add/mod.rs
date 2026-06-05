@@ -31321,7 +31321,12 @@ fn configure_ecdsafail_submission_route() {
     // 396 -> 395 -> 394 on the current 1355q route. The binary-GCD transcript
     // still converges on the verifier support for the Fiat-Shamir island below,
     // while dropping two full GCD body/reverse steps.
-    set_default_env("DIALOG_GCD_ACTIVE_ITERATIONS", "259");
+    // 259 -> 258: drops one more GCD body/reverse iteration from the active
+    // band (-~3446 avg executed Toffoli, peak-neutral at 1390q). The transcript
+    // still converges on the verifier support for the Fiat-Shamir island below;
+    // stacked with WIDTH_SLOPE 1004->1005 (the two break sets partially cancel,
+    // so the combined island is gentler than either lever alone).
+    set_default_env("DIALOG_GCD_ACTIVE_ITERATIONS", "258");
     set_default_env("DIALOG_GCD_RAW_IPMUL_TERMINAL_REUSE", "1");
     set_default_env("DIALOG_GCD_RAW_IPMUL_CLEAR_P_RESIDUAL", "1");
     set_default_env("DIALOG_GCD_RAW_QUOTIENT_TERMINAL_REUSE", "1");
@@ -31479,7 +31484,10 @@ fn configure_ecdsafail_submission_route() {
     // 1,779,067 -> 1,778,555 (-512), peak-neutral at 1355q. The tighter
     // truncation re-rolls the Fiat-Shamir island; a 1-D reroll sweep (post_sub
     // fixed at the inherited 503292) lands a clean island at DIALOG_REROLL=101019.
-    set_default_env("DIALOG_GCD_WIDTH_SLOPE_X1000", "1004");
+    // 1004 -> 1005: tightens every late-step GCD-body width by an extra
+    // fraction of a bit (~-512 avg executed Toffoli, peak-neutral at 1390q),
+    // stacked with ACTIVE_ITERATIONS 259->258 above under one shared island.
+    set_default_env("DIALOG_GCD_WIDTH_SLOPE_X1000", "1005");
     // Active-395 island on the promoted 1355q base: validated 0/0/0 over all
     // 9024 shots at 1355q x 1,773,011 T.
     set_default_env("DIALOG_REROLL", "4269");
@@ -31498,7 +31506,10 @@ fn configure_ecdsafail_submission_route() {
     // Re-rolled for the combined KAL_DOUBLE/FOLD_CARRY_TRUNC_W=23 op stream:
     // nonce=254 lands a clean island, validated 0/0/0 over all 9024 shots at
     // 1390q x 1,518,179 T = 2,110,268,810.
-    set_default_env("DIALOG_TAIL_NONCE", "254");
+    // Re-rolled for the WIDTH_SLOPE=1005 + ACTIVE_ITERATIONS=258 op stream
+    // (above): nonce=3577 lands a clean island, validated 0/0/0 over all 9024
+    // shots at 1390q x 1,514,221 T = 2,104,767,190.
+    set_default_env("DIALOG_TAIL_NONCE", "3577");
     // Fuse the branch-bit comparator with the b0-controlled log update: derive
     // b0_and_b1 from the in-flight comparator carry instead of materializing a
     // separate cmp qubit and recomputing the comparator for uncompute. Pure
