@@ -32701,7 +32701,7 @@ fn configure_ecdsafail_submission_route() {
     // been left loose). Value-exact on the reachable support (the dropped fold
     // carry bits are 0 there); residual failures are pure Fiat-Shamir, dodged by
     // the shared re-rolled tail nonce below.
-    set_default_env("KAL_FOLD_CARRY_TRUNC_W", "22");
+    set_default_env("KAL_FOLD_CARRY_TRUNC_W", "21");
     set_default_env("DIALOG_GCD_ROUND763_DEDUP", "1");
     set_default_env("DIALOG_GCD_ROUND763_COMPRESS_LEVER", "1");
     set_default_env("DIALOG_GCD_MEASURED_UNDERFLOW_GATE", "1");
@@ -32971,7 +32971,7 @@ fn configure_ecdsafail_submission_route() {
     // 1000001157 lands a clean island, validated 0/0/0 over all 9024 shots at
     // 1313q x 1,535,885 T = 2,016,617,005 (official ecdsafail run).
     set_default_env("DIALOG_GCD_SELECTED_BODY_NOCIN", "1");
-    set_default_env("DIALOG_TAIL_NONCE", "44250004920");
+    set_default_env("DIALOG_TAIL_NONCE", "44575002764");
     set_default_env("DIALOG_GCD_APPLY_FINAL_WINDOWED_FAST_BLOCKS", "2");
     // Fuse the branch-bit comparator with the b0-controlled log update: derive
     // b0_and_b1 from the in-flight comparator carry instead of materializing a
