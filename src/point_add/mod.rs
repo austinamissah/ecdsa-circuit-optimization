@@ -2422,23 +2422,31 @@ fn cuccaro_add_fast_borrowed_carries_no_cin(
         b.cx(a[0], acc[0]);
         return;
     }
-    assert!(carries.len() >= n - 1);
+    let gate_suffix = dialog_gcd_selected_body_gate_suffix_carries(n);
+    let borrowed = (n - 1) - gate_suffix;
+    assert!(carries.len() >= borrowed);
 
     // Step 0 MAJ with c_in folded out (c_in == 0 == a[0]'s seed companion).
     b.cx(a[0], acc[0]);
     b.ccx(a[0], acc[0], carries[0]);
     b.cx(carries[0], a[0]);
-    for i in 1..n - 1 {
+    for i in 1..borrowed {
         b.cx(a[i], acc[i]);
         b.cx(a[i], a[i - 1]);
         b.ccx(a[i - 1], acc[i], carries[i]);
         b.cx(carries[i], a[i]);
     }
+    for i in borrowed..n - 1 {
+        maj(b, a[i - 1], acc[i], a[i]);
+    }
 
     b.cx(a[n - 2], acc[n - 1]);
     b.cx(a[n - 1], acc[n - 1]);
 
-    for i in (1..n - 1).rev() {
+    for i in (borrowed..n - 1).rev() {
+        uma(b, a[i - 1], acc[i], a[i]);
+    }
+    for i in (1..borrowed).rev() {
         b.cx(carries[i], a[i]);
         let m = b.alloc_bit();
         b.hmr(carries[i], m);
@@ -2479,22 +2487,30 @@ fn cuccaro_sub_fast_borrowed_carries_no_cin(
         b.cx(a[0], acc[0]);
         return;
     }
-    assert!(carries.len() >= n - 1);
+    let gate_suffix = dialog_gcd_selected_body_gate_suffix_carries(n);
+    let borrowed = (n - 1) - gate_suffix;
+    assert!(carries.len() >= borrowed);
 
     // Step 0 with c_in folded out (the sub seed begins ccx(a[0],acc[0],c0)).
     b.ccx(a[0], acc[0], carries[0]);
     b.cx(carries[0], a[0]);
-    for i in 1..n - 1 {
+    for i in 1..borrowed {
         b.cx(a[i - 1], acc[i]);
         b.cx(a[i], a[i - 1]);
         b.ccx(a[i - 1], acc[i], carries[i]);
         b.cx(carries[i], a[i]);
     }
+    for i in borrowed..n - 1 {
+        inv_uma(b, a[i - 1], acc[i], a[i]);
+    }
 
     b.cx(a[n - 1], acc[n - 1]);
     b.cx(a[n - 2], acc[n - 1]);
 
-    for i in (1..n - 1).rev() {
+    for i in (borrowed..n - 1).rev() {
+        inv_maj(b, a[i - 1], acc[i], a[i]);
+    }
+    for i in (1..borrowed).rev() {
         b.cx(carries[i], a[i]);
         let m = b.alloc_bit();
         b.hmr(carries[i], m);
@@ -25440,6 +25456,26 @@ fn dialog_gcd_selected_body_nocin_keep_pool() -> bool {
     std::env::var("DIALOG_GCD_SELECTED_BODY_NOCIN").ok().as_deref() == Some("2")
 }
 
+fn dialog_gcd_selected_body_gate_suffix_carries(n: usize) -> usize {
+    std::env::var("DIALOG_GCD_SELECTED_BODY_GATE_SUFFIX_CARRIES")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(0)
+        // Keep the folded-out step-0 carry on a borrowed clean lane; suffix
+        // self-hosting starts at stage 1, matching the ext-width helper.
+        .min(n.saturating_sub(2))
+}
+
+fn dialog_gcd_selected_body_nocin_carry_need(body_len: usize) -> usize {
+    body_len
+        .saturating_sub(1)
+        .saturating_sub(dialog_gcd_selected_body_gate_suffix_carries(body_len))
+}
+
+fn dialog_gcd_selected_body_nocin_scratch_need(body_len: usize) -> usize {
+    body_len + dialog_gcd_selected_body_nocin_carry_need(body_len)
+}
+
 fn dialog_gcd_late_borrow_uv_high_enabled() -> bool {
     std::env::var("DIALOG_GCD_LATE_BORROW_UV_HIGH")
         .ok()
@@ -25490,7 +25526,7 @@ fn dialog_gcd_controlled_sub_selected(
             // Legacy gated offset c[n..n+body_len] needs the full 2n-1 pool.
             (n + body_len).max(2 * body_len - 1)
         } else {
-            2 * body_len - 1
+            dialog_gcd_selected_body_nocin_scratch_need(body_len)
         };
         let nocin = dialog_gcd_selected_body_nocin_enabled()
             && body_start >= 1
@@ -25510,7 +25546,7 @@ fn dialog_gcd_controlled_sub_selected(
                     let carry_need = body_len - 1;
                     (&c[..carry_need], &c[n..n + body_len])
                 } else {
-                    let carry_need = body_len - 1;
+                    let carry_need = dialog_gcd_selected_body_nocin_carry_need(body_len);
                     (&c[..carry_need], &c[carry_need..carry_need + body_len])
                 };
             b.set_phase("dialog_gcd_raw_tobitvector_materialized_sub_load");
@@ -25627,7 +25663,7 @@ fn dialog_gcd_controlled_add_selected(
             // Legacy gated offset c[n..n+body_len] needs the full 2n-1 pool.
             (n + body_len).max(2 * body_len - 1)
         } else {
-            2 * body_len - 1
+            dialog_gcd_selected_body_nocin_scratch_need(body_len)
         };
         let nocin = dialog_gcd_selected_body_nocin_enabled()
             && body_start >= 1
@@ -25641,7 +25677,7 @@ fn dialog_gcd_controlled_add_selected(
                     let carry_need = body_len - 1;
                     (&c[..carry_need], &c[n..n + body_len])
                 } else {
-                    let carry_need = body_len - 1;
+                    let carry_need = dialog_gcd_selected_body_nocin_carry_need(body_len);
                     (&c[..carry_need], &c[carry_need..carry_need + body_len])
                 };
             b.set_phase("dialog_gcd_raw_tobitvector_materialized_add_load");
@@ -27335,9 +27371,9 @@ fn dialog_gcd_build_composite_scratch(
 ) -> DialogGcdCompositeScratch {
     // The selected add/sub body is the dominant consumer of this composite
     // scratch (gated host + borrowed carries). Under the no-physical-c_in body
-    // it needs only 2*body_len-1 == 2*body_w-3 lanes (vs 2*active_width-1), and
-    // for the untrimmed fastpath body_w == active_width, so the demand drops by
-    // exactly 2 lanes — the -1 peak qubit after the gap lane is also reclaimed.
+    // it needs body_len gated lanes plus the borrowed carry prefix; any
+    // configured high suffix carry stages are self-hosted on the gated source
+    // lanes and add Toffoli work instead of clean scratch.
     let body_start = if dialog_gcd_odd_u_lowbit_fastpath_enabled() {
         1
     } else {
@@ -27351,7 +27387,7 @@ fn dialog_gcd_build_composite_scratch(
         && body_len >= 1;
     let want = if nocin {
         // Match the body's exact host demand; never exceed the legacy ask.
-        (2 * body_len - 1).min(2 * active_width - 1)
+        dialog_gcd_selected_body_nocin_scratch_need(body_len).min(2 * active_width - 1)
     } else {
         2 * active_width - 1
     };
@@ -32970,8 +33006,14 @@ fn configure_ecdsafail_submission_route() {
     // Re-rolled for the KAL_DOUBLE_CARRY_TRUNC_W=21 re-tightening above: nonce
     // 1000001157 lands a clean island, validated 0/0/0 over all 9024 shots at
     // 1313q x 1,535,885 T = 2,016,617,005 (official ecdsafail run).
+    // Selected no-c_in body suffix self-hosts four high carry stages on the
+    // gated source lanes. This drops the three tobitvector binders to the
+    // round84 floor at 1309q, at +4,120 T, and nonce 264497 is clean by the
+    // CUDA K=2 filter and trusted eval: 0/0/0 over 9024 at
+    // 1309q x 1,516,943 T = 1,985,678,387.
     set_default_env("DIALOG_GCD_SELECTED_BODY_NOCIN", "1");
-    set_default_env("DIALOG_TAIL_NONCE", "45100002269");
+    set_default_env("DIALOG_GCD_SELECTED_BODY_GATE_SUFFIX_CARRIES", "4");
+    set_default_env("DIALOG_TAIL_NONCE", "264497");
     set_default_env("DIALOG_GCD_APPLY_FINAL_WINDOWED_FAST_BLOCKS", "2");
     // Fuse the branch-bit comparator with the b0-controlled log update: derive
     // b0_and_b1 from the in-flight comparator carry instead of materializing a
