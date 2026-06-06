@@ -268,6 +268,24 @@ pub(crate) fn dialog_gcd_selected_body_nocin_keep_pool() -> bool {
     std::env::var("DIALOG_GCD_SELECTED_BODY_NOCIN").ok().as_deref() == Some("2")
 }
 
+pub(crate) fn dialog_gcd_selected_body_gate_suffix_carries(n: usize) -> usize {
+    std::env::var("DIALOG_GCD_SELECTED_BODY_GATE_SUFFIX_CARRIES")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(0)
+        .min(n.saturating_sub(2))
+}
+
+pub(crate) fn dialog_gcd_selected_body_nocin_carry_need(body_len: usize) -> usize {
+    body_len
+        .saturating_sub(1)
+        .saturating_sub(dialog_gcd_selected_body_gate_suffix_carries(body_len))
+}
+
+pub(crate) fn dialog_gcd_selected_body_nocin_scratch_need(body_len: usize) -> usize {
+    body_len + dialog_gcd_selected_body_nocin_carry_need(body_len)
+}
+
 pub(crate) fn dialog_gcd_late_borrow_uv_high_enabled() -> bool {
     std::env::var("DIALOG_GCD_LATE_BORROW_UV_HIGH")
         .ok()
@@ -318,7 +336,7 @@ pub(crate) fn dialog_gcd_controlled_sub_selected(
             // Legacy gated offset c[n..n+body_len] needs the full 2n-1 pool.
             (n + body_len).max(2 * body_len - 1)
         } else {
-            2 * body_len - 1
+            dialog_gcd_selected_body_nocin_scratch_need(body_len)
         };
         let nocin = dialog_gcd_selected_body_nocin_enabled()
             && body_start >= 1
@@ -338,7 +356,7 @@ pub(crate) fn dialog_gcd_controlled_sub_selected(
                     let carry_need = body_len - 1;
                     (&c[..carry_need], &c[n..n + body_len])
                 } else {
-                    let carry_need = body_len - 1;
+                    let carry_need = dialog_gcd_selected_body_nocin_carry_need(body_len);
                     (&c[..carry_need], &c[carry_need..carry_need + body_len])
                 };
             b.set_phase("dialog_gcd_raw_tobitvector_materialized_sub_load");
@@ -455,7 +473,7 @@ pub(crate) fn dialog_gcd_controlled_add_selected(
             // Legacy gated offset c[n..n+body_len] needs the full 2n-1 pool.
             (n + body_len).max(2 * body_len - 1)
         } else {
-            2 * body_len - 1
+            dialog_gcd_selected_body_nocin_scratch_need(body_len)
         };
         let nocin = dialog_gcd_selected_body_nocin_enabled()
             && body_start >= 1
@@ -469,7 +487,7 @@ pub(crate) fn dialog_gcd_controlled_add_selected(
                     let carry_need = body_len - 1;
                     (&c[..carry_need], &c[n..n + body_len])
                 } else {
-                    let carry_need = body_len - 1;
+                    let carry_need = dialog_gcd_selected_body_nocin_carry_need(body_len);
                     (&c[..carry_need], &c[carry_need..carry_need + body_len])
                 };
             b.set_phase("dialog_gcd_raw_tobitvector_materialized_add_load");

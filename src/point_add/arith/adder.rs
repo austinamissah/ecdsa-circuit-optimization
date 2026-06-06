@@ -5,6 +5,14 @@ pub(crate) fn bit(c: U256, i: usize) -> bool {
     c.bit(i)
 }
 
+fn selected_body_gate_suffix_carries(n: usize) -> usize {
+    std::env::var("DIALOG_GCD_SELECTED_BODY_GATE_SUFFIX_CARRIES")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(0)
+        .min(n.saturating_sub(2))
+}
+
 pub(crate) fn maj(b: &mut B, x: QubitId, y: QubitId, w: QubitId) {
     b.cx(w, y);
     b.cx(w, x);
@@ -761,23 +769,31 @@ pub(crate) fn cuccaro_add_fast_borrowed_carries_no_cin(
         b.cx(a[0], acc[0]);
         return;
     }
-    assert!(carries.len() >= n - 1);
+    let gate_suffix = selected_body_gate_suffix_carries(n);
+    let borrowed = (n - 1) - gate_suffix;
+    assert!(carries.len() >= borrowed);
 
     // Step 0 MAJ with c_in folded out (c_in == 0 == a[0]'s seed companion).
     b.cx(a[0], acc[0]);
     b.ccx(a[0], acc[0], carries[0]);
     b.cx(carries[0], a[0]);
-    for i in 1..n - 1 {
+    for i in 1..borrowed {
         b.cx(a[i], acc[i]);
         b.cx(a[i], a[i - 1]);
         b.ccx(a[i - 1], acc[i], carries[i]);
         b.cx(carries[i], a[i]);
     }
+    for i in borrowed..n - 1 {
+        maj(b, a[i - 1], acc[i], a[i]);
+    }
 
     b.cx(a[n - 2], acc[n - 1]);
     b.cx(a[n - 1], acc[n - 1]);
 
-    for i in (1..n - 1).rev() {
+    for i in (borrowed..n - 1).rev() {
+        uma(b, a[i - 1], acc[i], a[i]);
+    }
+    for i in (1..borrowed).rev() {
         b.cx(carries[i], a[i]);
         let m = b.alloc_bit();
         b.hmr(carries[i], m);
@@ -818,22 +834,30 @@ pub(crate) fn cuccaro_sub_fast_borrowed_carries_no_cin(
         b.cx(a[0], acc[0]);
         return;
     }
-    assert!(carries.len() >= n - 1);
+    let gate_suffix = selected_body_gate_suffix_carries(n);
+    let borrowed = (n - 1) - gate_suffix;
+    assert!(carries.len() >= borrowed);
 
     // Step 0 with c_in folded out (the sub seed begins ccx(a[0],acc[0],c0)).
     b.ccx(a[0], acc[0], carries[0]);
     b.cx(carries[0], a[0]);
-    for i in 1..n - 1 {
+    for i in 1..borrowed {
         b.cx(a[i - 1], acc[i]);
         b.cx(a[i], a[i - 1]);
         b.ccx(a[i - 1], acc[i], carries[i]);
         b.cx(carries[i], a[i]);
     }
+    for i in borrowed..n - 1 {
+        inv_uma(b, a[i - 1], acc[i], a[i]);
+    }
 
     b.cx(a[n - 1], acc[n - 1]);
     b.cx(a[n - 2], acc[n - 1]);
 
-    for i in (1..n - 1).rev() {
+    for i in (borrowed..n - 1).rev() {
+        inv_maj(b, a[i - 1], acc[i], a[i]);
+    }
+    for i in (1..borrowed).rev() {
         b.cx(carries[i], a[i]);
         let m = b.alloc_bit();
         b.hmr(carries[i], m);

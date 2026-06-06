@@ -356,7 +356,7 @@ pub(crate) fn dialog_gcd_build_composite_scratch(
         && body_len >= 1;
     let want = if nocin {
         // Match the body's exact host demand; never exceed the legacy ask.
-        (2 * body_len - 1).min(2 * active_width - 1)
+        dialog_gcd_selected_body_nocin_scratch_need(body_len).min(2 * active_width - 1)
     } else {
         2 * active_width - 1
     };

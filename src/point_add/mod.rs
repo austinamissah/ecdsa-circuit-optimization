@@ -142,7 +142,6 @@ pub struct PhaseResource {
     pub r_ops: usize,
 }
 
-
 impl B {
     fn new() -> Self {
         Self {
@@ -1051,7 +1050,9 @@ fn configure_ecdsafail_submission_route() {
     // Both-phase apply fold-fusion: spend comparator bits back to cb=52 (the
     // exact-screen zone) while preserving a clean Fiat-Shamir
     // nonce; the fold-fusion's -25k Toffoli keeps the score well under 2B.
-    set_default_env("DIALOG_GCD_COMPARE_BITS", "49");
+    // 1285q restack: the ROUND84 low-q shift-walk plus suffix-hosted selected
+    // body needs one GCD branch comparator bit back for a clean island.
+    set_default_env("DIALOG_GCD_COMPARE_BITS", "50");
     // Apply-phase overflow-clean comparator narrowed 23 -> 22. The
     // materialized_special "overflow_clean" cmp_lt only needs the top
     // `apply_clean_compare_bits` of (acc, f) to resolve the modular-overflow
@@ -1152,6 +1153,7 @@ fn configure_ecdsafail_submission_route() {
     // phase at 1567. Square phase drops to 1543; the global peak falls
     // 1567 -> 1543. Costs +~6,384 avg-executed Toffoli (see F_CUT below).
     set_default_env("ROUND84_XTAIL_BORROW_CARRIES", "1");
+    set_default_env("ROUND84_SHIFT22_WALK_DOUBLE", "1");
     // Chunked apply materializes ctrl&a only for the active carry window, so the
     // apply phase drops under the ROUND84 peak binder. After the ROUND84 square
     // dropped to 1543, the apply raw sum/difference phases (block 1 = [F_CUT,257),
@@ -1301,6 +1303,7 @@ fn configure_ecdsafail_submission_route() {
     // 1000001157 lands a clean island, validated 0/0/0 over all 9024 shots at
     // 1313q x 1,535,885 T = 2,016,617,005 (official ecdsafail run).
     set_default_env("DIALOG_GCD_SELECTED_BODY_NOCIN", "1");
+    set_default_env("DIALOG_GCD_SELECTED_BODY_GATE_SUFFIX_CARRIES", "23");
     // STACKED island: K2 per-step compare schedule (MARGIN=0, body-carry-band-trims
     // OFF; 1,506,043 T) + DIALOG_GCD_BORROW_CURRENT_BLOCK=1 (GCD-walk peak 1313->1309
     // at 0 added Toffoli). The borrow relabel removes 1920 non-Toffoli alloc/clear
@@ -1316,10 +1319,10 @@ fn configure_ecdsafail_submission_route() {
     // ON clean islands occur at the SAME ~1/108 rate among GCD-survivors as K2-alone
     // OFF. Backup clean islands (all validated 0/0/0 @ 1309 x 1,506,043 = 1,971,410,287):
     // 3756953, 3774241, 3840981, 40330388.
-    // Re-rolled for the APPLY_CLEAN_COMPARE_BITS 23 -> 22 re-tightening above:
-    // nonce 251235 lands a clean Fiat-Shamir island, validated 0/0/0 over all
-    // 9024 shots at 1309q x 1,504,387 T = 1,969,242,583.
-    set_default_env("DIALOG_TAIL_NONCE", "251235");
+    // Re-rolled for the 1285q ROUND84 shift-walk + selected-body suffix-hosting
+    // restack on top of APPLY_CLEAN_COMPARE_BITS=22: nonce 73612 lands a clean
+    // Fiat-Shamir island under the exact replay.
+    set_default_env("DIALOG_TAIL_NONCE", "73612");
     set_default_env("DIALOG_GCD_APPLY_FINAL_WINDOWED_FAST_BLOCKS", "2");
     // Fuse the branch-bit comparator with the b0-controlled log update: derive
     // b0_and_b1 from the in-flight comparator carry instead of materializing a

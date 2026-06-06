@@ -779,9 +779,19 @@ pub(crate) fn squaring_sub_from_acc_schoolbook(b: &mut B, acc: &[QubitId], x: &[
         mod_double_inplace_fast(b, &hi, p);
     }
     mod_sub_qq_fast(b, acc, &hi, p);
-    let (spill, flag_inv, ovf) = mod_shift_left_by_k(b, &hi, p, 22);
-    mod_sub_qq(b, acc, &hi, p);
-    mod_shift_right_by_k(b, &hi, p, 22, spill, flag_inv, ovf);
+    if std::env::var("ROUND84_SHIFT22_WALK_DOUBLE").ok().as_deref() == Some("1") {
+        for _ in 0..22 {
+            mod_double_inplace_fast(b, &hi, p);
+        }
+        mod_sub_qq(b, acc, &hi, p);
+        for _ in 0..22 {
+            mod_halve_inplace_fast(b, &hi, p);
+        }
+    } else {
+        let (spill, flag_inv, ovf) = mod_shift_left_by_k(b, &hi, p, 22);
+        mod_sub_qq(b, acc, &hi, p);
+        mod_shift_right_by_k(b, &hi, p, 22, spill, flag_inv, ovf);
+    }
     for _ in 0..10 {
         mod_halve_inplace_fast(b, &hi, p);
     }
@@ -1153,9 +1163,19 @@ pub(crate) fn squaring_sub_from_acc_schoolbook_lowq_shift22(
         mod_double_inplace_direct_const_fast(b, &hi, p);
     }
     mod_sub_qq(b, acc, &hi, p);
-    let (spill, flag_inv, ovf) = mod_shift_left_by_k_lowq(b, &hi, p, 22);
-    mod_sub_qq(b, acc, &hi, p);
-    mod_shift_right_by_k_lowq(b, &hi, p, 22, spill, flag_inv, ovf);
+    if std::env::var("ROUND84_SHIFT22_WALK_DOUBLE").ok().as_deref() == Some("1") {
+        for _ in 0..22 {
+            mod_double_inplace_direct_const_fast(b, &hi, p);
+        }
+        mod_sub_qq(b, acc, &hi, p);
+        for _ in 0..22 {
+            mod_halve_inplace_direct_const_fast(b, &hi, p);
+        }
+    } else {
+        let (spill, flag_inv, ovf) = mod_shift_left_by_k_lowq(b, &hi, p, 22);
+        mod_sub_qq(b, acc, &hi, p);
+        mod_shift_right_by_k_lowq(b, &hi, p, 22, spill, flag_inv, ovf);
+    }
     for _ in 0..10 {
         mod_halve_inplace_direct_const_fast(b, &hi, p);
     }
