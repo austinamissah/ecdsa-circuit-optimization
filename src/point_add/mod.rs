@@ -1215,7 +1215,7 @@ fn configure_ecdsafail_submission_route() {
     // compare schedule frees enough Toffoli to pay back the ~1,088 this saved AND
     // remove that hazard class, making the island materially easier to land while
     // net Toffoli still beats the flat-50 baseline (1,512,823 -> 1,506,043 @ 1313).
-    set_default_env("DIALOG_GCD_BODY_CARRY_BAND_TRIMS", "");
+    set_default_env("DIALOG_GCD_BODY_CARRY_BAND_TRIMS", "0,1");
     // 1320q apply teardown: low-q final chunk plus a hosted boundary split at
     // the second custom-five cut. The retained carry at bit 100 hosts the
     // high-window comparator carry-in, avoiding the generic split's extra
@@ -1304,7 +1304,7 @@ fn configure_ecdsafail_submission_route() {
     // ON clean islands occur at the SAME ~1/108 rate among GCD-survivors as K2-alone
     // OFF. Backup clean islands (all validated 0/0/0 @ 1309 x 1,506,043 = 1,971,410,287):
     // 3756953, 3774241, 3840981, 40330388.
-    set_default_env("DIALOG_TAIL_NONCE", "3400174");
+    set_default_env("DIALOG_TAIL_NONCE", "460000820");
     set_default_env("DIALOG_GCD_APPLY_FINAL_WINDOWED_FAST_BLOCKS", "2");
     // Fuse the branch-bit comparator with the b0-controlled log update: derive
     // b0_and_b1 from the in-flight comparator carry instead of materializing a
