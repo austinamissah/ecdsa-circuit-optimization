@@ -209,13 +209,36 @@ pub(crate) fn dialog_gcd_body_carry_band_trim(step: usize) -> Option<usize> {
 }
 
 pub(crate) fn dialog_gcd_body_carry_trunc_width(active_width: usize, step: usize) -> usize {
-    let w = dialog_gcd_body_carry_band_trim(step).unwrap_or_else(|| {
+    let mut w = dialog_gcd_body_carry_band_trim(step).unwrap_or_else(|| {
         std::env::var("DIALOG_GCD_BODY_CARRY_TRUNC_W")
             .ok()
             .and_then(|s| s.parse::<usize>().ok())
             .unwrap_or(0)
     });
+    if dialog_gcd_trio_width_notch_enabled() && step == dialog_gcd_trio_width_notch_step() {
+        w = w.saturating_add(dialog_gcd_trio_width_notch_extra());
+    }
     active_width.saturating_sub(w).max(2)
+}
+
+pub(crate) fn dialog_gcd_trio_width_notch_enabled() -> bool {
+    // Default-on successor from aaf9616: the current route inherited its body
+    // geometry, and this one-step notch is needed to reclaim the 1306q tier.
+    std::env::var("DIALOG_GCD_TRIO_WIDTH_NOTCH").ok().as_deref() != Some("0")
+}
+
+pub(crate) fn dialog_gcd_trio_width_notch_step() -> usize {
+    std::env::var("DIALOG_GCD_TRIO_WIDTH_NOTCH_STEP")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(11)
+}
+
+pub(crate) fn dialog_gcd_trio_width_notch_extra() -> usize {
+    std::env::var("DIALOG_GCD_TRIO_WIDTH_NOTCH_EXTRA")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(2)
 }
 
 

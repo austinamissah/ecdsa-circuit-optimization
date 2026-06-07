@@ -436,6 +436,16 @@ pub(crate) fn dialog_gcd_build_composite_scratch(
         {
             lanes.push(s2);
         }
+        if dialog_gcd_trio_width_notch_enabled() && slot == 0 && group_size >= 2 {
+            let sibling_s2 = raw_block[2 * group_size + 1];
+            if lanes.len() < want
+                && !lanes.contains(&sibling_s2)
+                && !u[..active_width].contains(&sibling_s2)
+                && !v[..active_width].contains(&sibling_s2)
+            {
+                lanes.push(sibling_s2);
+            }
+        }
     }
     let owned = b.alloc_qubits(want - lanes.len());
     lanes.extend_from_slice(&owned);
