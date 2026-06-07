@@ -1095,6 +1095,8 @@ fn configure_ecdsafail_submission_route() {
     set_default_env("DIALOG_GCD_ACTIVE_ITERATIONS", "258");
     set_default_env("DIALOG_GCD_PERPOS_MAJ2", "1");
     set_default_env("DIALOG_GCD_FUSED_HCLEAR_MEASURED", "1");
+    set_default_env("DIALOG_GCD_FUSED_DCLEAR_MEASURED", "1");
+    set_default_env("DIALOG_GCD_FUSED_HALVE_EDCLEAR_MEASURED", "1");
     set_default_env("DIALOG_GCD_RAW_IPMUL_TERMINAL_REUSE", "1");
     set_default_env("DIALOG_GCD_RAW_IPMUL_CLEAR_P_RESIDUAL", "1");
     set_default_env("DIALOG_GCD_RAW_QUOTIENT_TERMINAL_REUSE", "1");
@@ -1350,7 +1352,7 @@ fn configure_ecdsafail_submission_route() {
     // Re-rolled for the lowq0 fast-final + ACTIVE_ITERATIONS=262 route:
     // nonce 2432 validates 0/0/0 over all 9024 shots at
     // 1309q x 1,497,795 T = 1,960,613,655.
-    set_default_env("DIALOG_TAIL_NONCE", "218004368140");
+    set_default_env("DIALOG_TAIL_NONCE", "805000159304");
     set_default_env("DIALOG_GCD_FOLD_MAJ2", "1");
     set_default_env("DIALOG_GCD_APPLY_FINAL_WINDOWED_FAST_BLOCKS", "0");
     // Fuse the branch-bit comparator with the b0-controlled log update: derive
