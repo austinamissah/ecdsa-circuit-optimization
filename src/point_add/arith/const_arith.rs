@@ -468,6 +468,10 @@ pub(crate) fn perpos_maj2_enabled() -> bool {
     std::env::var("DIALOG_GCD_PERPOS_MAJ2").ok().as_deref() == Some("1")
 }
 
+pub(crate) fn fold_maj2_enabled() -> bool {
+    std::env::var("DIALOG_GCD_FOLD_MAJ2").ok().as_deref() == Some("1")
+}
+
 /// Carry-tail-truncated controlled add of a sparse classical constant.
 ///
 /// Identical arithmetic to [`cadd_nbit_const_direct_fast`] except the forward
@@ -500,6 +504,7 @@ pub(crate) fn cadd_nbit_const_direct_trunc_fast(
 
     let hi = highest_set_bit(c);
     let last = core::cmp::min(n - 2, hi.saturating_add(window));
+    let maj2 = fold_maj2_enabled();
     let carries = b.alloc_qubits(last + 1);
 
     // Forward carry sweep, truncated at `last`. carry_{i+1} = maj(acc_i, k_i, carry_i).
@@ -508,9 +513,16 @@ pub(crate) fn cadd_nbit_const_direct_trunc_fast(
         let carry_in = if i == 0 { None } else { Some(carries[i - 1]) };
         if bit(c, i) {
             if let Some(ci) = carry_in {
-                b.ccx(acc[i], ci, target);
-                b.ccx(ctrl, acc[i], target);
-                b.ccx(ctrl, ci, target);
+                if maj2 {
+                    b.ccx(acc[i], ci, target);
+                    b.cx(acc[i], ci);
+                    b.ccx(ctrl, ci, target);
+                    b.cx(acc[i], ci);
+                } else {
+                    b.ccx(acc[i], ci, target);
+                    b.ccx(ctrl, acc[i], target);
+                    b.ccx(ctrl, ci, target);
+                }
             } else {
                 b.ccx(acc[i], ctrl, target);
             }
@@ -579,6 +591,7 @@ pub(crate) fn csub_nbit_const_direct_trunc_fast(
 
     let hi = highest_set_bit(c);
     let last = core::cmp::min(n - 2, hi.saturating_add(window));
+    let maj2 = fold_maj2_enabled();
     let borrows = b.alloc_qubits(last + 1);
 
     // Forward borrow sweep, truncated at `last`.
@@ -588,9 +601,16 @@ pub(crate) fn csub_nbit_const_direct_trunc_fast(
         if bit(c, i) {
             b.x(acc[i]);
             if let Some(bi) = borrow_in {
-                b.ccx(acc[i], bi, target);
-                b.ccx(ctrl, acc[i], target);
-                b.ccx(ctrl, bi, target);
+                if maj2 {
+                    b.ccx(acc[i], bi, target);
+                    b.cx(acc[i], bi);
+                    b.ccx(ctrl, bi, target);
+                    b.cx(acc[i], bi);
+                } else {
+                    b.ccx(acc[i], bi, target);
+                    b.ccx(ctrl, acc[i], target);
+                    b.ccx(ctrl, bi, target);
+                }
             } else {
                 b.ccx(acc[i], ctrl, target);
             }
