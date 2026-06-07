@@ -1092,7 +1092,7 @@ fn configure_ecdsafail_submission_route() {
     // recovered fast-final Toffoli budget to remove most nonconvergence pressure
     // while staying under the 1309q round84 peak. Re-hunted with the GCD filter
     // and quantum-confirmed at tail nonce 2432.
-    set_default_env("DIALOG_GCD_ACTIVE_ITERATIONS", "259");
+    set_default_env("DIALOG_GCD_ACTIVE_ITERATIONS", "258");
     set_default_env("DIALOG_GCD_PERPOS_MAJ2", "1");
     set_default_env("DIALOG_GCD_FUSED_HCLEAR_MEASURED", "1");
     set_default_env("DIALOG_GCD_RAW_IPMUL_TERMINAL_REUSE", "1");
@@ -1289,7 +1289,7 @@ fn configure_ecdsafail_submission_route() {
     // KAL_FOLD 24->22 and APPLY_CLEAN_COMPARE_BITS 20->19 re-tightenings above.
     // 1011 -> 1012: one more width-envelope notch, stacked on COMPARE_BITS=46
     // under the nonce-10429 island below. Value-exact, peak-neutral at 1320q.
-    set_default_env("DIALOG_GCD_WIDTH_SLOPE_X1000", "1014");
+    set_default_env("DIALOG_GCD_WIDTH_SLOPE_X1000", "1015");
     // Active-395 island on the promoted 1355q base: validated 0/0/0 over all
     // 9024 shots at 1355q x 1,773,011 T.
     set_default_env("DIALOG_REROLL", "4269");
@@ -1350,7 +1350,7 @@ fn configure_ecdsafail_submission_route() {
     // Re-rolled for the lowq0 fast-final + ACTIVE_ITERATIONS=262 route:
     // nonce 2432 validates 0/0/0 over all 9024 shots at
     // 1309q x 1,497,795 T = 1,960,613,655.
-    set_default_env("DIALOG_TAIL_NONCE", "1076489");
+    set_default_env("DIALOG_TAIL_NONCE", "218004368140");
     set_default_env("DIALOG_GCD_FOLD_MAJ2", "1");
     set_default_env("DIALOG_GCD_APPLY_FINAL_WINDOWED_FAST_BLOCKS", "0");
     // Fuse the branch-bit comparator with the b0-controlled log update: derive
