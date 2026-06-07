@@ -147,6 +147,39 @@ pub(crate) fn dialog_gcd_fused_hclear_measured_enabled() -> bool {
     std::env::var("DIALOG_GCD_FUSED_HCLEAR_MEASURED").ok().as_deref() == Some("1")
 }
 
+/// Default-OFF lever: in the apply-phase fused double_y, uncompute the `d`
+/// control ancilla (`d = ovf1 & s2`, set by `ccx(ovf1, s2, d)`) with a Gidney
+/// measurement (Hmr + a classically-conditioned CZ on its ORIGINAL set-controls
+/// ovf1,s2) instead of the `ccx(s2, y[1], d)` clear. 0 Toffoli for the
+/// uncompute. Phase-exact precisely because `d` deterministically equals
+/// `ovf1 & s2` at the Hmr (neither d, ovf1, nor s2 is mutated between set and
+/// clear — ovf1 is an overflow holder untouched by the fold, s2 is the read-only
+/// gate control, and d is used only as a control in between), so the Hmr's
+/// `d·rng` phase is cancelled by `cz_if(ovf1, s2, ·)`'s `(ovf1&s2)·rng`.
+/// Value-identical: the Hmr forces `d -> 0` just like the CCX did, and ovf1&s2
+/// equals the s2&y[1] the stock clear used (y[1] == ovf1 post-fold). Forward
+/// (double_y) only — in halve_y the matching `d` clear reads y[1] AFTER the
+/// csub fold has overwritten it, so the set-controls are no longer live there.
+pub(crate) fn dialog_gcd_fused_dclear_measured_enabled() -> bool {
+    std::env::var("DIALOG_GCD_FUSED_DCLEAR_MEASURED").ok().as_deref() == Some("1")
+}
+
+/// Default-OFF lever: in the apply-phase fused double_y, uncompute overflow
+/// cleanup ancilla with Gidney measurements when their current boolean
+/// expressions are known exactly. `ovf1 == (s2 ? y[1] : y[0])` and
+/// `ovf2 == s2 & y[0]` at cleanup. Phase correction applies the same mux/AND
+/// expression against the Hmr bit, saving the stock CCX clears.
+pub(crate) fn dialog_gcd_fused_ovfclear_measured_enabled() -> bool {
+    std::env::var("DIALOG_GCD_FUSED_OVFCLEAR_MEASURED").ok().as_deref() == Some("1")
+}
+
+/// Default-OFF lever: in fused halve_y cleanup, uncompute `e` and `d` with
+/// Hmr + phase feedback from their current live overflow expressions:
+/// `e == (s2 ? ovf2 : ovf1)` and `d == s2 & ovf1`.
+pub(crate) fn dialog_gcd_fused_halve_edclear_measured_enabled() -> bool {
+    std::env::var("DIALOG_GCD_FUSED_HALVE_EDCLEAR_MEASURED").ok().as_deref() == Some("1")
+}
+
 pub(crate) fn dialog_gcd_apply_final_windowed_fast_blocks() -> Option<usize> {
     std::env::var("DIALOG_GCD_APPLY_FINAL_WINDOWED_FAST_BLOCKS")
         .ok()

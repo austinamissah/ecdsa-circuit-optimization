@@ -43,10 +43,6 @@ pub struct DialogGcdFilterConfig {
     pub k2_force0: bool,
     pub strict_compare: bool,
     pub body_carry_trunc_w: usize,
-    pub trio_width_notch: bool,
-    pub trio_width_notch_step: usize,
-    pub trio_width_notch_extra: usize,
-    pub early_body_notches: Vec<(usize, usize)>,
 }
 
 impl Default for DialogGcdFilterConfig {
@@ -105,19 +101,6 @@ impl DialogGcdFilterConfig {
             .ok()
             .and_then(|s| s.parse().ok())
             .unwrap_or(0);
-        let trio_width_notch = std::env::var("DIALOG_GCD_TRIO_WIDTH_NOTCH").ok().as_deref() != Some("0");
-        let trio_width_notch_step = std::env::var("DIALOG_GCD_TRIO_WIDTH_NOTCH_STEP")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(11);
-        let trio_width_notch_extra = std::env::var("DIALOG_GCD_TRIO_WIDTH_NOTCH_EXTRA")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(2);
-        let early_body_notches = std::env::var("DIALOG_GCD_EARLY_BODY_NOTCHES")
-            .ok()
-            .map(|s| parse_step_extra_list(&s))
-            .unwrap_or_default();
 
         Self {
             active_iterations,
@@ -134,10 +117,6 @@ impl DialogGcdFilterConfig {
             k2_force0,
             strict_compare,
             body_carry_trunc_w,
-            trio_width_notch,
-            trio_width_notch_step,
-            trio_width_notch_extra,
-            early_body_notches,
         }
     }
 
@@ -166,7 +145,7 @@ impl DialogGcdFilterConfig {
     }
 
     pub fn body_carry_trunc_width(&self, active_width: usize, step: usize) -> usize {
-        let base = self
+        let w = self
             .body_carry_band_trim(step)
             .or_else(|| {
                 std::env::var("DIALOG_GCD_BODY_CARRY_TRUNC_W")
@@ -174,29 +153,15 @@ impl DialogGcdFilterConfig {
                     .and_then(|s| s.parse().ok())
             })
             .unwrap_or(0);
-        active_width.saturating_sub(base.saturating_add(self.extra_body_notch_for_step(step))).max(2)
+        active_width.saturating_sub(w).max(2)
     }
 
     #[inline]
     fn body_carry_trunc_width_fast(&self, active_width: usize, step: usize) -> usize {
-        let base = self
+        let w = self
             .body_carry_band_trim(step)
             .unwrap_or(self.body_carry_trunc_w);
-        active_width.saturating_sub(base.saturating_add(self.extra_body_notch_for_step(step))).max(2)
-    }
-
-    #[inline]
-    fn extra_body_notch_for_step(&self, step: usize) -> usize {
-        let mut extra = 0usize;
-        if self.trio_width_notch && step == self.trio_width_notch_step {
-            extra = extra.saturating_add(self.trio_width_notch_extra);
-        }
-        for &(s, e) in &self.early_body_notches {
-            if s == step {
-                extra = extra.max(e);
-            }
-        }
-        extra
+        active_width.saturating_sub(w).max(2)
     }
 
     fn body_carry_band_trim(&self, step: usize) -> Option<usize> {
@@ -209,15 +174,6 @@ impl DialogGcdFilterConfig {
         let band = (step / band_size).min(trims.len() - 1);
         Some(trims[band])
     }
-}
-
-fn parse_step_extra_list(s: &str) -> Vec<(usize, usize)> {
-    s.split(',')
-        .filter_map(|tok| {
-            let (step, extra) = tok.trim().split_once(':')?;
-            Some((step.trim().parse().ok()?, extra.trim().parse().ok()?))
-        })
-        .collect()
 }
 
 fn parse_trim_list(s: &str) -> Option<Vec<usize>> {

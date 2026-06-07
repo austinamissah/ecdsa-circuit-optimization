@@ -448,6 +448,18 @@ pub(crate) fn dialog_gcd_build_composite_scratch(
         }
     }
     let owned = b.alloc_qubits(want - lanes.len());
+    if std::env::var("PROBE_SCRATCH").is_ok() && active_width >= 254 {
+        eprintln!(
+            "SCRATCH step={} aw={} body_w={} body_len={} want={} borrowed={} owned={}",
+            step,
+            active_width,
+            body_w,
+            body_len,
+            want,
+            lanes.len() - owned.len(),
+            owned.len()
+        );
+    }
     lanes.extend_from_slice(&owned);
     DialogGcdCompositeScratch { lanes, owned }
 }
@@ -1929,34 +1941,38 @@ pub(crate) fn emit_dialog_gcd_compressed_sidecar_quotient(
 
 pub(crate) fn emit_dialog_gcd_k2_pair_core_encoder(b: &mut B, core: &[QubitId]) {
     assert_eq!(core.len(), 5);
-    b.x(core[1]);
-    b.cx(core[0], core[3]);
-    b.ccx(core[1], core[3], core[0]);
-    b.cx(core[0], core[1]);
-    b.cx(core[2], core[3]);
-    b.ccx(core[0], core[3], core[2]);
-    b.ccx(core[1], core[2], core[0]);
-    b.x(core[0]);
+    // PROBE: 3-CCX reachable-support encoder (replaces 6-CCX). −3 scored CCX/call.
+    b.cx(core[1], core[2]);
+    b.cx(core[0], core[4]);
     b.x(core[3]);
-    b.ccx(core[1], core[4], core[0]);
-    b.ccx(core[0], core[2], core[4]);
-    b.ccx(core[1], core[4], core[0]);
+    b.ccx(core[2], core[3], core[1]);
+    b.cx(core[3], core[4]);
+    b.ccx(core[3], core[4], core[0]);
+    b.cx(core[2], core[4]);
+    b.cx(core[0], core[3]);
+    b.cx(core[3], core[2]);
+    b.cx(core[3], core[4]);
+    b.ccx(core[1], core[3], core[0]);
+    b.cx(core[1], core[0]);
+    b.cx(core[3], core[0]);
 }
 
 pub(crate) fn emit_dialog_gcd_k2_pair_core_encoder_inverse(b: &mut B, core: &[QubitId]) {
     assert_eq!(core.len(), 5);
-    b.ccx(core[1], core[4], core[0]);
-    b.ccx(core[0], core[2], core[4]);
-    b.ccx(core[1], core[4], core[0]);
-    b.x(core[3]);
-    b.x(core[0]);
-    b.ccx(core[1], core[2], core[0]);
-    b.ccx(core[0], core[3], core[2]);
-    b.cx(core[2], core[3]);
-    b.cx(core[0], core[1]);
+    // Exact gate-reverse of the 3-CCX encoder (each op self-inverse).
+    b.cx(core[3], core[0]);
+    b.cx(core[1], core[0]);
     b.ccx(core[1], core[3], core[0]);
+    b.cx(core[3], core[4]);
+    b.cx(core[3], core[2]);
     b.cx(core[0], core[3]);
-    b.x(core[1]);
+    b.cx(core[2], core[4]);
+    b.ccx(core[3], core[4], core[0]);
+    b.cx(core[3], core[4]);
+    b.ccx(core[2], core[3], core[1]);
+    b.x(core[3]);
+    b.cx(core[0], core[4]);
+    b.cx(core[1], core[2]);
 }
 
 pub(crate) fn dialog_gcd_k2_pair_core(raw_block: &[QubitId]) -> [QubitId; 5] {
@@ -2129,18 +2145,44 @@ pub(crate) fn dialog_gcd_fused_double_y(b: &mut B, y: &[QubitId], p: U256, s2: Q
     b.free(h);
     // Clear e via parity: y[0] == e.
     b.cx(y[0], e);
-    // Clear d via the register: d == s2 & y[1].
-    b.ccx(s2, y[1], d);
+    // Clear d. Stock: ccx(s2, y[1], d) (d == s2 & y[1] post-fold). Measured
+    // variant: d was set as `ovf1 & s2` and neither d, ovf1, nor s2 changed
+    // since (ovf1 is an untouched overflow holder, s2 is the read-only gate, d
+    // is used only as a control). So a Gidney measurement-uncompute on the
+    // ORIGINAL set-controls is value-identical (forces d->0) and phase-exact
+    // (d·rng cancels cz_if(ovf1, s2, ·)), at 0 Toffoli instead of 1.
+    if dialog_gcd_fused_dclear_measured_enabled() {
+        let m = b.alloc_bit();
+        b.hmr(d, m);
+        b.cz_if(ovf1, s2, m);
+    } else {
+        b.ccx(s2, y[1], d);
+    }
     b.free(d);
     b.free(e);
     // Clear ovf1 == (s2 ? y[1] : y[0]).
-    b.ccx(s2, y[1], ovf1);
-    b.x(s2);
-    b.ccx(s2, y[0], ovf1);
-    b.x(s2);
+    if dialog_gcd_fused_ovfclear_measured_enabled() {
+        let m = b.alloc_bit();
+        b.hmr(ovf1, m);
+        b.cz_if(s2, y[1], m);
+        b.x(s2);
+        b.cz_if(s2, y[0], m);
+        b.x(s2);
+    } else {
+        b.ccx(s2, y[1], ovf1);
+        b.x(s2);
+        b.ccx(s2, y[0], ovf1);
+        b.x(s2);
+    }
     b.free(ovf1);
     // Clear ovf2 == s2 & y[0].
-    b.ccx(s2, y[0], ovf2);
+    if dialog_gcd_fused_ovfclear_measured_enabled() {
+        let m = b.alloc_bit();
+        b.hmr(ovf2, m);
+        b.cz_if(s2, y[0], m);
+    } else {
+        b.ccx(s2, y[0], ovf2);
+    }
     b.free(ovf2);
 }
 
@@ -2225,11 +2267,23 @@ pub(crate) fn dialog_gcd_fused_halve_y(b: &mut B, y: &[QubitId], p: U256, s2: Qu
     // Clear e and d via the live overflow qubits (the register low bits are now
     // cleared by the csub, so we cannot read them off y any more):
     //   e == (s2 ? ovf2 : ovf1);   d == (s2 ? ovf1 : 0).
-    b.x(s2);
-    b.ccx(s2, ovf1, e); // s2=0: e ^= ovf1
-    b.x(s2);
-    b.ccx(s2, ovf2, e); // s2=1: e ^= ovf2
-    b.ccx(s2, ovf1, d); // s2=1: d ^= ovf1   (s2=0: d already 0)
+    if dialog_gcd_fused_halve_edclear_measured_enabled() {
+        let me = b.alloc_bit();
+        b.hmr(e, me);
+        b.x(s2);
+        b.cz_if(s2, ovf1, me);
+        b.x(s2);
+        b.cz_if(s2, ovf2, me);
+        let md = b.alloc_bit();
+        b.hmr(d, md);
+        b.cz_if(s2, ovf1, md);
+    } else {
+        b.x(s2);
+        b.ccx(s2, ovf1, e); // s2=0: e ^= ovf1
+        b.x(s2);
+        b.ccx(s2, ovf2, e); // s2=1: e ^= ovf2
+        b.ccx(s2, ovf1, d); // s2=1: d ^= ovf1   (s2=0: d already 0)
+    }
     b.free(e);
     b.free(d);
 
