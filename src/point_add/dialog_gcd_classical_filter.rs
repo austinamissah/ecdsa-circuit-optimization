@@ -145,7 +145,7 @@ impl DialogGcdFilterConfig {
     }
 
     pub fn body_carry_trunc_width(&self, active_width: usize, step: usize) -> usize {
-        let w = self
+        let mut w = self
             .body_carry_band_trim(step)
             .or_else(|| {
                 std::env::var("DIALOG_GCD_BODY_CARRY_TRUNC_W")
@@ -153,14 +153,16 @@ impl DialogGcdFilterConfig {
                     .and_then(|s| s.parse().ok())
             })
             .unwrap_or(0);
+        w = w.saturating_add(body_carry_extra_notch(step));
         active_width.saturating_sub(w).max(2)
     }
 
     #[inline]
     fn body_carry_trunc_width_fast(&self, active_width: usize, step: usize) -> usize {
-        let w = self
+        let mut w = self
             .body_carry_band_trim(step)
             .unwrap_or(self.body_carry_trunc_w);
+        w = w.saturating_add(body_carry_extra_notch(step));
         active_width.saturating_sub(w).max(2)
     }
 
@@ -174,6 +176,46 @@ impl DialogGcdFilterConfig {
         let band = (step / band_size).min(trims.len() - 1);
         Some(trims[band])
     }
+}
+
+fn body_carry_extra_notch(step: usize) -> usize {
+    let mut extra = 0usize;
+
+    let trio_enabled = std::env::var("DIALOG_GCD_TRIO_WIDTH_NOTCH")
+        .ok()
+        .as_deref()
+        != Some("0");
+    if trio_enabled {
+        let trio_step = std::env::var("DIALOG_GCD_TRIO_WIDTH_NOTCH_STEP")
+            .ok()
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(11);
+        if step == trio_step {
+            extra = extra.saturating_add(
+                std::env::var("DIALOG_GCD_TRIO_WIDTH_NOTCH_EXTRA")
+                    .ok()
+                    .and_then(|s| s.parse::<usize>().ok())
+                    .unwrap_or(2),
+            );
+        }
+    }
+
+    if let Ok(steps) = std::env::var("DIALOG_GCD_BINDER_NOTCH_STEPS") {
+        let hits = steps
+            .split(',')
+            .filter_map(|s| s.trim().parse::<usize>().ok())
+            .any(|s| s == step);
+        if hits {
+            extra = extra.saturating_add(
+                std::env::var("DIALOG_GCD_BINDER_NOTCH_EXTRA")
+                    .ok()
+                    .and_then(|s| s.parse::<usize>().ok())
+                    .unwrap_or(2),
+            );
+        }
+    }
+
+    extra
 }
 
 fn parse_trim_list(s: &str) -> Option<Vec<usize>> {
