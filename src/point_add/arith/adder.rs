@@ -530,6 +530,120 @@ pub(crate) fn cuccaro_sub_fast_low_to_ext(b: &mut B, a: &[QubitId], acc_ext: &[Q
     b.free_vec(&carries);
 }
 
+pub(crate) fn cuccaro_add_fast_low_to_ext_topclean(
+    b: &mut B,
+    a: &[QubitId],
+    acc_ext: &[QubitId],
+    c_in: QubitId,
+    clean_top: usize,
+) {
+    let n = a.len();
+    assert_eq!(acc_ext.len(), n + 1);
+    if n == 0 {
+        b.cx(c_in, acc_ext[0]);
+        return;
+    }
+    let clean_top = clean_top.min(n.saturating_sub(1));
+    if clean_top == 0 {
+        return cuccaro_add_fast_low_to_ext(b, a, acc_ext, c_in);
+    }
+    let borrowed = n - clean_top;
+    let carries = b.alloc_qubits(borrowed);
+
+    b.cx(a[0], acc_ext[0]);
+    b.cx(a[0], c_in);
+    b.ccx(c_in, acc_ext[0], carries[0]);
+    b.cx(carries[0], a[0]);
+    for i in 1..borrowed {
+        b.cx(a[i], acc_ext[i]);
+        b.cx(a[i], a[i - 1]);
+        b.ccx(a[i - 1], acc_ext[i], carries[i]);
+        b.cx(carries[i], a[i]);
+    }
+    for i in borrowed..n {
+        maj(b, a[i - 1], acc_ext[i], a[i]);
+    }
+
+    b.cx(a[n - 1], acc_ext[n]);
+
+    for i in (borrowed..n).rev() {
+        uma(b, a[i - 1], acc_ext[i], a[i]);
+    }
+    for i in (1..borrowed).rev() {
+        b.cx(carries[i], a[i]);
+        let m = b.alloc_bit();
+        b.hmr(carries[i], m);
+        b.cz_if(a[i - 1], acc_ext[i], m);
+        b.cx(a[i], a[i - 1]);
+        b.cx(a[i - 1], acc_ext[i]);
+    }
+    b.cx(carries[0], a[0]);
+    let m0 = b.alloc_bit();
+    b.hmr(carries[0], m0);
+    b.cz_if(c_in, acc_ext[0], m0);
+    b.cx(a[0], c_in);
+    b.cx(c_in, acc_ext[0]);
+
+    b.free_vec(&carries);
+}
+
+pub(crate) fn cuccaro_sub_fast_low_to_ext_topclean(
+    b: &mut B,
+    a: &[QubitId],
+    acc_ext: &[QubitId],
+    c_in: QubitId,
+    clean_top: usize,
+) {
+    let n = a.len();
+    assert_eq!(acc_ext.len(), n + 1);
+    if n == 0 {
+        b.cx(c_in, acc_ext[0]);
+        return;
+    }
+    let clean_top = clean_top.min(n.saturating_sub(1));
+    if clean_top == 0 {
+        return cuccaro_sub_fast_low_to_ext(b, a, acc_ext, c_in);
+    }
+    let borrowed = n - clean_top;
+    let carries = b.alloc_qubits(borrowed);
+
+    b.cx(c_in, acc_ext[0]);
+    b.cx(a[0], c_in);
+    b.ccx(c_in, acc_ext[0], carries[0]);
+    b.cx(carries[0], a[0]);
+    for i in 1..borrowed {
+        b.cx(a[i - 1], acc_ext[i]);
+        b.cx(a[i], a[i - 1]);
+        b.ccx(a[i - 1], acc_ext[i], carries[i]);
+        b.cx(carries[i], a[i]);
+    }
+    for i in borrowed..n {
+        inv_uma(b, a[i - 1], acc_ext[i], a[i]);
+    }
+
+    b.cx(a[n - 1], acc_ext[n]);
+
+    for i in (borrowed..n).rev() {
+        inv_maj(b, a[i - 1], acc_ext[i], a[i]);
+    }
+    for i in (1..borrowed).rev() {
+        b.cx(carries[i], a[i]);
+        let m = b.alloc_bit();
+        b.hmr(carries[i], m);
+        b.cz_if(a[i - 1], acc_ext[i], m);
+        b.cx(a[i], a[i - 1]);
+        b.cx(a[i], acc_ext[i]);
+    }
+    b.cx(carries[0], a[0]);
+    let m0 = b.alloc_bit();
+    b.hmr(carries[0], m0);
+    b.cz_if(c_in, acc_ext[0], m0);
+    b.cx(a[0], c_in);
+    b.cx(a[0], acc_ext[0]);
+
+    b.free_vec(&carries);
+}
+
 /// Borrowed-carry form of [`cuccaro_add_fast_low_to_ext`].  The source has no
 /// materialized high-zero pad lane: `acc_ext` is one bit wider than `a`, and
 /// the caller supplies `a.len()` clean, pairwise-disjoint carry lanes.

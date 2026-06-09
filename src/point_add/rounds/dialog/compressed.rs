@@ -387,7 +387,9 @@ pub(crate) fn dialog_gcd_build_composite_scratch(
         && body_len >= 1;
     let stream_suffix = dialog_gcd_selected_body_stream_suffix_bits(step, body_len);
     let want = if nocin && stream_suffix >= 2 {
-        2 * (body_len - stream_suffix) + 1
+        let prefix_len = body_len - stream_suffix;
+        let clean_top = dialog_gcd_selected_body_stream_topclean_bits(step, prefix_len);
+        2 * prefix_len - clean_top + 1
     } else if nocin && dialog_gcd_selected_body_stream_top_enabled(step, body_len) && body_len >= 2
     {
         2 * (body_len - 1)
@@ -2172,10 +2174,9 @@ pub(crate) fn dialog_gcd_fused_double_y(b: &mut B, y: &[QubitId], p: U256, s2: Q
     let h = b.alloc_qubit();
     // d = ovf1 & s2
     b.ccx(ovf1, s2, d);
-    // e = (ovf1 & ¬s2) ^ ovf2   (the two terms are mutually exclusive)
-    b.x(s2);
-    b.ccx(ovf1, s2, e);
-    b.x(s2);
+    // e = (ovf1 & !s2) ^ ovf2 = ovf1 ^ d ^ ovf2, since d = ovf1 & s2.
+    b.cx(ovf1, e);
+    b.cx(d, e);
     b.cx(ovf2, e);
     // h = e & d  (= ovf2 & d, since e == ovf2 whenever d == 1)
     b.ccx(ovf2, d, h);
@@ -2310,10 +2311,9 @@ pub(crate) fn dialog_gcd_fused_halve_y(b: &mut B, y: &[QubitId], p: U256, s2: Qu
     let ovf2 = b.alloc_qubit(); // ovf2 = e & s2
     let ovf1 = b.alloc_qubit(); // ovf1 = (s2 ? d : e)
     b.ccx(e, s2, ovf2);
-    b.ccx(s2, d, ovf1);
-    b.x(s2);
-    b.ccx(s2, e, ovf1);
-    b.x(s2);
+    // ovf1 = e ^ (s2 & (d ^ e)); xed = d ^ e is already live.
+    b.cx(e, ovf1);
+    b.ccx(s2, xed, ovf1);
 
     // ── combined fold inverse: y −= δ = c·e + 2c·d, one truncated ripple ──
     // Same per-position controls as the forward fused double.

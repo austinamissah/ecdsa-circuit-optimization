@@ -226,9 +226,34 @@ pub(crate) fn dialog_gcd_tobitvector_active_width(step: usize) -> usize {
     }
     let ideal = N as f64 - (step as f64) * dialog_gcd_width_slope() + dialog_gcd_width_margin();
     let rounded = ((ideal.max(1.0) / 2.0).ceil() as usize) * 2;
-    rounded.clamp(1, N)
+    rounded
+        .saturating_add(dialog_gcd_width_step_bump(step))
+        .clamp(1, N)
 }
 
+fn dialog_gcd_step_map_value(env: &str, step: usize) -> usize {
+    let Ok(map) = std::env::var(env) else {
+        return 0;
+    };
+    map.split(',')
+        .filter_map(|entry| {
+            let (s, value) = entry.trim().split_once(':')?;
+            Some((
+                s.trim().parse::<usize>().ok()?,
+                value.trim().parse::<usize>().ok()?,
+            ))
+        })
+        .filter_map(|(s, value)| (s == step).then_some(value))
+        .sum()
+}
+
+pub(crate) fn dialog_gcd_width_step_bump(step: usize) -> usize {
+    dialog_gcd_step_map_value("DIALOG_GCD_WIDTH_STEP_BUMPS", step)
+}
+
+pub(crate) fn dialog_gcd_body_step_giveback(step: usize) -> usize {
+    dialog_gcd_step_map_value("DIALOG_GCD_BODY_STEP_GIVEBACKS", step)
+}
 
 /// Carry-tail truncation window for the materialized controlled sub/add BODY
 /// (and its gated LOAD). Default 0 (OFF). When `w > 0`, the controlled
@@ -310,6 +335,7 @@ pub(crate) fn dialog_gcd_body_carry_trunc_width(active_width: usize, step: usize
         w = w.saturating_add(dialog_gcd_binder_notch_extra());
     }
     w = w.saturating_add(dialog_gcd_binder_notch_map_extra(step));
+    w = w.saturating_sub(dialog_gcd_body_step_giveback(step));
     active_width.saturating_sub(w).max(2)
 }
 
@@ -439,6 +465,21 @@ pub(crate) fn dialog_gcd_selected_body_stream_top_enabled(step: usize, body_len:
     dialog_gcd_selected_body_stream_suffix_bits(step, body_len) == 1
 }
 
+pub(crate) fn dialog_gcd_selected_body_stream_topclean_bits(
+    step: usize,
+    prefix_len: usize,
+) -> usize {
+    if prefix_len <= 1 {
+        return 0;
+    }
+    let global = std::env::var("DIALOG_GCD_SELECTED_BODY_STREAM_TOPCLEAN")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(0);
+    let mapped = dialog_gcd_step_map_value("DIALOG_GCD_SELECTED_BODY_STREAM_TOPCLEAN_MAP", step);
+    global.max(mapped).min(prefix_len - 1)
+}
+
 pub(crate) fn dialog_gcd_late_borrow_uv_high_enabled() -> bool {
     std::env::var("DIALOG_GCD_LATE_BORROW_UV_HIGH")
         .ok()
@@ -489,7 +530,9 @@ pub(crate) fn dialog_gcd_controlled_sub_selected(
         let nocin_need = if stream_suffix >= 2
             && !dialog_gcd_selected_body_nocin_keep_pool()
         {
-            2 * (body_len - stream_suffix) + 1
+            let prefix_len = body_len - stream_suffix;
+            let clean_top = dialog_gcd_selected_body_stream_topclean_bits(step, prefix_len);
+            2 * prefix_len - clean_top + 1
         } else if dialog_gcd_selected_body_stream_top_enabled(step, body_len)
             && !dialog_gcd_selected_body_nocin_keep_pool()
             && body_len >= 2
@@ -508,8 +551,10 @@ pub(crate) fn dialog_gcd_controlled_sub_selected(
         if nocin {
             if stream_suffix >= 2 {
                 let prefix_len = body_len - stream_suffix;
+                let clean_top = dialog_gcd_selected_body_stream_topclean_bits(step, prefix_len);
+                let carry_len = prefix_len - clean_top;
                 let c = borrowed_carries.expect("nocin requires borrowed carries");
-                let (carries, rest) = c.split_at(prefix_len);
+                let (carries, rest) = c.split_at(carry_len);
                 let (gated, rest) = rest.split_at(prefix_len);
                 let scratch = rest[0];
                 b.set_phase("dialog_gcd_raw_tobitvector_materialized_sub_load");
@@ -518,7 +563,7 @@ pub(crate) fn dialog_gcd_controlled_sub_selected(
                 }
                 b.cx(ctrl, acc[0]);
                 b.set_phase("dialog_gcd_raw_tobitvector_materialized_sub_body");
-                cuccaro_sub_fast_prefix_ctrl_suffix_no_cin(
+                cuccaro_sub_fast_prefix_ctrl_suffix_no_cin_topclean(
                     b,
                     gated,
                     &subtrahend[body_start + prefix_len..body_w],
@@ -526,6 +571,7 @@ pub(crate) fn dialog_gcd_controlled_sub_selected(
                     ctrl,
                     carries,
                     scratch,
+                    clean_top,
                 );
                 b.set_phase("dialog_gcd_raw_tobitvector_materialized_sub_clear");
                 for j in 0..prefix_len {
@@ -691,7 +737,9 @@ pub(crate) fn dialog_gcd_controlled_add_selected(
         let nocin_need = if stream_suffix >= 2
             && !dialog_gcd_selected_body_nocin_keep_pool()
         {
-            2 * (body_len - stream_suffix) + 1
+            let prefix_len = body_len - stream_suffix;
+            let clean_top = dialog_gcd_selected_body_stream_topclean_bits(step, prefix_len);
+            2 * prefix_len - clean_top + 1
         } else if dialog_gcd_selected_body_stream_top_enabled(step, body_len)
             && !dialog_gcd_selected_body_nocin_keep_pool()
             && body_len >= 2
@@ -710,8 +758,10 @@ pub(crate) fn dialog_gcd_controlled_add_selected(
         if nocin {
             if stream_suffix >= 2 {
                 let prefix_len = body_len - stream_suffix;
+                let clean_top = dialog_gcd_selected_body_stream_topclean_bits(step, prefix_len);
+                let carry_len = prefix_len - clean_top;
                 let c = borrowed_carries.expect("nocin requires borrowed carries");
-                let (carries, rest) = c.split_at(prefix_len);
+                let (carries, rest) = c.split_at(carry_len);
                 let (gated, rest) = rest.split_at(prefix_len);
                 let scratch = rest[0];
                 b.set_phase("dialog_gcd_raw_tobitvector_materialized_add_load");
@@ -720,7 +770,7 @@ pub(crate) fn dialog_gcd_controlled_add_selected(
                 }
                 b.cx(ctrl, acc[0]);
                 b.set_phase("dialog_gcd_raw_tobitvector_materialized_add_body");
-                cuccaro_add_fast_prefix_ctrl_suffix_no_cin(
+                cuccaro_add_fast_prefix_ctrl_suffix_no_cin_topclean(
                     b,
                     gated,
                     &addend[body_start + prefix_len..body_w],
@@ -728,6 +778,7 @@ pub(crate) fn dialog_gcd_controlled_add_selected(
                     ctrl,
                     carries,
                     scratch,
+                    clean_top,
                 );
                 b.set_phase("dialog_gcd_raw_tobitvector_materialized_add_clear");
                 for j in 0..prefix_len {
@@ -1389,7 +1440,10 @@ pub(crate) fn dialog_gcd_add_ctrl_chunked_low_to_ext(
             b.set_phase("dialog_gcd_apply_chunk_add_final_load");
             let f = dialog_gcd_load_controlled_slice(b, ctrl, source, lo.min(n), n);
             b.set_phase("dialog_gcd_apply_chunk_add_final_ripple");
-            if let Some(window_blocks) = dialog_gcd_apply_final_windowed_fast_blocks() {
+            let final_topclean = dialog_gcd_apply_final_topclean_bits();
+            if final_topclean > 0 {
+                cuccaro_add_fast_low_to_ext_topclean(b, &f, &acc_ext[lo..hi], carry, final_topclean);
+            } else if let Some(window_blocks) = dialog_gcd_apply_final_windowed_fast_blocks() {
                 cuccaro_add_fast_windowed_low_to_ext(
                     b,
                     &f,
@@ -1522,7 +1576,10 @@ pub(crate) fn dialog_gcd_sub_ctrl_chunked_low_to_ext(
             b.set_phase("dialog_gcd_apply_chunk_sub_final_load");
             let f = dialog_gcd_load_controlled_slice(b, ctrl, source, lo.min(n), n);
             b.set_phase("dialog_gcd_apply_chunk_sub_final_ripple");
-            if let Some(window_blocks) = dialog_gcd_apply_final_windowed_fast_blocks() {
+            let final_topclean = dialog_gcd_apply_final_topclean_bits();
+            if final_topclean > 0 {
+                cuccaro_sub_fast_low_to_ext_topclean(b, &f, &acc_ext[lo..hi], borrow, final_topclean);
+            } else if let Some(window_blocks) = dialog_gcd_apply_final_windowed_fast_blocks() {
                 cuccaro_sub_fast_windowed_low_to_ext(
                     b,
                     &f,

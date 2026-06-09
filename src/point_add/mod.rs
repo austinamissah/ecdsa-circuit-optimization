@@ -1098,7 +1098,8 @@ fn configure_ecdsafail_submission_route() {
     // by 172,444).
     set_default_env("DIALOG_GCD_APPLY_CLEAN_COMPARE_BITS", "20");
     set_default_env("DIALOG_GCD_APPLY_BOUNDARY_CONDITIONAL_REPLAY", "1");  // BAKED: condrep ON for env-less grader build
-    set_default_env("DIALOG_GCD_SELECTED_BODY_STREAM_SUFFIX_MAP", "3:2,4:3,5:5,6:6,7:7,8:5,9:7,10:5,11:7,12:6,13:7,14:5,15:6,16:3,17:5,18:1,19:3,21:1");  // BAKED: codex 1285q peak-drop (stream selected high bits through low-qubit suffix)
+    set_default_env("DIALOG_GCD_SELECTED_BODY_STREAM_SUFFIX_MAP", "3:2,4:2,5:2,6:2,7:2,8:2,9:2,10:2,11:2,12:2,13:2,14:2,15:2,16:2,17:2,18:1,19:2,21:1");  // BAKED: codex 1285q peak-drop (stream selected high bits through low-qubit suffix)
+    set_default_env("DIALOG_GCD_SELECTED_BODY_STREAM_TOPCLEAN_MAP", "4:2,5:6,6:8,7:10,8:6,9:10,10:18,11:8,12:6,13:10,14:6,15:8,16:2,17:6,19:2");  // BAKED: replace expensive streamed carry relief with cheaper top-clean carry relief
     // Bake the exact conditional-replay stack for env-less GPU hunts and grader builds.
     set_default_env("DIALOG_GCD_REVERSE_BRANCH_CONDITIONAL_REPLAY", "1");
     set_default_env("DIALOG_GCD_SPECIAL_CLEAN_CONDITIONAL_REPLAY", "1");
@@ -1123,7 +1124,7 @@ fn configure_ecdsafail_submission_route() {
     // recovered fast-final Toffoli budget to remove most nonconvergence pressure
     // while staying under the 1309q round84 peak. Re-hunted with the GCD filter
     // and quantum-confirmed at tail nonce 2432.
-    set_default_env("DIALOG_GCD_ACTIVE_ITERATIONS", "258");
+    set_default_env("DIALOG_GCD_ACTIVE_ITERATIONS", "260");
     set_default_env("DIALOG_GCD_PERPOS_MAJ2", "1");
     set_default_env("DIALOG_GCD_FUSED_HCLEAR_MEASURED", "1");
     set_default_env("DIALOG_GCD_FUSED_DCLEAR_MEASURED", "1");
@@ -1278,6 +1279,7 @@ fn configure_ecdsafail_submission_route() {
     // Stacked peak-1302 band-trim schedule + measured-ovfclear + F_CUT4=189 (tier-3 "safe lock"):
     // trims average executed Toffoli to 1,456,963 at peak 1302 qubits.
     set_default_env("DIALOG_GCD_BODY_CARRY_BAND_TRIMS", "0,3,3,3,3,3,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,3,3,3");
+    set_default_env("DIALOG_GCD_BODY_STEP_GIVEBACKS", "10:6");
     set_default_env("DIALOG_GCD_TOBITVECTOR_CSWAP_BODY_TRIM", "0");
     set_default_env("DIALOG_GCD_BINDER_NOTCH_STEPS", "8,9,10");
     set_default_env("DIALOG_GCD_BINDER_NOTCH_EXTRA", "3");
@@ -1405,11 +1407,13 @@ fn configure_ecdsafail_submission_route() {
     // Fiat-Shamir island:
     // Binder-notch fallback 8,9: nonce 169924627 validates 0/0/0 over all
     // 9024 shots at 1300q x 1,454,884 T = 1,891,349,200.
-    set_default_env("DIALOG_TAIL_NONCE", "4591773");
+    set_default_env("DIALOG_TAIL_NONCE", "213");
     set_default_env("ROUND84_FOLD_FAST_ADD", "1");  // round84 Solinas-fold small adders coherent->measured-fast (-1,434 exec-T, peak-neutral 1285)
     set_default_env("ROUND84_BIGFOLD_SPLIT", "34");  // round84 BIG-fold adders -> asymmetric 2-block windowed measured (s=34 peak-neutral 1285, -2,124 exec-T)
     set_default_env("DIALOG_GCD_CTRL_LOWQ_MEASURED", "1");  // body stream-suffix ctrl-ride uncompute coherent->measured (-528 exec-T, peak-neutral 1285); island re-hunted to nonce above
     set_default_env("DIALOG_GCD_FOLD_MAJ2", "1");
+    set_default_env("DIALOG_GCD_FOLD_MAJ1", "1");
+    set_default_env("DIALOG_GCD_APPLY_FINAL_TOPCLEAN", "5");
     set_default_env("DIALOG_GCD_APPLY_FINAL_WINDOWED_FAST_BLOCKS", "0");
     // Fuse the branch-bit comparator with the b0-controlled log update: derive
     // b0_and_b1 from the in-flight comparator carry instead of materializing a
