@@ -1043,14 +1043,14 @@ fn configure_ecdsafail_submission_route() {
     // prior #1 2,017,979,899 by 1,362,894). Value-exact on the reachable support
     // (dropped double-carry bit is 0 there, ~2^-22/call otherwise); residual
     // failures are Fiat-Shamir phase, dodged by a fresh tail nonce (re-hunted below).
-    set_default_env("KAL_DOUBLE_CARRY_TRUNC_W", "21");
+    set_default_env("KAL_DOUBLE_CARRY_TRUNC_W", "20");
     // Likewise give back the FOLD-carry truncation bit for the final-window W2
     // island; the Toffoli budget still beats the 1320q frontier.
     // Re-tighten 24 -> 22 on the W2 base (the lazy-Solinas fold-carry window had
     // been left loose). Value-exact on the reachable support (the dropped fold
     // carry bits are 0 there); residual failures are pure Fiat-Shamir, dodged by
     // the shared re-rolled tail nonce below.
-    set_default_env("KAL_FOLD_CARRY_TRUNC_W", "20");
+    set_default_env("KAL_FOLD_CARRY_TRUNC_W", "19");
     set_default_env("DIALOG_GCD_ROUND763_DEDUP", "1");
     set_default_env("DIALOG_GCD_ROUND763_COMPRESS_LEVER", "1");
     set_default_env("DIALOG_GCD_MEASURED_UNDERFLOW_GATE", "1");
@@ -1404,7 +1404,7 @@ fn configure_ecdsafail_submission_route() {
     // Fiat-Shamir island:
     // Binder-notch fallback 8,9: nonce 169924627 validates 0/0/0 over all
     // 9024 shots at 1300q x 1,454,884 T = 1,891,349,200.
-    set_default_env("DIALOG_TAIL_NONCE", "9300021269076");
+    set_default_env("DIALOG_TAIL_NONCE", "92428802");
     set_default_env("DIALOG_GCD_FOLD_MAJ2", "1");
     set_default_env("DIALOG_GCD_APPLY_FINAL_WINDOWED_FAST_BLOCKS", "0");
     // Fuse the branch-bit comparator with the b0-controlled log update: derive
