@@ -812,3 +812,262 @@ pub(crate) fn csub_per_position_controls_trunc(
 
     b.free_vec(&borrows);
 }
+
+/// Default-OFF lever for the apply-phase fused double_y / halve_y fold ripple.
+///
+/// The fused fold `y ±= δ = c·e + 2c·d` (`c = 2^32+977`) has per-position
+/// controls only at positions ≤ `hi_delta = 33`; positions `(33, last]` are a
+/// pure carry/borrow PROPAGATION tail (constant bit 0). The baseline keeps all
+/// eight fold ancillae (`e,d,h,xed,eord,n10` + the two overflow holders) live
+/// for the WHOLE ripple — including across the wide high tail, which is the
+/// double_y/halve_y high-water (`floor + 8 + 34 + W`, `W = KAL_DOUBLE_CARRY_TRUNC_W`).
+///
+/// This lever frees the FOUR purely-`e,d`-derived controls (`h,xed,eord,n10`)
+/// after the active region `[0..=hi]` and before the high tail, then recomputes
+/// them (cheap: free CX from `e,d`, plus one AND for `h`) just for the carry
+/// uncompute pass. Net the high-tail high-water drops from `+8` to `+4` ancillae
+/// (the two overflow holders `e,d` remain, plus the caller's two `ovf` qubits),
+/// i.e. the fold floor falls by 4 qubits, value/phase-EXACT (identical arithmetic
+/// and identical truncation `last`; only the ancilla lifetime is tightened).
+pub(crate) fn fold_freed_tail_enabled() -> bool {
+    std::env::var("DIALOG_GCD_FOLD_FREED_TAIL").ok().as_deref() == Some("1")
+}
+
+/// Per-call carry window override for the FUSED FOLD only (`double_y`/`halve_y`),
+/// decoupled from the GCD-walk's `KAL_DOUBLE_CARRY_TRUNC_W`. When set it caps the
+/// fold ripple at `hi_delta + W_fold`; unset = inherit the GCD-walk window
+/// (byte-identical base). Lowering it shrinks the fold high-water 1-for-1
+/// (`floor + 42 + W_fold`) at the cost of a slightly higher fold-carry-escape
+/// truncation rate (the same FS-island hazard class the shared window already
+/// carries — see KAL_DOUBLE_CARRY_TRUNC_W).
+pub(crate) fn fold_only_carry_trunc_window() -> Option<usize> {
+    std::env::var("DIALOG_GCD_FOLD_CARRY_TRUNC_W")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .filter(|&w| w > 0)
+}
+
+/// Build the secp256k1 fold per-position control vector `δ = c·e + 2c·d`
+/// (`c = 2^32+977`) from the base controls `e,d` and the four derived controls
+/// `h = e&d`, `xed = e^d`, `eord = e|d`, `n10 = ¬e&d`. Shared by the baseline
+/// fused double_y/halve_y and the freed-tail lever so the arithmetic is identical.
+pub(crate) fn secp_fold_controls(
+    e: QubitId,
+    d: QubitId,
+    h: QubitId,
+    xed: QubitId,
+    eord: QubitId,
+    n10: QubitId,
+    hi_delta: usize,
+    hi_c: usize,
+) -> Vec<Option<QubitId>> {
+    let mut controls: Vec<Option<QubitId>> = vec![None; hi_delta + 1];
+    controls[0] = Some(e);
+    controls[1] = Some(d);
+    controls[4] = Some(e);
+    controls[5] = Some(d);
+    controls[6] = Some(e);
+    controls[7] = Some(xed);
+    controls[8] = Some(eord);
+    controls[9] = Some(eord);
+    controls[10] = Some(n10);
+    controls[11] = Some(h);
+    controls[hi_c] = Some(e); // bit 32
+    controls[hi_delta] = Some(d); // bit 33
+    controls
+}
+
+/// Freed-tail fold ripple (gated by [`fold_freed_tail_enabled`]). Value/phase
+/// identical to `cadd_per_position_controls_trunc(acc, secp_fold_controls(...),
+/// last)` but the four `e,d`-derived controls (`h,xed,eord,n10`) are released
+/// before the wide high tail and recomputed only for the carry uncompute pass,
+/// dropping the high-tail high-water by 4 ancillae. `is_add=false` runs the
+/// borrow (subtract) variant for halve_y. `e`,`d` are read-only here; the caller
+/// owns `h,xed,eord,n10` allocation/free — this routine consumes them via `free`
+/// and the caller must NOT free them again (it re-derives `xed,eord,n10` from a
+/// fresh alloc on return is NOT needed: this fn fully owns their lifetime).
+pub(crate) fn fold_ripple_freed_tail(
+    b: &mut B,
+    acc: &[QubitId],
+    e: QubitId,
+    d: QubitId,
+    h: QubitId,
+    xed: QubitId,
+    eord: QubitId,
+    n10: QubitId,
+    last: usize,
+    is_add: bool,
+) {
+    let n = acc.len();
+    let hi_delta = 33usize; // highest_set_bit(2^32+977)+1
+    let hi_c = 32usize;
+    debug_assert!(last < n);
+    debug_assert!(last > hi_delta, "freed-tail requires a nonempty high tail");
+    let controls = secp_fold_controls(e, d, h, xed, eord, n10, hi_delta, hi_c);
+    let kctrl = |i: usize| controls.get(i).copied().flatten();
+    let maj2 = perpos_maj2_enabled();
+
+    // Carry lane is split so the WIDE tail is allocated only AFTER the four
+    // derived controls are freed (the peak instant). `low` = active-region
+    // carries [0..=hi_delta]; `tail` = pure-propagation carries (hi_delta, last].
+    // Index map: carry i -> low[i] (i<=hi_delta) else tail[i-hi_delta-1].
+    let low = b.alloc_qubits(hi_delta + 1);
+
+    // ── 1. active region [0..=hi_delta]: parked carries (controls live) ──
+    for i in 0..=hi_delta {
+        let target = low[i];
+        let carry_in = if i == 0 { None } else { Some(low[i - 1]) };
+        if is_add {
+            if let Some(kc) = kctrl(i) {
+                if let Some(ci) = carry_in {
+                    emit_fold_majority(b, acc[i], kc, ci, target, maj2);
+                } else {
+                    b.ccx(acc[i], kc, target);
+                }
+            } else if let Some(ci) = carry_in {
+                b.ccx(acc[i], ci, target);
+            }
+        } else if let Some(kc) = kctrl(i) {
+            b.x(acc[i]);
+            if let Some(ci) = carry_in {
+                emit_fold_majority(b, acc[i], kc, ci, target, maj2);
+            } else {
+                b.ccx(acc[i], kc, target);
+            }
+            b.x(acc[i]);
+        } else if let Some(ci) = carry_in {
+            b.x(acc[i]);
+            b.ccx(acc[i], ci, target);
+            b.x(acc[i]);
+        }
+    }
+    // ── 2. low sum bits [0..=hi_delta] while the controls are still live ──
+    //   acc_i ^= k_i ^ carry_{i-1}. (The seam sum at hi_delta+1 is k=0 and is
+    //   written in step 4b AFTER the tail carries are generated from original acc.)
+    for i in 0..=hi_delta {
+        if let Some(kc) = kctrl(i) {
+            b.cx(kc, acc[i]);
+        }
+        if i > 0 {
+            b.cx(low[i - 1], acc[i]);
+        }
+    }
+
+    // ── 3. free the four e,d-derived controls BEFORE allocating the wide tail ──
+    //   (reset them to |0> via the free-CX uncompute + a measured AND-clear, then
+    //   release the SAME qubits; reacquired+re-derived in step 6 so the caller
+    //   sees them live & correct on return, exactly as the baseline ripple does.)
+    b.cx(h, n10);
+    b.cx(d, n10);
+    b.cx(h, eord);
+    b.cx(xed, eord);
+    b.cx(d, xed);
+    b.cx(e, xed);
+    b.free(n10);
+    b.free(eord);
+    b.free(xed);
+    let mh = b.alloc_bit();
+    b.hmr(h, mh);
+    b.cz_if(e, d, mh);
+    b.free(h);
+
+    // Tail carries are allocated NOW (4 derived controls already freed ⇒ the
+    // wide-lane high-water carries +4 ancillae instead of +8).
+    let tail_len = last - hi_delta;
+    let tail = b.alloc_qubits(tail_len);
+    let cw = |i: usize| -> QubitId {
+        if i <= hi_delta {
+            low[i]
+        } else {
+            tail[i - hi_delta - 1]
+        }
+    };
+
+    // ── 4a. high-tail carry generation (hi_delta, last]: pure propagation from
+    //   ORIGINAL acc (acc[hi_delta+1..] untouched by step 2) ──
+    for i in (hi_delta + 1)..=last {
+        if is_add {
+            b.ccx(acc[i], cw(i - 1), cw(i));
+        } else {
+            b.x(acc[i]);
+            b.ccx(acc[i], cw(i - 1), cw(i));
+            b.x(acc[i]);
+        }
+    }
+    // ── 4b. high sum bits (hi_delta, last+1] (k=0, control-free): acc_i ^= carry_{i-1} ──
+    for i in (hi_delta + 1)..n {
+        if i - 1 <= last {
+            b.cx(cw(i - 1), acc[i]);
+        }
+    }
+
+    // ── 5. reverse uncompute the TAIL carries first (control-free), freeing
+    //   them high→low so the wide lane shrinks before the derived controls return ──
+    for i in (hi_delta + 1..=last).rev() {
+        let m = b.alloc_bit();
+        b.hmr(cw(i), m);
+        let carry_in = cw(i - 1);
+        if is_add {
+            b.x(acc[i]);
+            b.cz_if(acc[i], carry_in, m);
+            b.x(acc[i]);
+        } else {
+            b.cz_if(acc[i], carry_in, m);
+        }
+        b.free(cw(i));
+    }
+    drop(tail);
+
+    // ── 6. recompute the derived controls INTO THE SAME qubits (reacquire +
+    //   re-derive) for the low uncompute pass; they stay live on return. ──
+    b.reacquire(h);
+    b.ccx(e, d, h);
+    b.reacquire(xed);
+    b.cx(e, xed);
+    b.cx(d, xed);
+    b.reacquire(eord);
+    b.cx(xed, eord);
+    b.cx(h, eord);
+    b.reacquire(n10);
+    b.cx(d, n10);
+    b.cx(h, n10);
+
+    // ── 7. reverse uncompute the active carries [0..=hi_delta] ──
+    for i in (0..=hi_delta).rev() {
+        let m = b.alloc_bit();
+        b.hmr(low[i], m);
+        let carry_in = if i == 0 { None } else { Some(low[i - 1]) };
+        if is_add {
+            if let Some(kc) = kctrl(i) {
+                b.x(acc[i]);
+                if let Some(ci) = carry_in {
+                    b.cz_if(acc[i], kc, m);
+                    b.cz_if(acc[i], ci, m);
+                    b.x(acc[i]);
+                    b.cz_if(kc, ci, m);
+                } else {
+                    b.cz_if(acc[i], kc, m);
+                    b.x(acc[i]);
+                }
+            } else if let Some(ci) = carry_in {
+                b.x(acc[i]);
+                b.cz_if(acc[i], ci, m);
+                b.x(acc[i]);
+            }
+        } else if let Some(kc) = kctrl(i) {
+            if let Some(ci) = carry_in {
+                b.cz_if(acc[i], kc, m);
+                b.cz_if(acc[i], ci, m);
+                b.cz_if(kc, ci, m);
+            } else {
+                b.cz_if(acc[i], kc, m);
+            }
+        } else if let Some(ci) = carry_in {
+            b.cz_if(acc[i], ci, m);
+        }
+        b.free(low[i]);
+    }
+    drop(low);
+    // h, xed, eord, n10 are left LIVE and value-correct (= baseline post-ripple
+    // state); the caller's normal derived-control uncompute block runs next.
+}

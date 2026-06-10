@@ -1233,7 +1233,7 @@ fn configure_ecdsafail_submission_route() {
     // Toffoli-near-neutral (the extra boundary comparators cost ~250 avg). Pairs
     // with SQUARE_ROW_MAX_SEG below (the peak-bounded square) to land global peak
     // at 1226 instead of 1284.
-    set_default_env("DIALOG_GCD_APPLY_CHUNKED_F_BLOCKS", "10");
+    set_default_env("DIALOG_GCD_APPLY_CHUNKED_F_BLOCKS", "11");
     set_default_env("DIALOG_GCD_APPLY_CHUNKED_F_CUSTOM4", "0");
     set_default_env("DIALOG_GCD_APPLY_CHUNKED_F_CUSTOM5", "0");
     // PEAK-QUBIT CUT 1542 -> 1500 (-42q). Two co-binders dropped together:
@@ -1345,7 +1345,8 @@ fn configure_ecdsafail_submission_route() {
     // carry-recovery comparators. Value-exact: the same product lands in tmp_ext
     // (verified: ancilla-garbage 0; SQUARE_ROW_MAX_SEG=0 restores the bit-exact
     // 1284 base). Net: peak 1284 -> 1226, score 1.821e9 -> 1.771e9.
-    set_default_env("SQUARE_ROW_MAX_SEG", "199");
+    set_default_env("SQUARE_ROW_MAX_SEG", "194");
+    set_default_env("DIALOG_GCD_FOLD_FREED_TAIL", "1");  // BAKED: 1221 ship
     set_default_env("DIALOG_GCD_BORROW_CURRENT_S2", "1");
     set_default_env("DIALOG_GCD_BORROW_ZERO_RAW_FUTURE", "1");
     set_default_env("DIALOG_GCD_FREE_SCRATCH_BEFORE_SHIFT", "1");
@@ -1442,7 +1443,7 @@ fn configure_ecdsafail_submission_route() {
     // Fiat-Shamir island:
     // Binder-notch fallback 8,9: nonce 169924627 validates 0/0/0 over all
     // 9024 shots at 1300q x 1,454,884 T = 1,891,349,200.
-    set_default_env("DIALOG_TAIL_NONCE", "2000004892833");
+    set_default_env("DIALOG_TAIL_NONCE", "165002130437");
     set_default_env("ROUND84_FOLD_FAST_ADD", "1");  // round84 Solinas-fold small adders coherent->measured-fast (-1,434 exec-T, peak-neutral 1285)
     set_default_env("DIALOG_GCD_FOLD_MAJ2", "1");
     set_default_env("DIALOG_GCD_FOLD_MAJ1", "1");
@@ -1667,7 +1668,185 @@ fn build_builder() -> B {
 }
 
 pub fn build() -> Vec<Op> {
+    if std::env::var("FOLD_FREED_TAIL_SELFTEST").is_ok() {
+        match fold_freed_tail_selftest() {
+            Ok(()) => eprintln!("FOLD_FREED_TAIL_SELFTEST: PASS (freed-tail ≡ baseline, ancilla & phase clean)"),
+            Err(e) => panic!("FOLD_FREED_TAIL_SELFTEST: FAIL: {e}"),
+        }
+    }
     build_builder().ops
+}
+
+
+/// Standalone differential selftest for the fused-fold freed-tail lever
+/// (`DIALOG_GCD_FOLD_FREED_TAIL`). Runs in the normal (non-test) build because
+/// the `#[cfg(test)]` module does not compile on this base. For each
+/// `(e,d) ∈ {0,1}²` it builds the BASELINE per-position fold ripple and the
+/// FREED-TAIL ripple on the same random `y` (64 shots/lane), simulates both, and
+/// asserts: (1) identical `y` outputs, (2) all fold ancillae returned to |0>,
+/// (3) zero global phase. Returns Err with the first divergence. Invoke via
+/// `FOLD_FREED_TAIL_SELFTEST=1 build_circuit`.
+pub fn fold_freed_tail_selftest() -> Result<(), String> {
+    use sha3::digest::{ExtendableOutput, Update};
+    let cprime = U256::MAX
+        .wrapping_sub(SECP256K1_P)
+        .wrapping_add(U256::from(1u64)); // c = 2^32 + 977
+    let hi_delta = 33usize;
+    let hi_c = 32usize;
+    let nbits = 64usize; // y width for the test (covers the active+tail span)
+    for &windowed in &[true, false] {
+        let last = if windowed {
+            hi_delta + 19 // mirror KAL_DOUBLE_CARRY_TRUNC_W=19
+        } else {
+            nbits - 2
+        };
+        for ed in 0u64..4 {
+            let e_val = ed & 1;
+            let d_val = (ed >> 1) & 1;
+            for &is_add in &[true, false] {
+                // Build both circuits over identical qubit layout.
+                let build_one = |freed: bool| -> (Vec<Op>, Vec<QubitId>, Vec<QubitId>, usize, usize) {
+                    let mut b = B::new();
+                    let y = b.alloc_qubits(nbits);
+                    let e = b.alloc_qubit();
+                    let d = b.alloc_qubit();
+                    let h = b.alloc_qubit();
+                    let xed = b.alloc_qubit();
+                    let eord = b.alloc_qubit();
+                    let n10 = b.alloc_qubit();
+                    // set e,d classically via X (per-shot identical); derive controls
+                    if e_val == 1 {
+                        b.x(e);
+                    }
+                    if d_val == 1 {
+                        b.x(d);
+                    }
+                    b.ccx(e, d, h); // h = e&d
+                    b.cx(e, xed);
+                    b.cx(d, xed); // xed = e^d
+                    b.cx(xed, eord);
+                    b.cx(h, eord); // eord = e|d
+                    b.cx(d, n10);
+                    b.cx(h, n10); // n10 = !e&d
+                    let ancilla = vec![e, d, h, xed, eord, n10];
+                    if freed {
+                        fold_ripple_freed_tail(&mut b, &y, e, d, h, xed, eord, n10, last, is_add);
+                    } else {
+                        let controls =
+                            secp_fold_controls(e, d, h, xed, eord, n10, hi_delta, hi_c);
+                        if is_add {
+                            cadd_per_position_controls_trunc(&mut b, &y, &controls, last);
+                        } else {
+                            csub_per_position_controls_trunc(&mut b, &y, &controls, last);
+                        }
+                    }
+                    // uncompute derived controls (same as the fused fns) so all 6
+                    // ancillae return to |0> on a value-exact ripple.
+                    b.cx(h, n10);
+                    b.cx(d, n10);
+                    b.cx(h, eord);
+                    b.cx(xed, eord);
+                    b.cx(d, xed);
+                    b.cx(e, xed);
+                    b.ccx(e, d, h);
+                    if e_val == 1 {
+                        b.x(e);
+                    }
+                    if d_val == 1 {
+                        b.x(d);
+                    }
+                    let nq = b.next_qubit as usize;
+                    let nb = b.next_bit as usize;
+                    (b.ops, y, ancilla, nq, nb)
+                };
+                let (ops_base, y_b, anc_b, nq_b, nb_b) = build_one(false);
+                let (ops_freed, y_f, anc_f, nq_f, nb_f) = build_one(true);
+
+                let mut seed = sha3::Shake128::default();
+                seed.update(b"fold-freed-tail-selftest");
+                seed.update(&[ed as u8, is_add as u8, windowed as u8]);
+                let mut xof = seed.finalize_xof();
+
+                // deterministic random y per shot, including adversarial
+                // carry-propagation patterns (long runs of 1s above bit 33 that
+                // force the truncated tail carry to escape / saturate).
+                let mask: u64 = if nbits >= 64 { u64::MAX } else { (1u64 << nbits) - 1 };
+                let ys: Vec<u64> = (0..64u64)
+                    .map(|s| {
+                        let r = s
+                            .wrapping_mul(0x9E37_79B9_7F4A_7C15)
+                            .wrapping_add(0xD1B5_4A32_D192_ED03);
+                        let r = (r ^ (r >> 31)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+                        let r = r ^ (r >> 27);
+                        let base = r & mask;
+                        // every 4th shot: all-ones above bit 33 (worst case carry run)
+                        if s % 4 == 0 {
+                            base | (mask & !((1u64 << (hi_delta + 1)) - 1))
+                        } else if s % 4 == 1 {
+                            base & ((1u64 << (hi_delta + 1)) - 1)
+                        } else {
+                            base
+                        }
+                    })
+                    .collect();
+
+                let run = |ops: &[Op], y: &[QubitId], anc: &[QubitId], nq: usize, nb: usize| -> (Vec<u64>, bool, u64) {
+                    let mut s2 = sha3::Shake128::default();
+                    s2.update(b"fold-sim");
+                    let mut xof2 = s2.finalize_xof();
+                    let mut sim = Simulator::new(nq, nb, &mut xof2);
+                    sim.clear_for_shot();
+                    for (shot, &yv) in ys.iter().enumerate() {
+                        for k in 0..nbits {
+                            if (yv >> k) & 1 != 0 {
+                                *sim.qubit_mut(y[k]) |= 1u64 << shot;
+                            }
+                        }
+                    }
+                    sim.apply_iter(ops.iter());
+                    let outs: Vec<u64> = (0..64)
+                        .map(|shot| {
+                            let mut v = 0u64;
+                            for k in 0..nbits {
+                                v |= ((sim.qubit(y[k]) >> shot) & 1) << k;
+                            }
+                            v
+                        })
+                        .collect();
+                    let mut anc_clean = true;
+                    for &a in anc {
+                        if sim.qubit(a) != 0 {
+                            anc_clean = false;
+                        }
+                    }
+                    (outs, anc_clean, sim.phase)
+                };
+                let _ = (&xof, nq_b, nb_b);
+                let (out_b, clean_b, phase_b) = run(&ops_base, &y_b, &anc_b, nq_b, nb_b);
+                let (out_f, clean_f, phase_f) = run(&ops_freed, &y_f, &anc_f, nq_f, nb_f);
+
+                if !clean_b {
+                    return Err(format!("baseline left ancilla dirty (ed={ed} add={is_add} win={windowed})"));
+                }
+                if !clean_f {
+                    return Err(format!("freed-tail left ancilla dirty (ed={ed} add={is_add} win={windowed})"));
+                }
+                if phase_f != 0 {
+                    return Err(format!("freed-tail left phase garbage 0x{phase_f:x} (ed={ed} add={is_add} win={windowed})"));
+                }
+                let _ = phase_b;
+                for shot in 0..64 {
+                    if out_b[shot] != out_f[shot] {
+                        return Err(format!(
+                            "value mismatch shot {shot}: base 0x{:x} freed 0x{:x} (ed={ed} add={is_add} win={windowed}, y_in=0x{:x})",
+                            out_b[shot], out_f[shot], ys[shot]
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 

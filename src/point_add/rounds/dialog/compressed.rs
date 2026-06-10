@@ -2298,11 +2298,15 @@ pub(crate) fn dialog_gcd_fused_double_y(b: &mut B, y: &[QubitId], p: U256, s2: Q
     controls[11] = Some(h);
     controls[highest_set_bit(c)] = Some(e); // bit 32
     controls[hi_delta] = Some(d); // bit 33
-    let last = match double_carry_trunc_window() {
+    let last = match fold_only_carry_trunc_window().or_else(double_carry_trunc_window) {
         Some(w) => core::cmp::min(n - 2, hi_delta.saturating_add(w)),
         None => n - 2,
     };
-    cadd_per_position_controls_trunc(b, y, &controls, last);
+    if fold_freed_tail_enabled() && last > hi_delta {
+        fold_ripple_freed_tail(b, y, e, d, h, xed, eord, n10, last, true);
+    } else {
+        cadd_per_position_controls_trunc(b, y, &controls, last);
+    }
 
     // ── cleanup: return all 8 ancilla to |0⟩ (deterministic, phase-free) ──
     // After the fold y[0] = e and (iff s2) y[1] = ovf1 (the second clean low bit).
@@ -2420,11 +2424,15 @@ pub(crate) fn dialog_gcd_fused_halve_y(b: &mut B, y: &[QubitId], p: U256, s2: Qu
     controls[11] = Some(h);
     controls[highest_set_bit(c)] = Some(e); // bit 32
     controls[hi_delta] = Some(d); // bit 33
-    let last = match double_carry_trunc_window() {
+    let last = match fold_only_carry_trunc_window().or_else(double_carry_trunc_window) {
         Some(w) => core::cmp::min(n - 2, hi_delta.saturating_add(w)),
         None => n - 2,
     };
-    csub_per_position_controls_trunc(b, y, &controls, last);
+    if fold_freed_tail_enabled() && last > hi_delta {
+        fold_ripple_freed_tail(b, y, e, d, h, xed, eord, n10, last, false);
+    } else {
+        csub_per_position_controls_trunc(b, y, &controls, last);
+    }
 
     // ── uncompute derived controls (reverse free CX, while e,d,h still hold) ──
     b.cx(h, n10);
