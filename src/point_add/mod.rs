@@ -1010,7 +1010,7 @@ fn configure_ecdsafail_submission_route() {
     set_default_env("SQUARE_ROW_WINDOW_CLEAN_COMPARE_BITS", "18");
     set_default_env("ROUND84_KEEP_QUOTIENT_PRODUCT", "1");
     set_default_env("DIALOG_GCD_FOLD_CARRY_TRUNC_W", "19");
-    set_default_env("DIALOG_TAIL_NONCE", "307003737209");
+    set_default_env("DIALOG_TAIL_NONCE", "402004742830");
     set_default_env("DIALOG_GCD_SKIP_ZERO_EDGE_CSHIFT", "1");
     set_default_env("DIALOG_GCD_COMPRESSED_BLOCK_LIFECYCLE", "1");
     set_default_env("DIALOG_GCD_HOST_REVERSE_RAW_BLOCK", "1");
@@ -1359,7 +1359,7 @@ fn configure_ecdsafail_submission_route() {
     // carry-recovery comparators. Value-exact: the same product lands in tmp_ext
     // (verified: ancilla-garbage 0; SQUARE_ROW_MAX_SEG=0 restores the bit-exact
     // 1284 base). Net: peak 1284 -> 1226, score 1.821e9 -> 1.771e9.
-    set_default_env("SQUARE_ROW_MAX_SEG", "193");
+    set_default_env("SQUARE_ROW_MAX_SEG", "191");
     set_default_env("DIALOG_GCD_FOLD_FREED_TAIL", "1");  // BAKED: 1221 ship
     set_default_env("DIALOG_GCD_BORROW_CURRENT_S2", "1");
     set_default_env("DIALOG_GCD_BORROW_ZERO_RAW_FUTURE", "1");
@@ -1462,6 +1462,8 @@ fn configure_ecdsafail_submission_route() {
     set_default_env("DIALOG_GCD_FOLD_MAJ2", "1");
     set_default_env("DIALOG_GCD_FOLD_MAJ1", "1");
     set_default_env("DIALOG_GCD_APPLY_FINAL_TOPCLEAN", "0");
+    set_default_env("ROUND84_QPROD_VENT_PAD", "1");
+    set_default_env("DIALOG_GCD_FOLD_FREED_TAIL_ED", "1");
     set_default_env("DIALOG_GCD_APPLY_FINAL_WINDOWED_FAST_BLOCKS", "0");
     // Fuse the branch-bit comparator with the b0-controlled log update: derive
     // b0_and_b1 from the in-flight comparator carry instead of materializing a

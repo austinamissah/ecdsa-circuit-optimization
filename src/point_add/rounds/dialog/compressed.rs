@@ -2303,7 +2303,11 @@ pub(crate) fn dialog_gcd_fused_double_y(b: &mut B, y: &[QubitId], p: U256, s2: Q
         None => n - 2,
     };
     if fold_freed_tail_enabled() && last > hi_delta {
-        fold_ripple_freed_tail(b, y, e, d, h, xed, eord, n10, last, true);
+        // e,d-extension: e,d are recomputable from the live overflow lanes
+        // (d = ovf1&s2, e = ovf1^d^ovf2) and so can also be freed across the
+        // wide tail. fold_ripple_freed_tail_ed honors the DIALOG_GCD_FOLD_FREED_TAIL_ED
+        // gate; when OFF it is byte-identical to the plain freed-tail.
+        fold_ripple_freed_tail_ed(b, y, e, d, h, xed, eord, n10, Some((ovf1, ovf2, s2)), last, true);
     } else {
         cadd_per_position_controls_trunc(b, y, &controls, last);
     }
@@ -2429,7 +2433,11 @@ pub(crate) fn dialog_gcd_fused_halve_y(b: &mut B, y: &[QubitId], p: U256, s2: Qu
         None => n - 2,
     };
     if fold_freed_tail_enabled() && last > hi_delta {
-        fold_ripple_freed_tail(b, y, e, d, h, xed, eord, n10, last, false);
+        // e,d-extension: the reconstructed overflow lanes satisfy the same
+        // relation as in the forward fold (ovf2 = e&s2, ovf1 = (s2?d:e) ⇒
+        // d = ovf1&s2, e = ovf1^d^ovf2), so e,d are recomputable and freeable
+        // across the tail. Gated by DIALOG_GCD_FOLD_FREED_TAIL_ED.
+        fold_ripple_freed_tail_ed(b, y, e, d, h, xed, eord, n10, Some((ovf1, ovf2, s2)), last, false);
     } else {
         csub_per_position_controls_trunc(b, y, &controls, last);
     }

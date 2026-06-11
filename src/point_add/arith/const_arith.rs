@@ -833,6 +833,25 @@ pub(crate) fn fold_freed_tail_enabled() -> bool {
     std::env::var("DIALOG_GCD_FOLD_FREED_TAIL").ok().as_deref() == Some("1")
 }
 
+/// e,d-extension of the freed-tail lever (HYP-6 §4a). When ON (and the freed-tail
+/// itself is ON), the fused-fold ripple ALSO releases the two base controls `e,d`
+/// across the wide high tail — not just the four `e,d`-derived controls
+/// (`h,xed,eord,n10`). `e,d` are dead as controls in the tail (all their fold
+/// positions sit at ≤ `hi_delta = 33`), and both are recomputable from the live
+/// overflow lanes via `d = ovf1 & s2`, `e = ovf1 ^ d ^ ovf2` (the SAME relation
+/// holds in both the forward double_y fold and the inverse halve_y fold — see the
+/// dispatch sites). Freeing `e,d` too drops the wide-tail high-water from `+4` to
+/// `+2` ancillae, i.e. the fold floor falls a further 2 qubits (1220 → 1218 at
+/// W=19), value/phase-EXACT (identical arithmetic; only ancilla lifetime tightens;
+/// cost = a handful of CX + 1 CCX/call to re-derive `d`). Default OFF ⇒ the
+/// freed-tail path is byte-identical to before this lever existed.
+pub(crate) fn fold_freed_tail_ed_enabled() -> bool {
+    std::env::var("DIALOG_GCD_FOLD_FREED_TAIL_ED")
+        .ok()
+        .as_deref()
+        == Some("1")
+}
+
 /// Per-call carry window override for the FUSED FOLD only (`double_y`/`halve_y`),
 /// decoupled from the GCD-walk's `KAL_DOUBLE_CARRY_TRUNC_W`. When set it caps the
 /// fold ripple at `hi_delta + W_fold`; unset = inherit the GCD-walk window
@@ -898,6 +917,31 @@ pub(crate) fn fold_ripple_freed_tail(
     last: usize,
     is_add: bool,
 ) {
+    // Without the e,d-extension `e,d` are held live across the whole ripple.
+    fold_ripple_freed_tail_ed(b, acc, e, d, h, xed, eord, n10, None, last, is_add);
+}
+
+/// e,d-extension variant of [`fold_ripple_freed_tail`] (HYP-6 §4a). When
+/// `ed = Some((ovf1, ovf2, s2))` AND [`fold_freed_tail_ed_enabled`], `e,d` are
+/// additionally released across the wide high tail and recomputed from the live
+/// overflow lanes (`d = ovf1 & s2`, `e = ovf1 ^ d ^ ovf2`) for the low uncompute
+/// pass, dropping the tail high-water by 2 more ancillae. `ovf1, ovf2, s2` are
+/// read-only and must be live & unchanged for the whole call. When `ed = None`
+/// (or the knob is OFF) this is byte-identical to the plain freed-tail.
+pub(crate) fn fold_ripple_freed_tail_ed(
+    b: &mut B,
+    acc: &[QubitId],
+    e: QubitId,
+    d: QubitId,
+    h: QubitId,
+    xed: QubitId,
+    eord: QubitId,
+    n10: QubitId,
+    ed: Option<(QubitId, QubitId, QubitId)>,
+    last: usize,
+    is_add: bool,
+) {
+    let free_ed = ed.is_some() && fold_freed_tail_ed_enabled();
     let n = acc.len();
     let hi_delta = 33usize; // highest_set_bit(2^32+977)+1
     let hi_c = 32usize;
@@ -971,8 +1015,29 @@ pub(crate) fn fold_ripple_freed_tail(
     b.cz_if(e, d, mh);
     b.free(h);
 
+    // ── 3b. e,d-extension: free e,d too (HYP-6 §4a) ──
+    //   `e,d` are dead controls in the tail. Uncompute them to |0> (e first, since
+    //   it is built from d), then release the SAME qubits; reacquired+re-derived
+    //   in step 6 from the live overflow lanes (ovf1,ovf2,s2 are unchanged here).
+    //   Uncompute mirrors the dispatch-site derivation: d = ovf1&s2 (CCX),
+    //   e = ovf1 ^ d ^ ovf2 (3 CX). Reversing: e via the same 3 CX (d still live),
+    //   then d via a measured AND-clear (ovf1,s2 unchanged ⇒ d == ovf1&s2 ⇒
+    //   hmr+cz_if forces d→0, 0 Toffoli, phase-exact).
+    if free_ed {
+        let (ovf1, ovf2, s2) = ed.expect("free_ed implies ed is Some");
+        b.cx(ovf1, e);
+        b.cx(d, e);
+        b.cx(ovf2, e);
+        b.free(e);
+        let md = b.alloc_bit();
+        b.hmr(d, md);
+        b.cz_if(ovf1, s2, md);
+        b.free(d);
+    }
+
     // Tail carries are allocated NOW (4 derived controls already freed ⇒ the
-    // wide-lane high-water carries +4 ancillae instead of +8).
+    // wide-lane high-water carries +4 ancillae instead of +8; +2 with the
+    // e,d-extension since e,d are freed as well).
     let tail_len = last - hi_delta;
     let tail = b.alloc_qubits(tail_len);
     let cw = |i: usize| -> QubitId {
@@ -1018,8 +1083,20 @@ pub(crate) fn fold_ripple_freed_tail(
     }
     drop(tail);
 
-    // ── 6. recompute the derived controls INTO THE SAME qubits (reacquire +
-    //   re-derive) for the low uncompute pass; they stay live on return. ──
+    // ── 6. recompute the controls INTO THE SAME qubits (reacquire + re-derive)
+    //   for the low uncompute pass; they stay live on return. ──
+    //   e,d-extension: re-derive e,d FIRST (the four derived controls depend on
+    //   them), from the live overflow lanes — exactly the dispatch-site formula:
+    //   d = ovf1 & s2, e = ovf1 ^ d ^ ovf2.
+    if free_ed {
+        let (ovf1, ovf2, s2) = ed.expect("free_ed implies ed is Some");
+        b.reacquire(d);
+        b.ccx(ovf1, s2, d);
+        b.reacquire(e);
+        b.cx(ovf1, e);
+        b.cx(d, e);
+        b.cx(ovf2, e);
+    }
     b.reacquire(h);
     b.ccx(e, d, h);
     b.reacquire(xed);

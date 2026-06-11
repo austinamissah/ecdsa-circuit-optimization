@@ -1159,7 +1159,7 @@ fn round84_update_fold_quotient(
     }
 }
 
-fn round84_compute_quotient_c_product(b: &mut B, quotient: &[QubitId]) -> Vec<QubitId> {
+fn round84_compute_quotient_c_product(b: &mut B, quotient: &[QubitId], dirty: &[QubitId]) -> Vec<QubitId> {
     // quotient <= c, so its low 33 bits suffice and quotient*c fits in 66 bits.
     let q = &quotient[..33];
     let product = b.alloc_qubits(66);
@@ -1168,6 +1168,12 @@ fn round84_compute_quotient_c_product(b: &mut B, quotient: &[QubitId]) -> Vec<Qu
     }
     if round84_qprod_naf_enabled() {
         for (shift, add) in [(10usize, true), (32, true), (5, false), (4, false)] {
+            if round84_qprod_vent_pad_enabled()
+                && (product.len() - shift - q.len()) >= round84_qprod_vent_pad_min_width()
+            {
+                round84_qprod_shifted_addsub_vented(b, q, &product, shift, add, dirty);
+                continue;
+            }
             let target = &product[shift..];
             if round84_qprod_short_enabled() {
                 if add {
@@ -1204,13 +1210,20 @@ fn round84_compute_quotient_c_product(b: &mut B, quotient: &[QubitId]) -> Vec<Qu
     product
 }
 
-fn round84_uncompute_quotient_c_product(b: &mut B, quotient: &[QubitId], product: &[QubitId]) {
+fn round84_uncompute_quotient_c_product(b: &mut B, quotient: &[QubitId], product: &[QubitId], dirty: &[QubitId]) {
     let q = &quotient[..33];
     if round84_qprod_naf_enabled() {
         for (shift, add) in [(10usize, true), (32, true), (5, false), (4, false)]
             .into_iter()
             .rev()
         {
+            if round84_qprod_vent_pad_enabled()
+                && (product.len() - shift - q.len()) >= round84_qprod_vent_pad_min_width()
+            {
+                // uncompute = inverse op: add->sub, sub->add.
+                round84_qprod_shifted_addsub_vented(b, q, product, shift, !add, dirty);
+                continue;
+            }
             let target = &product[shift..];
             if round84_qprod_short_enabled() {
                 if add {
@@ -1370,7 +1383,7 @@ fn round84_fold_hi_into_lo_aggregate(
         steps.push(step);
     }
 
-    let product = round84_compute_quotient_c_product(b, &quotient);
+    let product = round84_compute_quotient_c_product(b, &quotient, dirty);
     let borrowed_correction_wrap = round84_correction_wrap_borrow_quotient_top_enabled()
         .then_some(quotient[33]);
     let (correction_wrap, correction_wrap_owned) =
@@ -1378,7 +1391,7 @@ fn round84_fold_hi_into_lo_aggregate(
     let product = if round84_keep_quotient_product_enabled() {
         Some(product)
     } else {
-        round84_uncompute_quotient_c_product(b, &quotient, &product);
+        round84_uncompute_quotient_c_product(b, &quotient, &product, dirty);
         None
     };
     Round84AggregateFold {
@@ -1399,7 +1412,7 @@ fn round84_unfold_hi_from_lo_aggregate(
 ) {
     let product = state
         .product
-        .unwrap_or_else(|| round84_compute_quotient_c_product(b, &state.quotient));
+        .unwrap_or_else(|| round84_compute_quotient_c_product(b, &state.quotient, dirty));
     round84_sub_narrow_correction(
         b,
         lo,
@@ -1408,7 +1421,7 @@ fn round84_unfold_hi_from_lo_aggregate(
         dirty,
         state.correction_wrap_owned,
     );
-    round84_uncompute_quotient_c_product(b, &state.quotient, &product);
+    round84_uncompute_quotient_c_product(b, &state.quotient, &product, dirty);
 
     for step in state.steps.into_iter().rev() {
         round84_update_fold_quotient(b, &state.quotient, hi, &step, true);
@@ -1896,4 +1909,125 @@ pub(crate) fn squaring_sub_from_acc_walk_controls_lowq(b: &mut B, acc: &[QubitId
         b.cx(x[i], ctrl_copy[i]);
     }
     b.free_vec(&ctrl_copy);
+}
+
+ 
+// HYP-12 lever (the round84 Solinas fold/unfold wall @1221). The fold's
+// quotient*c product is built by shifted adds of the 33-bit quotient `q` into
+// the 66-bit `product`. To match widths the caller zero-extends `q` with a
+// `pad` whose width is `product.len()-shift-33` (=29 at shift=4). MEASURED:
+// the shift=4 pad (29 transient |0> lanes) is the SOLE binder that pins the
+// fold phase at 1221 (UNQ_sh4=1221, the next is UNQ_sh5=1219). The high `pad`
+// bits are all 0, so the work on `product[shift+33..]` is a pure carry ripple,
+// not a real add. This lever replaces the 29-lane pad with a single carry
+// `wrap` + a Gidney measure-vented carry ripple (`ciadd/cisub_dirty_2clean`,
+// borrowing the idle `acc`/`dirty` lanes + 2 clean, uncompute=0) and an
+// ancilla-free `cmp_lt_into` wrap-uncompute (1 c_in, ~n CCX, no carry array).
+// Net: the qprod transient drops from product+~30 to product+~3 => the fold
+// peak falls below 1221, exposing the global drop to 1220 (with SEG<=193 the
+// square is already <=1220 there). Value-exact (a permutation that round-
+// trips); default OFF (byte-identical base).
+fn round84_qprod_vent_pad_enabled() -> bool {
+    std::env::var("ROUND84_QPROD_VENT_PAD").ok().as_deref() == Some("1")
+}
+
+// Only the WIDEST-pad shifted add binds the fold peak (MEASURED: shift=4 pins
+// 1221, shift=5 sits at 1219). Venting the narrower-pad shifts adds Toffoli
+// (a cmp_lt wrap-uncompute + a vented ripple) for no peak gain, so by default
+// the lever only vents shifts whose pad width exceeds this threshold. The
+// shift=4 pad is `66-4-33 = 29`; shift=5 is 28; set the cutoff at 29 so only
+// shift=4 vents. Override with ROUND84_QPROD_VENT_PAD_MINW to vent more.
+fn round84_qprod_vent_pad_min_width() -> usize {
+    std::env::var("ROUND84_QPROD_VENT_PAD_MINW")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(29)
+}
+
+// NOTE (measured): venting must cover BOTH the fold's qprod-uncompute AND the
+// unfold's qprod-compute — each builds the 66-bit product with the 29-lane
+// shift=4 pad and reaches 1221 (the fold-compute @1220 and unfold-uncompute
+// @1220 are 1 below, but the round-trip needs all four product builds vented
+// to clear the wall). The lever therefore vents every shift>=MINW build in
+// both compute and uncompute.
+
+/// One shifted small-add of `q` (33-bit) into `product[shift..]`, with the
+/// high zero-extension realized as a vented carry ripple instead of a `pad`.
+/// `add=true` => `product[shift..] += q`; `add=false` => `-= q`. The carry/
+/// borrow `wrap` is recomputed-and-freed in place (no residue), so this is the
+/// exact width-matched equivalent of the padded `cuccaro_add/sub` it replaces.
+fn round84_qprod_shifted_addsub_vented(
+    b: &mut B,
+    q: &[QubitId],
+    product: &[QubitId],
+    shift: usize,
+    add: bool,
+    dirty: &[QubitId],
+) {
+    let m = q.len(); // 33
+    let total = product.len() - shift;
+    debug_assert!(total >= m);
+    let high_w = total - m; // width of the zero-extension (carry ripple region)
+
+    // The vent helper needs n>4 dirty/clean lanes; for tiny tails fall back to
+    // the padded coherent add (these shifts never bind the peak).
+    if high_w < 5 || dirty.len() < high_w.saturating_sub(2) {
+        let target = &product[shift..];
+        let pad = b.alloc_qubits(high_w);
+        let mut source = q.to_vec();
+        source.extend_from_slice(&pad);
+        if add {
+            round84_add_small(b, &source, target);
+        } else {
+            round84_sub_small(b, &source, target);
+        }
+        b.free_vec(&pad);
+        return;
+    }
+
+    let wrap = b.alloc_qubit();
+    let mut low_ext = product[shift..shift + m].to_vec();
+    low_ext.push(wrap);
+    let high = &product[shift + m..];
+
+    if add {
+        // product[shift..shift+m] += q, carry-out -> wrap.
+        let c_in = b.alloc_qubit();
+        cuccaro_add_low_to_ext_clean(b, q, &low_ext, c_in);
+        b.free(c_in);
+        // Ripple the carry: product[shift+m..] += wrap (vented, dirty-borrowed).
+        let clean2 = [b.alloc_qubit(), b.alloc_qubit()];
+        venting::ciadd_dirty_2clean_classical(
+            b,
+            high,
+            &dirty[..high_w - 2],
+            &clean2,
+            1,
+            wrap,
+            false,
+        );
+        b.free(clean2[1]);
+        b.free(clean2[0]);
+        // Uncompute wrap: carry == (new_low < q). cmp_lt_into uses 1 c_in only.
+        cmp_lt_into(b, &product[shift..shift + m], q, wrap);
+    } else {
+        // product[shift..shift+m] -= q, borrow-out -> wrap.
+        let c_in = b.alloc_qubit();
+        cuccaro_sub_low_to_ext_clean(b, q, &low_ext, c_in);
+        b.free(c_in);
+        // Ripple the borrow: product[shift+m..] -= wrap (vented).
+        let clean2 = [b.alloc_qubit(), b.alloc_qubit()];
+        venting::cisub_dirty_2clean_classical(b, high, &dirty[..high_w - 2], &clean2, 1, wrap);
+        b.free(clean2[1]);
+        b.free(clean2[0]);
+        // Uncompute wrap: borrow == carry_out(new_low + q) == (~q < new_low).
+        for &qb in q {
+            b.x(qb);
+        }
+        cmp_lt_into(b, q, &product[shift..shift + m], wrap);
+        for &qb in q {
+            b.x(qb);
+        }
+    }
+    b.free(wrap);
 }
