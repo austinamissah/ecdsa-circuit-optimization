@@ -1084,6 +1084,20 @@ fn round84_inplace_vent_carry_enabled() -> bool {
         == Some("1")
 }
 
+fn round84_correction_wrap_borrow_quotient_top_enabled() -> bool {
+    std::env::var("ROUND84_CORRECTION_WRAP_BORROW_QUOTIENT_TOP")
+        .ok()
+        .as_deref()
+        == Some("1")
+}
+
+fn round84_keep_quotient_product_enabled() -> bool {
+    std::env::var("ROUND84_KEEP_QUOTIENT_PRODUCT")
+        .ok()
+        .as_deref()
+        == Some("1")
+}
+
 fn round84_qprod_naf_enabled() -> bool {
     std::env::var("R84_QPROD_NAF").ok().as_deref() == Some("1")
 }
@@ -1102,6 +1116,8 @@ struct Round84AggregateFold {
     steps: Vec<Round84FoldStep>,
     quotient: Vec<QubitId>,
     correction_wrap: QubitId,
+    correction_wrap_owned: bool,
+    product: Option<Vec<QubitId>>,
 }
 
 fn round84_update_fold_quotient(
@@ -1239,8 +1255,9 @@ fn round84_add_narrow_correction(
     lo: &[QubitId],
     product: &[QubitId],
     dirty: &[QubitId],
-) -> QubitId {
-    let wrap = b.alloc_qubit();
+    borrowed_wrap: Option<QubitId>,
+) -> (QubitId, bool) {
+    let (wrap, owned_wrap) = borrowed_wrap.map_or_else(|| (b.alloc_qubit(), true), |q| (q, false));
     let source_top = b.alloc_qubit();
     let mut target_ext = lo[..product.len()].to_vec();
     target_ext.push(wrap);
@@ -1271,7 +1288,7 @@ fn round84_add_narrow_correction(
             round84_inplace_quotient_carry_trunc_window(),
         );
     }
-    wrap
+    (wrap, owned_wrap)
 }
 
 fn round84_sub_narrow_correction(
@@ -1280,6 +1297,7 @@ fn round84_sub_narrow_correction(
     product: &[QubitId],
     wrap: QubitId,
     dirty: &[QubitId],
+    owned_wrap: bool,
 ) {
     let high = &lo[product.len()..];
     if round84_inplace_vent_carry_enabled() {
@@ -1303,7 +1321,9 @@ fn round84_sub_narrow_correction(
     source_ext.push(source_top);
     round84_sub_small(b, &source_ext, &target_ext);
     b.free(source_top);
-    b.free(wrap);
+    if owned_wrap {
+        b.free(wrap);
+    }
 }
 
 /// Reversibly fold `hi*c` into `lo`, where `c = 2^256-p`.
@@ -1351,12 +1371,22 @@ fn round84_fold_hi_into_lo_aggregate(
     }
 
     let product = round84_compute_quotient_c_product(b, &quotient);
-    let correction_wrap = round84_add_narrow_correction(b, lo, &product, dirty);
-    round84_uncompute_quotient_c_product(b, &quotient, &product);
+    let borrowed_correction_wrap = round84_correction_wrap_borrow_quotient_top_enabled()
+        .then_some(quotient[33]);
+    let (correction_wrap, correction_wrap_owned) =
+        round84_add_narrow_correction(b, lo, &product, dirty, borrowed_correction_wrap);
+    let product = if round84_keep_quotient_product_enabled() {
+        Some(product)
+    } else {
+        round84_uncompute_quotient_c_product(b, &quotient, &product);
+        None
+    };
     Round84AggregateFold {
         steps,
         quotient,
         correction_wrap,
+        correction_wrap_owned,
+        product,
     }
 }
 
@@ -1367,8 +1397,17 @@ fn round84_unfold_hi_from_lo_aggregate(
     dirty: &[QubitId],
     state: Round84AggregateFold,
 ) {
-    let product = round84_compute_quotient_c_product(b, &state.quotient);
-    round84_sub_narrow_correction(b, lo, &product, state.correction_wrap, dirty);
+    let product = state
+        .product
+        .unwrap_or_else(|| round84_compute_quotient_c_product(b, &state.quotient));
+    round84_sub_narrow_correction(
+        b,
+        lo,
+        &product,
+        state.correction_wrap,
+        dirty,
+        state.correction_wrap_owned,
+    );
     round84_uncompute_quotient_c_product(b, &state.quotient, &product);
 
     for step in state.steps.into_iter().rev() {

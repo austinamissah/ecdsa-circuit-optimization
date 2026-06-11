@@ -88,7 +88,7 @@ fn d1_phase_corrected_product_core_active() -> bool {
     D1_PHASE_CORRECTED_PRODUCT_CORE_SCOPE.with(|scope| scope.get())
 }
 
-pub(crate) struct B {
+pub struct B {
     pub ops: Vec<Op>,
     pub count_only: bool,
     pub counted_ops: usize,
@@ -112,6 +112,7 @@ pub(crate) struct B {
     pub current_phase_active_max: u32,
     // (ops_len_at_transition, new_phase)
     pub phase_transitions: Vec<(usize, &'static str)>,
+    pub active_timeline: Vec<(usize, u32)>,
     // K=2 prototype: per-step "shifted twice" transcript bits, indexed by global
     // GCD step. Set by the ipmul/quotient wrappers around a pass; read by the
     // tobitvector (compute/uncompute) and apply (conditional 2nd double/halve).
@@ -168,6 +169,7 @@ impl B {
             phase_active_regions: Vec::new(),
             current_phase_active_max: 0,
             phase_transitions: Vec::new(),
+            active_timeline: Vec::new(),
             k2_shift2_log: Vec::new(),
         }
     }
@@ -256,7 +258,14 @@ impl B {
         }
         self.phase_transitions.push((self.current_ops_len(), p));
     }
+    fn record_active_timeline(&mut self) {
+        if std::env::var("PROFILE_ACTIVE_TIMELINE").is_ok() {
+            self.active_timeline
+                .push((self.current_ops_len(), self.active_qubits));
+        }
+    }
     fn record_phase_active(&mut self) {
+        self.record_active_timeline();
         if std::env::var("TRACE_PHASE_ACTIVE").is_ok() {
             let entry = self.phase_active_max.entry(self.phase).or_insert(0);
             if self.active_qubits > *entry {
@@ -324,6 +333,7 @@ impl B {
         if self.active_qubits > 0 {
             self.active_qubits -= 1;
         }
+        self.record_active_timeline();
     }
     fn free_vec(&mut self, qs: &[QubitId]) {
         for &q in qs {
@@ -997,8 +1007,10 @@ fn set_default_env(name: &str, value: &str) {
 fn configure_ecdsafail_submission_route() {
     set_default_env("SKIP_ALT_SEED_CHECKS", "1");
     set_default_env("DIALOG_GCD_COMPRESSED_SIDECAR_LOG", "1");
-    set_default_env("SQUARE_ROW_WINDOW_CLEAN_COMPARE_BITS", "22");
-    set_default_env("DIALOG_TAIL_NONCE", "7700044727491");
+    set_default_env("SQUARE_ROW_WINDOW_CLEAN_COMPARE_BITS", "18");
+    set_default_env("ROUND84_KEEP_QUOTIENT_PRODUCT", "1");
+    set_default_env("DIALOG_GCD_FOLD_CARRY_TRUNC_W", "19");
+    set_default_env("DIALOG_TAIL_NONCE", "5200018704193");
     set_default_env("DIALOG_GCD_SKIP_ZERO_EDGE_CSHIFT", "1");
     set_default_env("DIALOG_GCD_COMPRESSED_BLOCK_LIFECYCLE", "1");
     set_default_env("DIALOG_GCD_HOST_REVERSE_RAW_BLOCK", "1");
@@ -1347,7 +1359,7 @@ fn configure_ecdsafail_submission_route() {
     // carry-recovery comparators. Value-exact: the same product lands in tmp_ext
     // (verified: ancilla-garbage 0; SQUARE_ROW_MAX_SEG=0 restores the bit-exact
     // 1284 base). Net: peak 1284 -> 1226, score 1.821e9 -> 1.771e9.
-    set_default_env("SQUARE_ROW_MAX_SEG", "194");
+    set_default_env("SQUARE_ROW_MAX_SEG", "193");
     set_default_env("DIALOG_GCD_FOLD_FREED_TAIL", "1");  // BAKED: 1221 ship
     set_default_env("DIALOG_GCD_BORROW_CURRENT_S2", "1");
     set_default_env("DIALOG_GCD_BORROW_ZERO_RAW_FUTURE", "1");
@@ -1464,7 +1476,7 @@ fn configure_ecdsafail_submission_route() {
     set_default_env("DIALOG_GCD_ODD_U_LOWBIT_FASTPATH", "1");
 }
 
-fn build_builder() -> B {
+pub fn build_builder() -> B {
     configure_ecdsafail_submission_route();
 
     let mut builder = if std::env::var("POINT_ADD_COUNT_ONLY").ok().as_deref() == Some("1") {
