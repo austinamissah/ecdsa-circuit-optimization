@@ -119,87 +119,6 @@ fn step<T: Copy>(slot: &mut (Vec<T>, usize), exhausted: T) -> T {
     v
 }
 
-fn env_i32(name: &str) -> Option<i32> {
-    std::env::var(name).ok()?.parse::<i32>().ok()
-}
-
-fn apply_delta_usize(values: &mut [usize], delta: i32, max: Option<usize>) {
-    let mag = delta.saturating_abs() as usize;
-    for value in values {
-        let next = if delta < 0 {
-            value.saturating_sub(mag)
-        } else {
-            value.saturating_add(mag)
-        };
-        *value = max.map_or(next, |m| next.min(m));
-    }
-}
-
-fn fold_max_clean_vents() -> i32 {
-    (arith::LSBS - 1) as i32
-}
-
-fn cap_positive_fold(values: &mut [i32], cap: i32) {
-    let cap = cap.clamp(0, fold_max_clean_vents());
-    for value in values {
-        if *value > cap {
-            *value = cap;
-        }
-    }
-}
-
-fn apply_fold_delta_range(values: &mut [i32], start: usize, end: usize, delta: i32) {
-    for value in &mut values[start..end] {
-        if *value >= 0 {
-            *value = (*value + delta).clamp(0, fold_max_clean_vents());
-        }
-    }
-}
-
-fn apply_fold_sched_delta(values: &mut [i32], spec: &str) {
-    for token in spec.split(',') {
-        let Some((region, delta)) = token.split_once(':') else {
-            continue;
-        };
-        let Ok(delta) = delta.parse::<i32>() else {
-            continue;
-        };
-        let len = values.len();
-        let (start, end) = match region.trim() {
-            "all" => (0, len),
-            "first" | "prefix" => (0, len / 3),
-            "mid" | "middle" => (len / 3, (2 * len) / 3),
-            "last" | "suffix" => ((2 * len) / 3, len),
-            _ => continue,
-        };
-        apply_fold_delta_range(values, start, end, delta);
-    }
-}
-
-fn apply_route_overlays(s: &mut Sched) {
-    if let Some(delta) = env_i32("TRAILMIX_APPLY_COUT_K_DELTA") {
-        apply_delta_usize(&mut s.cout_k.0, delta, None);
-    }
-    if let Some(delta) = env_i32("TRAILMIX_CMP_K_DELTA") {
-        apply_delta_usize(&mut s.cmp_k.0, delta, None);
-    }
-    if let Some(delta) = env_i32("TRAILMIX_FFG_G_DELTA") {
-        apply_delta_usize(&mut s.ffg.0, delta, Some(arith::LSBS - 1));
-    }
-    if let Some(delta) = env_i32("TRAILMIX_HYB_V_DELTA") {
-        apply_delta_usize(&mut s.hyb_v.0, delta, None);
-    }
-    if let Some(delta) = env_i32("TRAILMIX_SQ_ROW_K_DELTA") {
-        apply_delta_usize(&mut s.sqrow_k.0, delta, None);
-    }
-    if let Some(cap) = env_i32("TRAILMIX_FOLD_LOW_BITS") {
-        cap_positive_fold(&mut s.fold.0, cap);
-    }
-    if let Ok(spec) = std::env::var("TRAILMIX_FOLD_SCHED_DELTA") {
-        apply_fold_sched_delta(&mut s.fold.0, &spec);
-    }
-}
-
 fn next_gcd_k() -> usize { SCHED.with(|s| step(&mut s.borrow_mut().gcd_k, usize::MAX)) }
 fn next_cout_k() -> usize { SCHED.with(|s| step(&mut s.borrow_mut().cout_k, usize::MAX)) }
 fn next_fold() -> i32 { SCHED.with(|s| step(&mut s.borrow_mut().fold, i32::MAX)) }
@@ -214,15 +133,40 @@ fn load_schedule() {
     SCHED.with(|s| {
         let mut s = s.borrow_mut();
         *s = Sched::default();
+        let extra_fold_vents = std::env::var("LUD_EXTRA_FOLD_VENTS")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(0);
+        let extra_fold_min_g = std::env::var("LUD_EXTRA_FOLD_MIN_G")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(0);
+        let extra_fold_max_g = std::env::var("LUD_EXTRA_FOLD_MAX_G")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(usize::MAX);
+        let fold_g = |v: &[usize]| -> Vec<usize> {
+            v.iter()
+                .map(|&x| {
+                    if extra_fold_vents > 0
+                        && x >= extra_fold_min_g
+                        && x <= extra_fold_max_g
+                    {
+                        x.saturating_add(extra_fold_vents).min(53)
+                    } else {
+                        x
+                    }
+                })
+                .collect()
+        };
         s.gcd_k.0 = schedule::GCD_SUB_K.to_vec();
         s.gcd_branch.0 = schedule::GCD_BRANCH.to_vec();
         s.cout_k.0 = schedule::APPLY_COUT_K.to_vec();
         s.fold.0 = schedule::FOLD_SCHED.to_vec();
         s.cmp_k.0 = schedule::CMP_K.to_vec();
-        s.ffg.0 = schedule::FFG_G.to_vec();
+        s.ffg.0 = fold_g(schedule::FFG_G);
         s.hyb_v.0 = schedule::HYB_V.to_vec();
         s.sqrow_k.0 = schedule::SQ_ROW_K.to_vec();
-        apply_route_overlays(&mut s);
     });
 }
 
