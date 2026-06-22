@@ -13,7 +13,12 @@ use std::io::{BufWriter, Write};
 use std::path::Path;
 
 const OPS_PATH: &str = "ops.bin";
-const MAGIC: &[u8; 8] = b"QECCOPS1";
+// "Z" suffix marks the zstd-compressed framing (was "QECCOPS1", uncompressed).
+const MAGIC: &[u8; 8] = b"QECCOPSZ";
+// zstd compression level. The record stream is almost pure boilerplate
+// (zero pad bytes, NO_QUBIT sentinels, near-sequential ids), so even the
+// fast default crushes it ~40x. Override with ZSTD_LEVEL for smaller/slower.
+const DEFAULT_ZSTD_LEVEL: i32 = 3;
 
 // Per-op layout (56 bytes, all little-endian):
 //   u32  kind     | u32 _pad
@@ -25,13 +30,26 @@ const MAGIC: &[u8; 8] = b"QECCOPS1";
 //   u64  r_target
 const OP_BYTES: usize = 56;
 
+fn zstd_level() -> i32 {
+    std::env::var("ZSTD_LEVEL")
+        .ok()
+        .and_then(|s| s.trim().parse().ok())
+        .unwrap_or(DEFAULT_ZSTD_LEVEL)
+}
+
 fn write_ops(ops: &[Op], path: &Path) -> std::io::Result<()> {
     let tmp = path.with_extension("bin.tmp");
     let mut w = BufWriter::new(File::create(&tmp)?);
+    // Header stays uncompressed so the trusted loader can read MAGIC and the
+    // op count (to bound memory) before touching the compressed body.
     w.write_all(MAGIC)?;
     w.write_all(&(ops.len() as u64).to_le_bytes())?;
-    // Serialize each op into a fixed 56-byte record and stream it out, so we
-    // never materialize a second full copy of the op stream in memory.
+
+    // Compress the record body. The encoder owns the BufWriter; finish()
+    // flushes the zstd frame and hands it back.
+    let mut enc = zstd::stream::write::Encoder::new(w, zstd_level())?;
+    // Serialize each op into a fixed 56-byte record and stream it through the
+    // encoder, so we never materialize a second full copy of the op stream.
     let mut rec = [0u8; OP_BYTES];
     for op in ops {
         rec[0..4].copy_from_slice(&(op.kind as u32).to_le_bytes());
@@ -42,8 +60,9 @@ fn write_ops(ops: &[Op], path: &Path) -> std::io::Result<()> {
         rec[32..40].copy_from_slice(&op.c_target.0.to_le_bytes());
         rec[40..48].copy_from_slice(&op.c_condition.0.to_le_bytes());
         rec[48..56].copy_from_slice(&op.r_target.0.to_le_bytes());
-        w.write_all(&rec)?;
+        enc.write_all(&rec)?;
     }
+    let mut w = enc.finish()?;
     w.flush()?;
     drop(w);
     fs::rename(&tmp, path)?;
@@ -61,10 +80,14 @@ fn main() {
         eprintln!("error: failed to write {}: {}", OPS_PATH, e);
         std::process::exit(2);
     }
+    let uncompressed = ops.len() * OP_BYTES + MAGIC.len() + 8;
+    let on_disk = fs::metadata(path).map(|m| m.len()).unwrap_or(0);
     println!(
-        "  wrote       : {} ({} bytes)",
+        "  wrote       : {} ({} bytes on disk, {} uncompressed, {:.1}x)",
         OPS_PATH,
-        ops.len() * OP_BYTES + MAGIC.len() + 8
+        on_disk,
+        uncompressed,
+        uncompressed as f64 / on_disk.max(1) as f64,
     );
     println!("\n=== build_circuit OK ===");
 }
