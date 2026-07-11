@@ -14,11 +14,14 @@ instead of one full 256-bit), **full symmetry** exploitation (strict upper-trian
 terms, each once), **measurement-vented** cross-term uncompute (0-Toffoli AND clears), and a
 **NAF-minimal** F-fold reduction (weight-5, the minimum). Symmetry, diagonal, and reduction are all
 at or near their floors — there is **no provably-removable slack** (no dead gates, no un-exploited
-symmetry, no redundant reduction pass). The realistic slack is: (a) a **few thousand CCX, low-risk**,
-by enabling an *already-written but env-disabled* cheaper F-fold schedule for one wrap term; and (b) a
-larger **~28K locked behind the compute/uncompute round-trip**, reachable only by a structural rewrite
-whose net benefit is uncertain. Honest harvestable estimate: ~1–3K at low risk, up to ~10–20K only
-via a speculative rewrite that may not pay off.
+symmetry, no redundant reduction pass). Two rewrite ideas were investigated and **both fell through**
+(see §7): (a) enabling the env-disabled F-fold schedule **regressed by +3,458 Toffoli and failed
+correctness** when measured; and (b) the ~28K compute/uncompute round-trip turns out to be **mostly
+not harvestable** — only the single-use `c` term benefits from going in-place, so the realistic
+ceiling is **~6–9K, not ~28K** (the earlier ~28K figure wrongly lumped all three unbuilds; the two
+dual-use terms tie, per the §7 algebra). **Honest harvestable estimate: effectively 0 at low risk;
+~6–9K only via a speculative in-place rewrite of the `c` term that may not net positive after
+inline-fold overhead.**
 
 ## 1. What it computes, step by step
 
@@ -96,14 +99,13 @@ is the reversibility "compute–copy–uncompute" tax, not arithmetic. So the im
 redundant reduction pass, no zero-control that isn't already forced. The algorithmic optimizations are
 all present. This is *not* a soft target sitting at 2× waste for lack of attention.
 
-**Accessible, low-risk (a schedule flip): ~1–3K CCX.** The 32-per-bit wrap in the `−b·F` term
-(square.rs:65-71, inside the 4,329-CCX phase) has *already-written* cheaper alternatives
-(`TLM_SQUARE_F_RAMP10_DIRECT32` / `TLM_SQUARE_F_DIRECT_TAGS`, square.rs:302-375) that are off by
-default. Enabling one is the one genuinely "untaken" lever here — low implementation risk (code
-exists, and the square path has a `TLM_SQ_SELFTEST`), but the actual saving and its peak-qubit impact
-must be confirmed by a build + 9,024-point eval. Realistically a few thousand CCX at most, possibly
-less if the default schedule was chosen because the alternatives cost peak width (peak is pinned at
-1152).
+**~~Accessible, low-risk (a schedule flip): ~1–3K CCX.~~ — RETRACTED, MEASURED AS A REGRESSION.**
+The env-gated F-fold alternatives (`TLM_SQUARE_F_RAMP10_DIRECT32` / `TLM_SQUARE_F_DIRECT_TAGS`,
+square.rs:302-375) were *believed* to be a cheaper "untaken" lever. **Measurement disproved this**
+(see §7): enabling `TLM_SQUARE_F_RAMP10_DIRECT32=1` raised the emitted Toffoli count by **+3,458**,
+pushed peak to **1153 > 1152**, and **failed correctness** (9,013/9,024 shots wrong). The guard
+`value.len()+32 <= N` also excludes the full-width `−b·F` term, so it never reached the intended wrap
+anyway. The default `SHIFTED_LOW` schedule is correct and cheaper. **This lever is a dead end.**
 
 **Combine fusion (would need a small rewrite): ~2–4K CCX, width-traded.** The middle coefficient is
 applied as three separate shifted combines (`−c·2^128`, `+a·2^128`, `+b·2^128`, square.rs:483/494/503)
@@ -111,26 +113,63 @@ instead of forming `m = c−a−b` once and applying `m·2^128` — which would 
 high-F-folds) from 3 to 1. But it needs a live 256-bit scratch + adder, and peak is already at the
 1152 cap, so this is a Toffoli/width trade, not a free win.
 
-**The big fat (would need a real rewrite, speculative): ~10–22K CCX.** The ~28,344-CCX unbuild is the
-reversibility round-trip. It is **not** removable by measurement-uncompute — clearing a multi-bit
-*arithmetic* register by HMR needs phase fixups of comparable cost (measurement-uncompute is free only
-for single ANDs, which the cross-term carries already use). The only way to avoid it is a structural
-change: accumulate the square **directly into `output_reg`** with inline mod-p folding, never
-materializing the `prod` temporaries. A direct in-place symmetric modular square would pay ~n(n−1)/2 ≈
-**32,640** cross-term Toffolis once (more than Karatsuba's 24,384, because it drops Karatsuba) but
-**with no unbuild**, plus inline-fold overhead. Optimistically that nets ~40K vs the current ~62K
-(**~22K saved**); pessimistically the inline F-folding and doubling overhead eats most of it (net ~50K,
-~12K saved); it could even come out worse. This is a genuine rewrite with real correctness risk,
-validated only by the full eval + selftests — **not a provable win, and the net is uncertain.**
+**~~The big fat (~10–22K CCX)~~ — REVISED DOWN to ~6–9K.** The ~28,344-CCX unbuild is the
+reversibility round-trip, but **only ~9.5K of it is harvestable**, because the benefit of going
+in-place depends on how many times each square is *used* in the combine (see §7 algebra):
+- **c = (hi+lo)²** is used **once** (`−c·2^128`, square.rs:483) → in-place eliminates its unbuild
+  (~9,540) → the only real win.
+- **a = lo²** (used twice, square.rs:492/494) and **b = hi²** (used twice, square.rs:503/505) →
+  in-place **ties** materialize-and-reuse, no saving (a dual-use materialized square costs
+  build+2·apply+unbuild = 2× the square; the in-place alternative recomputes it per position = also
+  2×). Even folding the two uses into one `a·(2^128−1)` pass places each cross term twice.
+
+So the realistic ceiling is **c's unbuild ~9,540, minus the inline-F-fold overhead** the direct path
+adds to fold sum²'s bits ≥ 256 → net **~6–9K (~0.5–0.7% of the 1.32M budget)**. It is still **not**
+removable by measurement-uncompute (HMR fixups on a multi-bit *arithmetic* register cost ~the same;
+free only for single ANDs, already used). Requires a new reversible primitive
+(`controlled_square_accumulate_shifted_folded`) with **no dedicated unit self-test** (`TLM_SQ_SELFTEST`
+only covers the materialized backend), validated only by the ~4-min build+eval cycle. Genuine
+correctness risk; net could still come out ≤0 after fold overhead.
 
 ### Verdict
 
-Squaring is **not** at a hard floor, but the low-hanging algorithmic fruit is already taken — the crowd
-being disinterested didn't leave easy slack lying in *this* implementation. The realistic play is:
-1. **Quick experiment (do first):** flip the env-gated `TLM_SQUARE_F_*_DIRECT*` fold schedule, rebuild,
-   eval — bounded ~1–3K, low risk, self-test-covered. If it's cheaper and stays ≤1152 peak, take it.
-2. **Only if hungry:** prototype a direct in-place modular square to attack the ~28K unbuild round-trip
-   — the single largest structural inefficiency, but a rewrite with uncertain net (~±10–22K) that must
-   be proven out end-to-end, not assumed.
+Squaring is **not** at a hard floor, but the low-hanging algorithmic fruit is already taken, and the
+two rewrite ideas were investigated and did not pan out:
+1. **F-fold schedule flip — REJECTED (measured):** +3,458 Toffoli, peak 1153 > 1152, correctness
+   FAILED. Dead end (§7).
+2. **In-place c-term square — not attempted, ceiling revised to ~6–9K** (down from ~28K, since the two
+   dual-use terms tie). A risky reversible-arithmetic rewrite with no fast validation loop for ~0.6% of
+   budget — poor effort/reward; deprioritized.
 
 Everything else (symmetry, diagonal, NAF reduction) is already at its floor; don't spend math there.
+The GCD engine (~95% of the budget) is where any real leverage would be, and it is already at its
+frontier.
+
+## 7. Experiment log & corrected algebra
+
+**F-fold schedule experiment (`TLM_SQUARE_F_RAMP10_DIRECT32=1`, run 2026-07-11).** Self-test passed
+(`SQ_SELFTEST` bit-exact vs classical x², inverse drains clean) — but it covers only the
+partial-product backend, not the F-fold schedule. Full build + eval vs baseline (1,320,763 avg
+Toffoli, 1,152 qubits):
+
+| metric | baseline | flag ON | Δ |
+|---|---|---|---|
+| emitted CCX (pre-CONSTPROP) | 1,398,456 | 1,402,219 | **+3,763** |
+| emitted CCX (post-CONSTPROP) | 1,398,187 | 1,401,645 | **+3,458** |
+| peak qubits | 1,152 | **1,153** | +1 (over cap) |
+| eval correctness | OK | **FAILED** (9,013/9,024 mismatch) | — |
+
+The `RAMP10_DIRECT32` path routed the `a_hi`/`c_hi` folds through `mod_double + apply_full_width`,
+which is *more* expensive than `SHIFTED_LOW` (`square_a_lo_apply_shifted_128_add` and
+`square_b_hi_apply_shifted_128_add` each jumped to ~2,480; `square_c_sum_apply_shifted_128_sub`
+1,064→1,783), while barely touching the intended `square_b_hi_apply_f_times_sub` (4,329→4,272,
+because the 256-bit `b` value fails the `value.len()+32 <= N` guard). Net: a regression *and*
+incorrect. The alternative schedules are env-disabled because they are wrong/costlier in this
+configuration — not an untaken win.
+
+**Dual-use algebra (why the unbuild ceiling is ~9.5K, not ~28K).** For a square used `k` times in the
+combine: materialize = build + k·apply + unbuild = (2 + small)·(square cost); in-place = k·(direct
+compute) = k·(square cost). In-place wins **only when k = 1** (1 vs 2). c is k=1 (win ~9,540); a and b
+are k=2 (2 vs 2, tie). Hence only c's unbuild is harvestable. My original §6 lumped all three unbuilds
+(~28,344) into the "prize," which was wrong — the honest ceiling is c's ~9,540 minus inline-fold
+overhead.
