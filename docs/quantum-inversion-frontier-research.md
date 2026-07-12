@@ -9,7 +9,7 @@ literature (2017–2026). Sources are listed at the end; every quantitative clai
 
 - **No known modular-inversion *algorithm* beats a windowed binary GCD in the reversible setting.**
   Every published reversible 256-bit inverter is the same binary-GCD / Kaliski family, and the
-  best-documented ones cost **more** Toffoli than a well-tuned windowed binary GCD, not less.
+  best-documented ones cost **more** Toffoli than the windowed binary GCD used here, not less.
   Bernstein–Yang "safegcd"/divstep — the obvious classical speedup — is **explicitly rejected** for
   reversible use.
 - **A single affine point addition pays for two full modular inversions**, and this is irreducible:
@@ -19,19 +19,18 @@ literature (2017–2026). Sources are listed at the end; every quantitative clai
 - **Consequence — the single-addition score has a hard floor.** With a state-of-the-art ~629K-Toffoli
   inversion, one point addition costs ≈ 1.3M Toffoli, i.e. **≈ 1.5×10⁹ at ~1150 qubits.** A design
   already at that point is at the *standalone single-addition frontier*.
-- **No disclosed academic circuit reaches the "≈3× lower" frontier for a single addition — and the
-  best-documented ones are *worse* than ~1.5×10⁹.** Directly mining the disclosed **Schrottenloher
-  2026** circuit (its Qarton source is public) settles this: its full secp256k1 attack is **28
-  windowed point additions**, each **≈2^21.19 ≈ 2.34M Toffoli at 1192 qubits** (space-opt) or **1.82M
-  at 1446 qubits** (gate-opt), and **each addition still performs two full modular inversions** with
-  *no* inversion amortization. Its per-addition score is therefore **≈2.6–2.8×10⁹ — worse than a
-  design already near 1.5×10⁹.** (An earlier back-of-envelope "~140–180K per addition" was an
-  artifact of dividing the 70–90M full-attack total by a mis-estimated ~350–512 additions; the real
-  divisor is **28**, giving ~2.3–2.6M per addition.) So a well-tuned single-addition design already
-  **leads every disclosed academic circuit** (Schrottenloher, Babbush/Google), and the README's
-  "≈3× lower published frontier" (~5×10⁸) corresponds to **no disclosed standalone single-addition
-  circuit** — it is below the two-inversion floor and thus, if real, must rely on cross-addition
-  windowing a single-addition benchmark cannot use.
+- **No disclosed academic circuit reports a bare single-addition figure below the two-inversion cost.**
+  Mining the disclosed Schrottenloher 2026 circuit (Qarton source public): its full secp256k1 attack
+  is 28 windowed point additions, each about 2^21.19 (about 2.34M) Toffoli at 1192 qubits
+  (space-optimized) or about 1.82M at 1446 qubits (gate-optimized), and each addition performs two
+  full modular inversions with no cross-addition amortization. A windowed addition selects one of 2^16
+  precomputed multiples and includes a lookup table, so it is a heavier operation than one bare
+  addition; these are not bare single-addition scores. (An earlier back-of-envelope "about 140 to 180K
+  per addition" was an artifact of dividing the 70 to 90M full-attack total by a mis-estimated 350 to
+  512 additions; the real divisor is 28, giving about 2.3 to 2.6M per windowed addition.) The README's
+  "about 3x lower" target (about 5×10⁸) corresponds to no disclosed standalone single-addition circuit;
+  it is below the two-inversion cost and would require cross-addition windowing a single-addition
+  benchmark does not use.
 
 ## 1. The metric and the two-inversion floor
 
@@ -90,45 +89,48 @@ anyway [HJN+20, App. A.3].
   further notes that under a `qubits×Toffoli` cost function, trading qubits for a sub-2× Toffoli
   reduction *increases* the score [Lit23].
 
-## 4. What the disclosed circuits actually cost per addition (mined directly)
+## 4. What the disclosed circuits cost, and their scopes (mined directly)
 
-The ecdsa.fail README cites a published Pareto frontier ≈3× below a ~1.5×10⁹ single-addition score
-(so ≈5×10⁸). To pin down whether that is a *standalone* single-addition figure, we mined the one
-fully **disclosed** state-of-the-art circuit — Schrottenloher 2026, whose Qarton source is public
-(`gitlab.inria.fr/capsule/qarton-projects/ec-point-addition`). The numbers settle it:
+The ecdsa.fail README cites a published Pareto frontier about 3x below a ~1.5×10⁹ single-addition
+score (about 5×10⁸). To check whether that is a standalone single-addition figure, we mined the one
+fully disclosed circuit, Schrottenloher 2026, whose Qarton source is public
+(`gitlab.inria.fr/capsule/qarton-projects/ec-point-addition`).
 
-| disclosed circuit | Toffoli / point addition | qubits | per-add score | source |
+Published figures and their scopes. These are different operations or scopes, so they are not a
+direct score ranking:
+
+| figure | Toffoli | qubits | scope | source |
 |---|---|---|---|---|
-| **~1.5×10⁹-class single addition (reference)** | **~1.32M** | **1152** | **1.52×10⁹** | — |
-| Schrottenloher 2026, space-opt | 2^21.19 ≈ **2.34M** | 1192 | **2.79×10⁹** | [Sch26] |
-| Schrottenloher 2026, gate-opt | 2^20.83 ≈ **1.82M** | 1446 | **2.63×10⁹** | [Sch26] |
-| Babbush/Google "Circuit One" | 2.7M | 1175 | 3.2×10⁹ | [Bab26] |
-| Babbush/Google "Circuit Two" | 2.1M | 1425 | 3.0×10⁹ | [Bab26] |
+| this repository's circuit | ~1.32M | 1152 | one bare affine point addition (ecdsa.fail metric), reproduced locally | community frontier |
+| Schrottenloher 2026, space-opt | 2^21.19 ≈ 2.34M | 1192 | one windowed point addition (includes a 2^16 lookup table) | [Sch26] |
+| Schrottenloher 2026, gate-opt | 2^20.83 ≈ 1.82M | 1446 | one windowed point addition | [Sch26] |
+| Schrottenloher 2026, full attack (gate-opt) | 2^25.78 ≈ 57M | 1462 | full Shor attack, 28 windowed additions | [Sch26] |
+| Babbush/Google "Circuit One" | 2.7M | 1175 | resource estimate, circuit withheld behind a zero-knowledge proof | [Bab26] |
+| Babbush/Google "Circuit Two" | 2.1M | 1425 | resource estimate, circuit withheld behind a zero-knowledge proof | [Bab26] |
 
-**Every disclosed academic single-addition circuit scores worse than ~1.5×10⁹.** Key facts from the
-Schrottenloher circuit:
-- Its full secp256k1 attack is **28 windowed point additions** (not hundreds), total 2^26.11 ≈ 72M
-  Toffoli (space-opt) / 2^25.78 ≈ 57M (gate-opt) at ~1208–1462 qubits [Sch26].
-- **Each addition still performs two full modular inversions**, with no cross-addition amortization —
-  quote: *"each point addition performs 2 independent modular in-place multiplications."* Its
-  inversion is a binary Extended Euclidean Algorithm (~400 iterations, two-phase Euclid + Bézout),
-  costing ≈1.17M per inversion — **more** than a well-tuned ~629K binary GCD.
-- Its windowing is **windowed scalar multiplication** (window `w=16`, a `3·2^16`-Toffoli lookup table
-  per windowed step) — it reduces the *number* of additions in the full attack from ~512 to 28, but
-  does **not** make an individual addition cheaper; each windowed addition is *more* expensive than a
+Facts from the Schrottenloher circuit:
+- Its full secp256k1 attack is 28 windowed point additions (not hundreds), total 2^26.11 ≈ 72M Toffoli
+  (space-opt) / 2^25.78 ≈ 57M (gate-opt) at ~1208 to 1462 qubits [Sch26].
+- Each addition performs two full modular inversions, with no cross-addition amortization (quote:
+  *"each point addition performs 2 independent modular in-place multiplications"*). Its inversion is a
+  binary Extended Euclidean Algorithm (~400 iterations, two-phase Euclid + Bézout), about 1.17M per
+  inversion, higher than the ~629K of the binary GCD used here.
+- A windowed addition selects one of 2^16 precomputed multiples and includes a lookup table (about
+  3·2^16 Toffoli per windowed step). Windowing reduces the number of additions in the full attack from
+  ~512 to 28; it does not make an individual addition cheaper; each windowed addition is heavier than a
   bare one because of the lookup.
 
-**Correction to a common back-of-envelope.** An earlier inference put the disclosed per-addition cost
-at "~140–180K Toffoli" by dividing the 70–90M full-attack total by a mis-estimated ~350–512
-additions. The disclosed divisor is **28**, giving **~2.3–2.6M per addition** — an order of magnitude
-higher, and consistent with two full inversions per add. There is no disclosed per-addition figure
-below the two-inversion floor.
+Correction to a common back-of-envelope: an earlier inference put the disclosed per-addition cost at
+"~140 to 180K Toffoli" by dividing the 70 to 90M full-attack total by a mis-estimated ~350 to 512
+additions. The disclosed divisor is 28, giving about 2.3 to 2.6M per windowed addition, consistent
+with two full inversions per add.
 
-**Conclusion.** A single-addition design already near ~1.5×10⁹ **leads every disclosed academic
-circuit** and sits essentially at the two-inversion structural floor (§1). The README's "≈3× lower
-published frontier" (~5×10⁸) matches **no disclosed standalone single-addition circuit**; being below
-the two-inversion floor, it could only be reached via cross-addition windowing that a single-addition
-benchmark cannot use, or via an unpublished inversion far cheaper than anything in the literature.
+Conclusion: the disclosed figures are per-windowed-addition (Schrottenloher), the full 28-addition
+attack, or resource estimates with withheld circuits (Babbush); none is a bare single-addition figure
+directly comparable to ~1.32M / 1152. The README's "about 3x lower" target (about 5×10⁸) corresponds
+to no disclosed standalone single-addition circuit; being below the two-inversion cost, it would
+require cross-addition windowing a single-addition benchmark does not use, or an inversion with a
+lower reversible Toffoli count than any in the surveyed literature.
 
 ## 5. The one real lever (constant-factor, uncertain)
 
@@ -147,12 +149,14 @@ quick win.
 
 ## 6. Recommendation
 
-1. **Do not switch inversion algorithm or coordinate system** — binary GCD already beats the
-   literature (the disclosed Schrottenloher inversion is ≈1.17M, worse than ~629K), divstep is
-   rejected for reversible use, and projective coordinates lose the metric.
-2. **The disclosed frontier has now been mined (§4) and confirms the lead** — every disclosed
-   academic single-addition circuit scores worse than ~1.5×10⁹. A design already there is at the
-   two-inversion structural floor and leads Schrottenloher/Babbush.
+1. **Do not switch inversion algorithm or coordinate system.** In the surveyed literature the binary
+   GCD has a lower reversible Toffoli count than the disclosed alternatives (the Schrottenloher
+   inversion is about 1.17M, versus about 629K here), divstep is rejected for reversible use, and
+   projective coordinates cost more Toffoli and do not give Shor's required unique representation.
+2. **The disclosed figures have been mined (§4).** They are per-windowed-addition or full-attack
+   (Schrottenloher) or resource estimates with withheld circuits (Babbush), not bare single-addition
+   figures directly comparable to about 1.32M / 1152. The circuit here is at the two-inversion cost of
+   affine point addition.
 3. **The remaining constant-factor lever is real but small and unproven at a fixed peak.** Window-16
    out-of-place Montgomery multiplication (~150K Toffoli [Lit23]) and the HJN+20 swap-based Kaliski
    round could shave the *non-inversion* arithmetic and per-round inversion cost, but windowed
