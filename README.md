@@ -76,17 +76,26 @@ beatable.
 
 ### Optimization analysis (this fork)
 
-This fork's circuit reaches **~1,320,763 Toffoli × 1,152 qubits ≈ 1.52 × 10⁹** — below both
-reference Pareto points above. A systematic optimization campaign (documented in [`docs/`](docs/))
-concluded that this sits at the **structural floor** for a standalone affine point addition and
-**leads every disclosed academic single-point-addition circuit** (Schrottenloher 2026: 2.6–2.8 × 10⁹;
-Google/Babbush "Circuit One/Two": 3.0–3.2 × 10⁹). ~95% of the budget is the two modular inversions
-that reversible affine point addition provably requires, and no known inversion algorithm beats the
-windowed binary GCD used here.
+The circuit in this repository is the community-contributed frontier from the challenge. It was
+reproduced and validated locally at about 1,320,763 Toffoli × 1,152 qubits (about 1.52 × 10⁹) for one
+bare affine point addition, which is below both reference Pareto points above. The circuit itself is
+not this fork's work; the work here is the profiling and the analysis of which optimizations are
+available, in [`docs/`](docs/).
 
-Start with **[`docs/CONCLUSION.md`](docs/CONCLUSION.md)** for the full verdict, the table of every
-lever tried, the literature/frontier research, and the one remaining research-scale lever (jump-k
-GCD). See [`docs/`](docs/) for the detailed per-component analyses.
+The analysis found no available lever that lowers the score. About 95% of the budget is the two
+modular inversions that reversible affine point addition requires, and no modular-inversion algorithm
+in the surveyed literature has a lower reversible Toffoli count than the windowed binary GCD used here.
+
+Published figures for related work are for different operations or scopes and are not directly
+comparable to one bare addition: Schrottenloher 2026 reports per-windowed-addition and full-attack
+figures (a windowed addition includes a 2^16-entry lookup table), and the Google/Babbush figures are
+resource estimates with the circuits withheld behind a zero-knowledge proof. See
+[`docs/quantum-inversion-frontier-research.md`](docs/quantum-inversion-frontier-research.md) for the
+scopes.
+
+Start with [`docs/CONCLUSION.md`](docs/CONCLUSION.md) for the full write-up: the levers tried, the
+literature research, and the remaining research-scale option (a jump-k GCD engine). See
+[`docs/`](docs/) for the detailed per-component analyses.
 
 ---
 
