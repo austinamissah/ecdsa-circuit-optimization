@@ -69,10 +69,10 @@ run fail, not faster.
 | Google's private low-qubit Pareto point | 2,700,000 | 1,175 | 3.2 × 10⁹ |
 | Google's private low-gate Pareto point | 2,100,000 | 1,425 | 3.0 × 10⁹ |
 
-We've run a research loop that has cut the score by ~33× from the textbook baseline.
-The published Pareto frontier sits roughly **3× lower still**. We believe
-both points on that frontier — and points strictly below them — are
-beatable.
+The upstream challenge README states that a research loop cut the score about 33× from the textbook
+baseline, that the published Pareto frontier sits about 3× lower still, and that its authors believe
+both points on that frontier and points below them are beatable. Those are the upstream authors'
+claims. This fork's own analysis is in the next section.
 
 ### Optimization analysis (this fork)
 
@@ -83,8 +83,10 @@ not this fork's work; the work here is the profiling and the analysis of which o
 available, in [`docs/`](docs/).
 
 The analysis found no available lever that lowers the score. About 95% of the budget is the two
-modular inversions that reversible affine point addition requires, and no modular-inversion algorithm
-in the surveyed literature has a lower reversible Toffoli count than the windowed binary GCD used here.
+modular inversions that reversible affine point addition requires. In the literature surveyed in
+[`docs/quantum-inversion-frontier-research.md`](docs/quantum-inversion-frontier-research.md), no
+reversible modular-inversion implementation has a lower Toffoli count than the windowed binary GCD
+used here.
 
 Published figures for related work are for different operations or scopes and are not directly
 comparable to one bare addition: Schrottenloher 2026 reports per-windowed-addition and full-attack

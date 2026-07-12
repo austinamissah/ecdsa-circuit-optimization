@@ -12,10 +12,10 @@ The circuit runs at about 1.32M Toffoli times 1152 qubits (about 1.52e9) for one
 addition, which is the operation the ecdsa.fail harness scores. That is below both reference Pareto
 points listed in the top-level README. The analysis found no available lever that lowers the score:
 each lever tried was a dead end, a measured regression, or a correctness break. About 95% of the
-Toffoli budget is two modular inversions, which reversible affine point addition requires. No
-modular-inversion algorithm in the surveyed literature has a lower reversible Toffoli count than the
-windowed binary GCD used here. The remaining option is a ground-up rewrite of the inversion (a jump-k
-GCD engine) with an uncertain ceiling.
+Toffoli budget is two modular inversions, which reversible affine point addition requires. In the
+literature surveyed in `quantum-inversion-frontier-research.md`, no reversible modular-inversion
+implementation has a lower Toffoli count than the windowed binary GCD used here. The remaining option
+is a ground-up rewrite of the inversion (a jump-k GCD engine) with an uncertain ceiling.
 
 The published figures cited below are for different operations or scopes than one bare affine point
 addition, so a direct score ranking is not like-for-like. Scopes are stated in "Comparison to
@@ -65,8 +65,10 @@ one bare affine point addition, so they are not a direct score ranking.
   metric).
 - Schrottenloher 2026 (arXiv 2606.02235): the disclosed per-windowed-addition figures are 2^21.19
   (about 2.34M) Toffoli at 1192 qubits (space-optimized) and 2^20.83 (about 1.82M) Toffoli at 1446
-  qubits (gate-optimized). A windowed addition selects one of 2^16 precomputed multiples and includes
-  a lookup table (about 3 times 2^16 Toffoli), so it is a heavier operation than one bare addition.
+  qubits (gate-optimized). A windowed addition selects one of 2^w = 2^16 precomputed multiples (window
+  w = 16) and uses table lookups; the paper states a lookup of 2^w values costs 2^w Toffoli, and the
+  per-addition formula includes 3 times 2^16 Toffoli of lookup, so it is a heavier operation than one
+  bare addition.
   The widely cited 2^25.78 Toffoli / 1462 qubit figure is the full Shor attack on secp256k1 (28
   windowed additions), not one addition. Its per-addition claim is about 6.5 to 10% fewer Toffoli and
   about 1.5% more qubits than Babbush et al. Each addition performs two full modular inversions with
@@ -87,8 +89,9 @@ that a single-addition benchmark does not use.
   Clifford plus Toffoli only, with no rotation or T gate, so Fourier-basis arithmetic is not
   expressible.
 - Clifford-is-free exploitation (only CCX/CCZ are counted): the measurement-vent trick already
-  converts every ventable AND into Clifford gates, which is why this inversion is about 629K rather
-  than the roughly 1.7M of the surveyed Kaliski implementations. It is already applied.
+  converts every ventable AND into Clifford gates, which is why this inversion is about 629K (measured;
+  see `profiling-notes.md`) rather than the roughly 1.7M of the surveyed Kaliski implementations
+  (Litinski, Qualtran; see `quantum-inversion-frontier-research.md`). It is already applied.
 - Cheap-multiply uncompute of the second inversion: does not work because the inputs are overwritten
   by the outputs, so λ can only be re-derived as a division of the outputs.
 - Inversion-free projective/Jacobian coordinates: cost more Toffoli than two affine inversions, and do
@@ -109,9 +112,10 @@ minutes. Everything cheaper than this was tried and did not lower the score.
 
 The circuit sits at the two-inversion cost of reversible affine point addition, in a gate model
 (Clifford plus Toffoli, no rotations) that does not admit the Fourier-arithmetic shortcut. In the
-surveyed literature no modular-inversion algorithm has a lower reversible Toffoli count than the binary
-GCD used here. Lowering the score further would require a research-scale change, most plausibly a
-jump-k GCD engine, rather than tuning of the current circuit.
+literature surveyed in `quantum-inversion-frontier-research.md`, no reversible modular-inversion
+implementation has a lower Toffoli count than the binary GCD used here. Lowering the score further
+would require a research-scale change, most plausibly a jump-k GCD engine, rather than tuning of the
+current circuit.
 
 ---
 
