@@ -9,8 +9,10 @@ frontier comparison, and the one remaining research-scale lever.
 ## Frontier & literature research
 - [`quantum-inversion-frontier-research.md`](quantum-inversion-frontier-research.md) — multi-source,
   adversarially-verified survey of reversible modular-inversion circuits and quantum-ECDLP resource
-  estimates, plus a direct mining of Schrottenloher 2026's disclosed circuit. Establishes that this
-  design leads every disclosed single-point-addition circuit.
+  estimates, plus a direct mining of Schrottenloher 2026's disclosed circuit. Records the published
+  figures and their scopes (per-windowed-addition and full-attack figures for Schrottenloher;
+  resource estimates with withheld circuits for Google/Babbush), which are not directly comparable to
+  one bare affine point addition.
 
 ## Per-component analyses
 - [`profiling-notes.md`](profiling-notes.md) — where the Toffolis go (per-phase breakdown; ~95% is
