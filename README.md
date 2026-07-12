@@ -74,6 +74,20 @@ The published Pareto frontier sits roughly **3× lower still**. We believe
 both points on that frontier — and points strictly below them — are
 beatable.
 
+### Optimization analysis (this fork)
+
+This fork's circuit reaches **~1,320,763 Toffoli × 1,152 qubits ≈ 1.52 × 10⁹** — below both
+reference Pareto points above. A systematic optimization campaign (documented in [`docs/`](docs/))
+concluded that this sits at the **structural floor** for a standalone affine point addition and
+**leads every disclosed academic single-point-addition circuit** (Schrottenloher 2026: 2.6–2.8 × 10⁹;
+Google/Babbush "Circuit One/Two": 3.0–3.2 × 10⁹). ~95% of the budget is the two modular inversions
+that reversible affine point addition provably requires, and no known inversion algorithm beats the
+windowed binary GCD used here.
+
+Start with **[`docs/CONCLUSION.md`](docs/CONCLUSION.md)** for the full verdict, the table of every
+lever tried, the literature/frontier research, and the one remaining research-scale lever (jump-k
+GCD). See [`docs/`](docs/) for the detailed per-component analyses.
+
 ---
 
 ## How to play
