@@ -132,10 +132,10 @@ Using the ECDSA Fail CLI:
    ecdsafail submit
    ```
 
-The platform only accepts a submission that lowers the score. A run that
-reproduces the current best without improving on it still builds, validates,
-and scores correctly, but it is not accepted. The bar is beating the current
-frontier, not matching it.
+The leaderboard moves only when a submission lowers the score. A run that
+matches the current best still builds, validates, and scores correctly; to
+move the leaderboard, the aim is to improve on the current frontier rather
+than match it.
 
 You can also run the harness directly:
 
