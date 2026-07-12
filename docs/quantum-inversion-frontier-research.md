@@ -1,4 +1,4 @@
-# How low can a single reversible secp256k1 point addition go? — a literature-grounded frontier analysis
+# How low can a single reversible secp256k1 point addition go?, a literature-grounded frontier analysis
 
 A research synthesis on the cost floor of a reversible elliptic-curve point addition scored by
 **Toffoli count × peak qubit width** (the ecdsa.fail metric), and on which algorithmic levers can and
@@ -7,16 +7,16 @@ literature (2017–2026). Sources are listed at the end; every quantitative clai
 
 ## TL;DR
 
-- **No known modular-inversion *algorithm* beats a windowed binary GCD in the reversible setting.**
-  Every published reversible 256-bit inverter is the same binary-GCD / Kaliski family, and the
-  best-documented ones cost **more** Toffoli than the windowed binary GCD used here, not less.
-  Bernstein–Yang "safegcd"/divstep — the obvious classical speedup — is **explicitly rejected** for
-  reversible use.
+- **In the surveyed literature, no reversible 256-bit modular-inversion implementation has a lower
+  Toffoli count than a windowed binary GCD.** Every published reversible 256-bit inverter is the same
+  binary-GCD / Kaliski family, and the best-documented ones cost more Toffoli than the windowed binary
+  GCD used here, not less. Bernstein-Yang safegcd/divstep, a faster classical modular inversion, is
+  rejected for reversible use (see §2).
 - **A single affine point addition pays for two full modular inversions**, and this is irreducible:
   projective/Jacobian coordinates lose in Shor's setting, and Montgomery batch-inversion needs a
   batch (a single addition is a batch of one). So the Toffoli cost of one point addition is
   **floored at ≈ 2 × (one inversion)**, which is where ~95% of the budget sits.
-- **Consequence — the single-addition score has a hard floor.** With a state-of-the-art ~629K-Toffoli
+- **Consequence, the single-addition score has a hard floor.** With a state-of-the-art ~629K-Toffoli
   inversion, one point addition costs ≈ 1.3M Toffoli, i.e. **≈ 1.5×10⁹ at ~1150 qubits.** A design
   already at that point is at the *standalone single-addition frontier*.
 - **No disclosed academic circuit reports a bare single-addition figure below the two-inversion cost.**
@@ -39,52 +39,53 @@ The score is `avg_executed_Toffoli × peak_qubits`. Affine EC point addition com
 division is done by inverting into an auxiliary register, multiplying, and then **inverting again** to
 clean the auxiliary register (Bennett/pebbling), one addition contains **two full modular inversions**
 plus a squaring, two multiplications, and a handful of additions [HJN+20]. The two inversions
-dominate — typically ~95% of the Toffoli budget.
+dominate, typically ~95% of the Toffoli budget.
 
 So, for any inversion of cost `I` Toffoli, one point addition is floored near `2·I` Toffoli. With the
 best documented reversible inversion (~629K, see §2) that is ≈ **1.26M Toffoli of inversion + ~60K
 squaring + multiplies ≈ 1.3M total**, i.e. **≈ 1.5×10⁹ at ~1150 qubits.** This is not a tuning
 artifact; it is structural. Beating it *within the single-addition metric* requires one of: (a) an
 inversion materially cheaper than any known, (b) doing the addition with fewer than two full
-inversions, or (c) the same Toffoli count at drastically lower peak width — and §2–§4 show all three
+inversions, or (c) the same Toffoli count at drastically lower peak width, and §2–§4 show all three
 are ruled out by the current literature.
 
-## 2. Inversion-algorithm comparison — binary GCD already wins
+## 2. Inversion-algorithm comparison, binary GCD already wins
 
 Every disclosed reversible 256-bit modular inverter is a **round-based Kaliski / binary-extended-
-Euclidean (Montgomery-inverse)** circuit run for a fixed `2n = 512` rounds — the same family as a
+Euclidean (Montgomery-inverse)** circuit run for a fixed `2n = 512` rounds, the same family as a
 windowed binary GCD. Concrete costs:
 
 | inverter (256-bit, reversible) | Toffoli / inversion | qubit / notes | source |
 |---|---|---|---|
-| Windowed binary GCD (well-tuned) | **~629K** | reference point | — |
+| Windowed binary GCD (this circuit, measured) | **~629K** | reference point | `profiling-notes.md` |
 | Litinski 2023 (Kaliski + windowing) | 26n²+2n ≈ **1.70M** | "over 10× a multiplication" | [Lit23] |
 | Qualtran implementation | 26n²+9n−1 ≈ **1.71M** | 4 inversions / add | [Qualtran] |
 | Häner–Jaques–Naehrig–Roetteler–Soeken (RNSL-refined) | ~2n-round Kaliski | ≈2.35M/add space-opt, 1192 q | [HJN+20] |
-| Luo et al. 2026 (space-efficient EEA) | 204n²log₂n ≈ **1.07×10⁸** | ~800 q — trades Toffoli for width | [Luo26] |
-| Bernstein–Yang divstep / safegcd | — | **rejected for reversible** (see below) | [BY19],[HJN+20] |
+| Luo et al. 2026 (space-efficient EEA) | 204n²log₂n ≈ **1.07×10⁸** | ~800 q, trades Toffoli for width | [Luo26] |
+| Bernstein–Yang divstep / safegcd | n/a | **rejected for reversible** (see below) | [BY19],[HJN+20] |
 
-Two takeaways: (1) a well-tuned windowed binary GCD at ~629K is **already better than every published
-number**; (2) the space-efficient designs go the *wrong way* for this metric — Luo et al. cut qubits
-to ~800 but raise Toffoli ~170×, which is a large **loss** on Toffoli×qubit.
+Two points: (1) the windowed binary GCD used here (about 629K, measured; see `profiling-notes.md`)
+has a lower Toffoli count than every published inverter in this table; (2) the space-efficient designs
+go the wrong way for this metric: Luo et al. cut qubits to about 800 but raise Toffoli about 170 times,
+which is a loss on Toffoli times qubit.
 
 **Bernstein–Yang is a dead end here.** safegcd/divstep is a branchless, constant-time Euclid variant
 that beats Fermat's method on *classical* CPUs, but the advantage does not transfer to reversible
 circuits: HJN+20 evaluated it and rejected it because divstep needs an **in-place 2×2 quantum matrix
-multiplication for which no efficient reversible circuit is known** — each recursion spawns fresh
-ancilla that overwhelm the qubit budget — and its base case "is nearly identical to one Kaliski round"
+multiplication for which no efficient reversible circuit is known**, each recursion spawns fresh
+ancilla that overwhelm the qubit budget, and its base case "is nearly identical to one Kaliski round"
 anyway [HJN+20, App. A.3].
 
 ## 3. The second inversion is irreducible
 
 - **Projective / Jacobian coordinates do not win in Shor's setting.** Shor requires a *unique* point
   representation for correct interference; projective coordinates are non-unique, and recovering
-  uniqueness needs a division (i.e. an inversion) — "it is an open problem to provide a unique
+  uniqueness needs a division (i.e. an inversion), "it is an open problem to provide a unique
   projective representation with division-free arithmetic" [HJN+20]. For prime fields, projective
   arithmetic also loses the metric outright (Weierstrass projective ~1327n²+1008n, Edwards projective
   ~685n²+392n, vs affine ~432n², plus more qubits) [HJN+20],[Coord25].
 - **Montgomery batch inversion does not help a single addition.** It inverts `k` values with `3k−3`
-  multiplications + 1 inversion — a per-inversion win only *asymptotically in the batch size*. A
+  multiplications + 1 inversion, a per-inversion win only *asymptotically in the batch size*. A
   single reversible point addition is a **batch of one**, so there is no amortization; Litinski
   further notes that under a `qubits×Toffoli` cost function, trading qubits for a sub-2× Toffoli
   reduction *increases* the score [Lit23].
@@ -113,10 +114,13 @@ Facts from the Schrottenloher circuit:
   (space-opt) / 2^25.78 ≈ 57M (gate-opt) at ~1208 to 1462 qubits [Sch26].
 - Each addition performs two full modular inversions, with no cross-addition amortization (quote:
   *"each point addition performs 2 independent modular in-place multiplications"*). Its inversion is a
-  binary Extended Euclidean Algorithm (~400 iterations, two-phase Euclid + Bézout), about 1.17M per
-  inversion, higher than the ~629K of the binary GCD used here.
-- A windowed addition selects one of 2^16 precomputed multiples and includes a lookup table (about
-  3·2^16 Toffoli per windowed step). Windowing reduces the number of additions in the full attack from
+  binary Extended Euclidean Algorithm of about 1.413n ≈ 361 iterations [Sch26]. The paper does not
+  give an isolated per-inversion Toffoli count, so no per-inversion comparison to the ~629K here is
+  drawn.
+- A windowed addition selects one of 2^w = 2^16 precomputed multiples (window w = 16) and uses table
+  lookups; the paper states a lookup of 2^w values costs 2^w Toffoli, and the per-addition formula
+  includes 3·2^16 Toffoli of lookup [Sch26]. Windowing reduces the number of additions in the full
+  attack from
   ~512 to 28; it does not make an individual addition cheaper; each windowed addition is heavier than a
   bare one because of the lookup.
 
@@ -138,11 +142,11 @@ If any single-addition improvement is available, the literature points to **wind
 arithmetic inside the existing affine + two-inversion structure**, not a new inversion algorithm or
 coordinate system:
 - **Windowed out-of-place Montgomery multiplication**, ~2.25n²+9n ≈ **150K Toffoli** at window size 16
-  [Lit23] — cheaper internal multiplies for the point-addition's non-inversion arithmetic.
+  [Lit23], cheaper internal multiplies for the point-addition's non-inversion arithmetic.
 - **The HJN+20 swap-based single-round Kaliski reformulation**, folding the pseudo-inverse doubling
-  correction into the division rounds [HJN+20] — a cheaper per-round inversion primitive.
+  correction into the division rounds [HJN+20], a cheaper per-round inversion primitive.
 
-These attack *constant factors*, and their benefit at a **fixed peak-qubit cap is unproven** — windowed
+These attack *constant factors*, and their benefit at a **fixed peak-qubit cap is unproven**, windowed
 multiplication needs precomputed lookup tables (more qubits), and a design already at its width cap
 cannot spend them for free. This is a research/prototyping direction with an uncertain ceiling, not a
 quick win.
@@ -150,9 +154,10 @@ quick win.
 ## 6. Recommendation
 
 1. **Do not switch inversion algorithm or coordinate system.** In the surveyed literature the binary
-   GCD has a lower reversible Toffoli count than the disclosed alternatives (the Schrottenloher
-   inversion is about 1.17M, versus about 629K here), divstep is rejected for reversible use, and
-   projective coordinates cost more Toffoli and do not give Shor's required unique representation.
+   GCD used here (about 629K, measured) has a lower Toffoli count than the published inverters with
+   stated per-inversion figures (Litinski about 1.70M, Qualtran about 1.71M; §2). Divstep is rejected
+   for reversible use, and projective coordinates cost more Toffoli and do not give Shor's required
+   unique representation.
 2. **The disclosed figures have been mined (§4).** They are per-windowed-addition or full-attack
    (Schrottenloher) or resource estimates with withheld circuits (Babbush), not bare single-addition
    figures directly comparable to about 1.32M / 1152. The circuit here is at the two-inversion cost of
@@ -172,7 +177,7 @@ quick win.
 
 - Babbush/Google's optimized circuit is **not fully disclosed** (a zero-knowledge validation was
   published), so its per-inversion vs per-multiplication breakdown is *inferred*, and the ~140–180K
-  per-addition figure is `total Toffoli ÷ estimated windowed-addition count` — order-of-magnitude, not
+  per-addition figure is `total Toffoli ÷ estimated windowed-addition count`, order-of-magnitude, not
   exact. Schrottenloher's disclosed circuit is the reliable proxy.
 - The claim that Babbush beats Litinski "2–3× in both gate and qubit count" was **refuted** in
   verification; the disclosed delta is a large Toffoli reduction with comparable/modest qubit change.
@@ -194,7 +199,7 @@ quick win.
 - **[Bab26]** Babbush et al. (Google Quantum AI), *Securing Elliptic Curve Cryptocurrencies against
   Quantum Vulnerabilities: Resource Estimates and Mitigations*, IACR ePrint 2026/625 (2026).
 - **[Sch26]** Schrottenloher, *Optimized Point Addition Circuits for Elliptic Curve Discrete
-  Logarithms*, arXiv:2606.02235 / ePrint 2026/1128 (2026) — disclosed circuit, Qarton source at
+  Logarithms*, arXiv:2606.02235 / ePrint 2026/1128 (2026), disclosed circuit, Qarton source at
   `gitlab.inria.fr/capsule/qarton-projects/ec-point-addition`.
 - **[Luo26]** Luo et al., *Space-efficient reversible ECDLP (refined Proos–Zalka register sharing)*,
   arXiv:2604.02311 (2026).

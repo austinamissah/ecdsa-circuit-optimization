@@ -14,7 +14,7 @@ sites; no changes proposed. All values below are the exact table contents as of 
 | `GAP_J2` | **258 entries** (`&[u16]`) | `schedule.rs:24` |
 
 **Both tables are length 258 = `ITERS`, indexed directly by iteration `i ∈ 0..258`.** They are
-**not** the 1032-length structure — that length belongs to the *other* schedule tables
+**not** the 1032-length structure, that length belongs to the *other* schedule tables
 (`GCD_SUB_K`, `GCD_BRANCH`, both `[…;1032]` = 4×258, one entry per iteration-step across the 4
 sweeps). `SCHED_J2`/`GAP_J2` are per-iteration (258), and the same index `i` is reused unchanged in
 both the forward and the reverse sweep (see §3), so all 4 sweeps read the same 258-long schedule.
@@ -70,7 +70,7 @@ Index shown in `[]` at the start of each row, 16 values per row.
 There is exactly one consumer of each table, in `gcd.rs`, and it appears once per sweep
 (forward + reverse), both using the same index `i`:
 
-### `SCHED_J2[i]` → `current_n` — the live bit-width of the `u` and `v` GCD registers
+### `SCHED_J2[i]` → `current_n`, the live bit-width of the `u` and `v` GCD registers
 ```
 gcd.rs:753  (forward)   let current_n = (SCHED_J2[i] as usize).max(1);
 gcd.rs:999  (reverse)   let current_n = (SCHED_J2[i] as usize).max(1);
@@ -88,7 +88,7 @@ operand width of every arithmetic op that iteration:
 
 So `SCHED_J2[i]` scales the Toffoli cost of the shift, compare, and body steps at iteration `i`.
 
-### `GAP_J2[i]` → `cmp_eff` — the truncated operand width of the swap-decision comparator
+### `GAP_J2[i]` → `cmp_eff`, the truncated operand width of the swap-decision comparator
 ```
 gcd.rs:763  (forward)   let cmp_eff = (GAP_J2[i] as usize).min(current_n).max(1);
 gcd.rs:1006 (reverse)   let cmp_eff = (GAP_J2[i] as usize).min(current_n).max(1);
@@ -97,7 +97,7 @@ gcd.rs:1006 (reverse)   let cmp_eff = (GAP_J2[i] as usize).min(current_n).max(1)
 (`gcd.rs:788-795`, forward) and to `swap_decision_uncompute_vented` (`gcd.rs:1129-1137`, reverse).
 Inside `controlled_swap_decision_lt_truncated` (`comparator.rs:768`) it selects the **top `cmp_eff`
 limbs** of `u`/`v` for the `v < u` comparison that produces the swap-decision bit. So `GAP_J2[i]`
-controls **how many high limbs the comparator looks at** — i.e. the comparator's operand width,
+controls **how many high limbs the comparator looks at**, i.e. the comparator's operand width,
 independent of (but clamped to) the full register width.
 
 **Clamp note:** `cmp_eff = min(GAP_J2[i], current_n)`. Whenever `GAP_J2[i] > SCHED_J2[i]` the raw
@@ -245,33 +245,33 @@ side-by-side halves: left is `i = 0…128`, right is `i = 129…257`.
 
 ## 5. Shape, in words (describing the actual numbers only)
 
-### SCHED_J2 — starts at 256, monotonically non-increasing to 11
+### SCHED_J2, starts at 256, monotonically non-increasing to 11
 - **Non-increasing across the whole table** (verified: `SCHED_J2[i] ≥ SCHED_J2[i+1]` for all `i`).
   Range is 256 (start) down to 11 (end); never rises.
 - **Flat plateau at the top:** `i = 0…10` are all `256` (11 entries).
 - **Long unit-decrement region:** from `i = 10` the value falls by exactly 1 per step for a long
-  run — `256→255→…→173` — the largest contiguous unit-step run is `i ≈ 10…93` (≈83 steps), and a
+  run, `256→255→…→173`, the largest contiguous unit-step run is `i ≈ 10…93` (≈83 steps), and a
   second long unit-step run spans `i ≈ 146…237` (≈91 steps: `120→…→29`).
 - **A middle region with occasional 2-drops and repeats:** roughly `i ≈ 93…145` the decrement is no
-  longer pure unit steps — it mixes single-decrements with **repeats** (consecutive equal values at
+  longer pure unit steps, it mixes single-decrements with **repeats** (consecutive equal values at
   i = 93, 100, 102, 106, 109, 121, 125, 140, 144, e.g. `173,173` and `166,166`) and **drops of 2**
   (at i = 95, 101, 105, 108, 116, 124, 134, 143, 145, e.g. `172→170`, `166→164`). Net effect: it
   still trends down but a little faster than one-per-step through this band.
-- **Accelerated tail:** near the end the drops enlarge — a drop of 3 at `i = 237` (`29→26`) and
-  drops of 2 at i = 253 and 255 — plus repeats (`21,21`; `20,20`; `17,17`; `16,16,16`; `14,14`)
+- **Accelerated tail:** near the end the drops enlarge, a drop of 3 at `i = 237` (`29→26`) and
+  drops of 2 at i = 253 and 255, plus repeats (`21,21`; `20,20`; `17,17`; `16,16,16`; `14,14`)
   before ending `12, 11`.
 
 Summary: an 11-wide plateau at 256, then a predominantly one-bit-per-iteration decline (with a
 mildly-faster textured band around i≈93–145 and a slightly accelerated final ~20 iterations),
 bottoming at 11.
 
-### GAP_J2 — rises from 23 to a peak of 54, then falls to 12 (NOT monotonic)
+### GAP_J2, rises from 23 to a peak of 54, then falls to 12 (NOT monotonic)
 - **Not monotonic.** It **rises** over roughly `i = 0…198`, from `23` to its maximum `54` (peak at
   `i = 198`), then **falls** over `i = 198…257` back down to `12`.
-- **Rise region (`i ≈ 0…198`):** upward overall but noisy — it climbs in small increments with
+- **Rise region (`i ≈ 0…198`):** upward overall but noisy, it climbs in small increments with
   frequent ±1 wobble (160 non-decreasing steps vs 38 small dips). It moves through the low-20s at
   the start, into the 30s by `i ≈ 10–30`, the 40s by `i ≈ 100`, and the low-50s / 54 near the peak.
-- **Fall region (`i ≈ 198…257`):** essentially a clean monotone descent — nearly every step is
+- **Fall region (`i ≈ 198…257`):** essentially a clean monotone descent, nearly every step is
   non-increasing (57 of 59 steps down), from `54` at the peak to `12` at the end (`54→53→…→13→12`,
   with small flats like `22,22`, `18,18`, `17,17,17`, `15,15`).
 - **Interaction with the clamp:** because `cmp_eff = min(GAP_J2, SCHED_J2)` and `SCHED_J2` is

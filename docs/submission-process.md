@@ -14,7 +14,7 @@ The only documented workflow is in **`README.md:80-115`** ("How to play"), using
 # 1. Install the CLI  (README.md:86)
 curl -fsSL https://api.ecdsa.fail/install.sh | sh
 
-# 2. Create an API key from the top-right menu   (README.md:90 — web UI step, not a command)
+# 2. Create an API key from the top-right menu   (README.md:90, web UI step, not a command)
 
 # 3. Log in  (README.md:93)
 ecdsafail login <api-key>
@@ -30,19 +30,19 @@ ecdsafail submit
 ```
 
 There is also a **local-only** path (not a submission): `cargo run --release -- --note "what I tried"`
-(`README.md:113`) — it "builds the circuit, validates it, scores it, and appends one
+(`README.md:113`), it "builds the circuit, validates it, scores it, and appends one
 row to `results.tsv` … writes `score.json`". This is the local harness, equivalent to
 `benchmark.sh`; it does **not** talk to the platform.
 
 ## 2. Authentication
 
 - **Mechanism:** an **API key**, passed to `ecdsafail login`:
-  > `ecdsafail login <api-key>` — `README.md:93`
+  > `ecdsafail login <api-key>`, `README.md:93`
 
-  (`<api-key>` is the README's own literal placeholder — you substitute your real key
+  (`<api-key>` is the README's own literal placeholder, you substitute your real key
   when you type the command.)
-- **Where the key comes from:** created in the web UI —
-  > "Create an API key from the top-right menu." — `README.md:90`
+- **Where the key comes from:** created in the web UI,
+  > "Create an API key from the top-right menu.", `README.md:90`
 - **Where the credential is stored / how it is sent on the wire:** **the repo does not say.**
   The `ecdsafail` CLI is not part of this repo (it is installed separately via the curl
   script), so there is no config-path, environment-variable, HTTP-header, or token-file
@@ -56,16 +56,16 @@ row to `results.tsv` … writes `score.json`". This is the local harness, equiva
 ## 3. How the CLI is installed
 
 It **is a curl-pipe-to-shell**:
-> `curl -fsSL https://api.ecdsa.fail/install.sh | sh` — `README.md:86`
+> `curl -fsSL https://api.ecdsa.fail/install.sh | sh`, `README.md:86`
 
 The script at `https://api.ecdsa.fail/install.sh` is **not vendored in this repo**, so it
-cannot be read here — fetch and read it before piping it to `sh`. The README also adds a
+cannot be read here, fetch and read it before piping it to `sh`. The README also adds a
 general caution:
-> "Benchmarks are run in hardened processes and we recommend using caution when running." — `README.md:148`
+> "Benchmarks are run in hardened processes and we recommend using caution when running.", `README.md:148`
 
 ## 4. What artifact gets submitted, and where scoring happens
 
-The CLI is not in the repo, so `submit`'s exact payload is not documented in prose — but
+The CLI is not in the repo, so `submit`'s exact payload is not documented in prose, but
 the **git history is strongly indicative**. Every accepted submission appears as a commit:
 
 ```
@@ -86,7 +86,7 @@ That matches the editable/frozen contract in **`README.md:126-136`**:
 > `Cargo.toml`, `Cargo.lock`, `rust-toolchain` … `results.tsv`."
 
 **Inference (flagged as inference, not stated):** the submitted artifact is your
-**`src/point_add/` source**, and the platform **rebuilds and scores server-side** —
+**`src/point_add/` source**, and the platform **rebuilds and scores server-side**,
 because `ops.bin` and `score.*` are **gitignored** (`.gitignore:5-7`: `score.*`,
 `ops.bin`) and never appear in the accept-submission commits. So the local
 `ops.bin`/`score.json` are clearly *not* what gets uploaded; the server reconstructs them
@@ -95,27 +95,27 @@ well-supported inference to confirm on the site.
 
 ## 5. Account / registration step
 
-Partially implied, not spelled out. Step 2 — "Create an API key from the **top-right menu**"
-(`README.md:90`) — presupposes you already have a **web account logged into ecdsa.fail**
+Partially implied, not spelled out. Step 2, "Create an API key from the **top-right menu**"
+(`README.md:90`), presupposes you already have a **web account logged into ecdsa.fail**
 (there is a UI with a top-right menu). The repo describes **no sign-up/registration flow**
 at all. So there is an out-of-CLI web step (log in / reach the menu to mint the key), but
-how you create the account itself is not covered by the repo — check ecdsa.fail directly.
+how you create the account itself is not covered by the repo, check ecdsa.fail directly.
 
 ## What the repo does NOT make clear (verify on ecdsa.fail / the CLI)
 
 1. **Where `ecdsafail login` stores the API key** (config file path, environment variable,
-   or keyring) — nothing in-repo. Check `ecdsafail login --help` or `install.sh`.
-2. **The exact contents of `install.sh`** — not vendored; read it before running the pipe.
-3. **`run` vs `submit` semantics** — whether `ecdsafail run` scores locally and `submit`
+   or keyring), nothing in-repo. Check `ecdsafail login --help` or `install.sh`.
+2. **The exact contents of `install.sh`**, not vendored; read it before running the pipe.
+3. **`run` vs `submit` semantics**, whether `ecdsafail run` scores locally and `submit`
    uploads, what `submit`'s payload is, and whether it requires a clean/committed tree.
    Only inferable, not stated.
-4. **Server-side rebuild + scoring** — strongly inferred from gitignored artifacts plus
+4. **Server-side rebuild + scoring**, strongly inferred from gitignored artifacts plus
    source-only accept commits, but not explicitly documented.
-5. **Account registration** — the web sign-up step preceding "create an API key" is not
+5. **Account registration**, the web sign-up step preceding "create an API key" is not
    described.
 6. **Minor doc drift (not a blocker):** the README refers to `src/main.rs` and
    `cargo run --release -- --note` (`README.md:113,131`), but this repo has **no
-   `src/main.rs`** — the actual binaries are `src/bin/build_circuit.rs` and
+   `src/main.rs`**, the actual binaries are `src/bin/build_circuit.rs` and
    `src/bin/eval_circuit.rs` (`Cargo.toml:9-15`), driven by `benchmark.sh`. So the
    README's local-run command may not work as written; the CLI's `ecdsafail clone`
    presumably provisions whatever layout it expects, which could differ from this checkout.
