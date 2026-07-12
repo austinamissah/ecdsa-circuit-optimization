@@ -132,6 +132,11 @@ Using the ECDSA Fail CLI:
    ecdsafail submit
    ```
 
+The platform only accepts a submission that lowers the score. A run that
+reproduces the current best without improving on it still builds, validates,
+and scores correctly, but it is not accepted. The bar is beating the current
+frontier, not matching it.
+
 You can also run the harness directly:
 
 ```bash
