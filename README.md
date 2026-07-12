@@ -177,6 +177,16 @@ and re-run the benchmark before relying on them.
 
 Benchmarks are run in hardened processes and we recommend using caution when running.
 
+## How this was built
+
+The profiling, the optimization analysis, and the documents under `docs/` in this
+fork were produced with Claude Code, Anthropic's agentic coding tool. The reversible
+circuit itself is the community's work from the challenge repository; my part was
+reproducing and validating it locally and analyzing where its cost is and which
+optimizations are available, and I did that analysis with Claude Code. Figures
+quoted from outside papers were checked against their sources; see
+`docs/quantum-inversion-frontier-research.md` for the provenance.
+
 ## Credits
 
 This benchmark harness was adapted from code Google published with
