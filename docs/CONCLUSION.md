@@ -65,17 +65,19 @@ one bare affine point addition, so they are not a direct score ranking.
   metric).
 - Schrottenloher 2026 (arXiv 2606.02235): the disclosed per-windowed-addition figures are 2^21.19
   (about 2.34M) Toffoli at 1192 qubits (space-optimized) and 2^20.83 (about 1.82M) Toffoli at 1446
-  qubits (gate-optimized). A windowed addition selects one of 2^w = 2^16 precomputed multiples (window
-  w = 16) and uses table lookups; the paper states a lookup of 2^w values costs 2^w Toffoli, and the
-  per-addition formula includes 3 times 2^16 Toffoli of lookup, so it is a heavier operation than one
-  bare addition.
-  The widely cited 2^25.78 Toffoli / 1462 qubit figure is the full Shor attack on secp256k1 (28
-  windowed additions), not one addition. Its per-addition claim is about 6.5 to 10% fewer Toffoli and
-  about 1.5% more qubits than Babbush et al. Each addition performs two full modular inversions with
-  no cross-addition amortization.
-- Google/Babbush et al. (2026): the about 2.6M Toffoli / 1175 qubit and about 2.1M / 1425 qubit
-  figures are resource estimates; the circuits are withheld behind a zero-knowledge proof, not
-  disclosed.
+  qubits (gate-optimized), from Table 1. A windowed addition selects one of 2^w = 2^16 precomputed
+  multiples (window w = 16, Section 2) and uses table lookups; the paper states a lookup of 2^w values
+  costs 2^w Toffoli (Section 2), and the full-attack formula includes 3 times 2^16 Toffoli of lookup
+  per addition (Table 2), so it is a heavier operation than one bare addition. The 2^25.78 Toffoli /
+  1462 qubit figure is the full Shor attack on secp256k1 (28 point additions, Table 2), not one
+  addition. Its per-addition Toffoli count is about 6.5 to 10% below and its qubit count about 1.5%
+  above Babbush et al. (Section 1). Each addition performs two full modular inversions with no
+  cross-addition amortization.
+- Google Pareto points: the 2,700,000 / 1175 and 2,100,000 / 1425 figures are listed in the challenge
+  README (Reference numbers) and attributed there to Google. The Babbush et al. paper (2026, ePrint
+  2026/625) publishes full-attack resource estimates (at most 1200 qubits and 90M Toffoli, or 1450
+  qubits and 70M Toffoli) and withholds the circuits behind a zero-knowledge proof, so these
+  per-addition figures are not read off a disclosed circuit.
 
 Because Schrottenloher's figures are for windowed additions or the full attack, and Babbush's circuits
 are not disclosed, none of these is a bare single-addition circuit directly comparable to the 1.32M /
