@@ -33,9 +33,12 @@ frontier comparison — with its wrong verdicts marked in place and a
   every 0.88 days: the DGM controller, its 512/2,048/8,192/9,024 shot ladder, why λ is absent from
   its selection function, and what a screen can and cannot tell you.
 - [`data/`](data/), raw per-trial measurements, with the integrity checks that make them citable.
-- [`../tools/nonce-screen/`](../tools/nonce-screen/) — an **unbuilt, unvalidated draft** of a fast
-  nonce screen, kept for its design only. Never compiled, never checked against the harness. Read
-  its README before touching it.
+- [`../tools/nonce-screen/`](../tools/nonce-screen/) — the fast nonce screen, **built and gated**:
+  it reproduces the full harness's per-nonce classical mismatch count on 199/199 nonces exactly.
+  Classical channel only, so a hit is a candidate and never a seed.
+- [`../tools/lam-screen/`](../tools/lam-screen/) — the same screen with a fixed-base scalar
+  multiplier and a wide-lane simulator, **14.2× the harness** and re-gated 199/199 at two lane
+  widths. This is the instrument the λ-lever measurements were taken with.
 
 ## Frontier & literature research
 - [`quantum-inversion-frontier-research.md`](quantum-inversion-frontier-research.md), multi-source,
