@@ -29,6 +29,10 @@ frontier comparison — with its wrong verdicts marked in place and a
 - [`lambda-measurement.md`](lambda-measurement.md), λ_total ≈ 20.0 measured on the rebased head
   over 199 nonces: the third axis that is not in the score but decides what can ship, why a clean
   seed costs ~5e8 trials, and the λ targets that would make a grind feasible.
+- [`lambda-levers.md`](lambda-levers.md), **what each λ source is actually worth and what it costs
+  on the score axis**, measured at n=400 per arm. `TLM_SCHED_J2_DELTA=2` takes λ_total from 20.04
+  to 8.111 for 1.27% of score — a clean seed goes from 279 years to 16 hours. Also: `ITERS` is
+  spent, the `ITERS ≡ 0 mod 3` rule does not exist, and the deep strip is not zero-error.
 - [`upstream-search-economics.md`](upstream-search-economics.md), how upstream lands a submission
   every 0.88 days: the DGM controller, its 512/2,048/8,192/9,024 shot ladder, why λ is absent from
   its selection function, and what a screen can and cannot tell you.
