@@ -40,12 +40,45 @@ static GAP_J2_BASE: &[u16] = &[23, 25, 25, 26, 27, 29, 29, 30, 32, 32, 34, 34, 3
 #[must_use]
 pub fn sched_j2(i: usize) -> u16 {
     SCHED_J2_BASE[i.min(SCHED_J2_BASE.len() - 1)]
+        .saturating_add(sched_j2_delta())
+        .min(256)
+}
+
+/// `TLM_SCHED_J2_DELTA` widens BOTH divstep-width schedules by a constant
+/// number of bits. Measured at delta 2: lambda_classical 15.342 -> 5.787, a
+/// 9.56 lambda-unit reduction (42 sigma, n=400) for +1.27% of score -- 0.133%
+/// per lambda-unit, an order of magnitude better than any other lever measured.
+/// See docs/lambda-levers.md.
+///
+/// `SCHED_J2[i]` is how many bits of `u` survive divstep i (gcd.rs:1230 pops
+/// and frees everything above it), so the schedule is a truncation:
+/// memory/02-lambda.md prices "SCHED_J2 drops a nonzero bit, walk still
+/// terminates" at 2.80 mismatches per 9,024, and memory/05-qubit-reduction.md
+/// measured the lever in the other direction -- narrowing 160 tail entries
+/// bought -0.49% score for +3.6 lambda.
+///
+/// `GAP_J2` moves with it, and must: per 05-qubit-reduction.md step 5 the
+/// divstep error depends only on `s = SCHED_J2[i] - cmp_window(i)`, and moving
+/// one without the other takes that channel from 8.36 to 4,646 mismatches.
+/// Adding the same delta to both preserves `s`, since `cmp_window` is
+/// `min(gap_j2(i), current_n)` with `current_n = sched_j2(i)`.
+///
+/// The clamp is the allocated width of `u`; a constant delta keeps both
+/// schedules non-increasing in i, which the pop loop requires. Delta 0 is the
+/// identity -- verified, md5 ops.bin = f5c5f98258ddb7a0b1f250750ad1c6d2.
+fn sched_j2_delta() -> u16 {
+    std::env::var("TLM_SCHED_J2_DELTA")
+        .ok()
+        .and_then(|v| v.parse::<u16>().ok())
+        .unwrap_or(0)
 }
 
 #[inline]
 #[must_use]
 pub fn gap_j2(i: usize) -> u16 {
     GAP_J2_BASE[i.min(GAP_J2_BASE.len() - 1)]
+        .saturating_add(sched_j2_delta())
+        .min(256)
 }
 
 #[must_use]
