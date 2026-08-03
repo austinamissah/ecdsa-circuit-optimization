@@ -1,44 +1,50 @@
 //! ============================================================================
-//!  UNBUILT AND UNVALIDATED. DO NOT TRUST ANY NUMBER THIS PRODUCES.
+//!  VALIDATED 2026-08-02 on head 801dd20 — CLASSICAL CHANNEL ONLY.
 //! ============================================================================
 //!
-//! This file has **never been compiled**. It has never been run, and it has
-//! never been checked against the full harness. It was written on 2026-08-02
-//! and parked before the first `cargo build`; work was redirected to
-//! documentation instead. It may not even typecheck.
+//! Built clean and passed its correctness gate: it reproduces the full
+//! harness's per-nonce classical mismatch **count** — not merely its
+//! clean/dirty verdict — on **199 / 199** nonces, exactly. The paired
+//! difference (screen − harness) is a single spike at zero: min 0, max 0,
+//! mean 0, zero nonzero entries, and the totals agree at 3,230 mismatches on
+//! both sides. All 199 produced distinct stream fingerprints, so the tail
+//! patch demonstrably reached the stream on every trial.
 //!
-//! It is stored here only so the design is not lost with the scratch directory.
-//! Treat it as a draft to be reviewed, not as a tool.
+//! Evidence, committed:
+//!   - `docs/data/screen-gate-801dd20-paired.tsv`  (harness vs screen, per nonce)
+//!   - `docs/data/screen-gate-801dd20.tsv`         (raw screen output)
+//!   - `docs/data/lambda-sweep-801dd20.tsv`        (the harness reference)
 //!
-//! ## Before this may be used for anything
+//! The gate must be re-run against any new circuit head before this is trusted
+//! there: it validates a transcription of `eval_circuit`'s test loop, and that
+//! transcription is only known correct for the stream it was checked on.
 //!
-//! It must reproduce the full harness's per-nonce classical mismatch **count**
-//! — not merely its clean/dirty verdict — on nonces with known full-harness
-//! results. `docs/data/lambda-sweep-801dd20.tsv` holds 199 such nonces measured
-//! on head `801dd20`. The bar is **exact agreement on every one of them**, not
-//! correlation. Any nonce where the screen and the harness disagree is a bug in
-//! the screen, and the screen is worthless until zero disagree.
-//!
-//! Until that gate is passed, every claim in the rest of this comment is an
-//! intention, not a measurement.
-//!
-//! ## What it is intended to do — CLASSICAL CHANNEL ONLY
+//! ## What it does — CLASSICAL CHANNEL ONLY
 //!
 //! Reproduce `eval_circuit`'s classical-mismatch count without re-emitting the
-//! op stream per nonce. Two intended structural savings over `./benchmark.sh`:
+//! op stream per nonce. Two structural savings over `./benchmark.sh`:
 //!
 //!   1. `point_add::build()` runs ONCE. `apply_tail_nonce` only rewrites
 //!      `q_target` on the last 96 ops, so per nonce we patch those in place.
+//!      This is the big one: the build is ~59 s and the harness pays it on
+//!      EVERY trial.
 //!   2. `fiat_shamir_seed` is a streaming SHAKE256 absorb. The state over
 //!      ops[0 .. n-96] is absorbed once and cloned per nonce; each nonce then
 //!      absorbs only 96*56 = 5,376 bytes instead of the full ~507 MB.
 //!
 //! Everything downstream of the seed — pair drawing, register layout, the batch
-//! loop, the comparison — was transcribed from `src/bin/eval_circuit.rs` with
-//! the intent that the classical count come out bit-identical. **That
-//! transcription has not been verified.**
+//! loop, the comparison — is transcribed from `src/bin/eval_circuit.rs`, and
+//! the gate above confirms the classical count comes out identical.
 //!
-//! Target was ~1.2 s/trial against the harness's measured 61 s. Unmeasured.
+//! Measured uncontended on the validation machine (see
+//! `docs/lambda-measurement.md` for hardware):
+//!
+//!     ./benchmark.sh                  110 s/nonce   (build 59 + eval 57)
+//!     screen --mode count              ~55 s/nonce   (eval only, build amortised)
+//!     screen --mode ladder            ~12 s/nonce   (mean over 20 nonces)
+//!
+//! so the ladder path is ~9x the harness. The one-time build is ~53-59 s per
+//! PROCESS, so batch as many nonces per invocation as possible.
 //!
 //! ## Known limitation, by construction
 //!
@@ -57,13 +63,19 @@
 //! the Hmr/R stream and is W=64-harness-order only (04-traps.md section 4);
 //! this binary must never report it.
 //!
-//! ## How to build it, when someone does
+//! ## Building it
 //!
 //! It is deliberately NOT under `src/bin/`, so cargo does not auto-discover it
-//! and a broken draft cannot break `cargo build` or `./benchmark.sh`. To work
-//! on it, copy it into `src/bin/` of a THROWAWAY copy of the repo — never the
+//! and it cannot affect `cargo build` or `./benchmark.sh` in the submission
+//! tree. Copy it into `src/bin/` of a THROWAWAY copy of the repo — never the
 //! submission tree — and `cargo build --release --bin screen`. It links the
 //! `quantum_ecc` lib and adds no dependencies.
+//!
+//!     ./screen --nonces LIST --mode count  --out OUT.tsv   # all 9024 shots
+//!     ./screen --nonces LIST --mode ladder --out OUT.tsv   # 512/2048/8192/9024
+//!
+//! `--mode count` is what the correctness gate needs; `--mode ladder` is the
+//! fast path and stops at the first rung showing a mismatch.
 
 use quantum_ecc::circuit::{analyze_ops, Op, QubitId, QubitOrBit};
 use quantum_ecc::point_add;
