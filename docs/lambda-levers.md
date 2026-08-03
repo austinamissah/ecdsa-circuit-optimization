@@ -5,9 +5,14 @@
 > [Two things that had to change first](#two-things-that-had-to-change-first); both are
 > byte-identical to the shipped stream at the shipped knob set.
 >
-> **Classical channel only.** Every λ figure here is `λ_classical`, from
-> [`../tools/lam-screen/`](../tools/lam-screen/). It is not λ_total, and a screen-clean nonce is a
-> candidate, not a seed — see [`upstream-search-economics.md`](upstream-search-economics.md).
+> **Which λ.** The lever comparisons are `λ_classical`, measured with
+> [`../tools/lam-screen/`](../tools/lam-screen/) at n=400 per arm — the screen is classical-channel
+> only, and a screen-clean nonce is a candidate, not a seed. The winning configuration is then
+> confirmed on the **full harness**, where λ_total is measurable; that is
+> [the section that decides the question](#λ_total-at-delta-2-measured-on-the-full-harness).
+>
+> **Headline: `TLM_SCHED_J2_DELTA=2` takes λ_total from 20.04 to 8.111**, i.e. a clean seed from
+> ~5e8 harness trials (279 years) to ~3,340 (16 hours), for 1.27% of score.
 
 [`lambda-measurement.md`](lambda-measurement.md) established that λ reduction is the gating
 project: at λ_total = 20.04 a clean seed costs ~5e8 harness trials, and every score-lowering
@@ -188,12 +193,48 @@ candidates-per-seed ratio.
 against 44 days at the baseline. That is the difference between a grind that cannot be started and
 one that runs overnight.
 
-**The phase channel is the open question and it decides everything.** The screen is
-classical-only, so none of the above establishes λ_total. What is known is suggestive but not
-sufficient: the single shipped nonce reports phase-garbage batches 16 → 8 → 5 → 2 across
-delta 0/1/2/4, tracking the classical channel down. n=1 proves nothing (`02-lambda.md`'s statistics
-discipline exists precisely for this), so a full-harness run is needed — see
-[Status](#status-what-is-and-is-not-established).
+### λ_total at delta 2, measured on the full harness
+
+The screen is classical-only, so none of the above establishes λ_total — and λ_phase_only = 3.80 on
+the shipped circuit is what sets the candidates-per-seed ratio. So this was measured directly:
+**42 full `build_circuit` + `eval_circuit` trials at delta 2**, no screen, same estimator as
+`lambda-measurement.md` (Poisson-overlap, λ_total = mean_c + mean_p − Cov(c,p)). All 42 produced
+distinct `md5 ops.bin`.
+
+| channel | shipped `801dd20` (n=199) | **delta 2 (n=42)** |
+|---|---|---|
+| classical | 16.231 ± 0.271 | **6.214 ± 0.429** |
+| phase | 10.915 ± 0.229 | **6.595 ± 0.406** |
+| ancilla | 0 | 0 |
+| Cov(c,p) | 7.11 | 4.699 |
+| **λ_total** | **20.04** | **8.111** |
+
+**The phase channel moved with the classical one.** That was the thing that could have killed this
+lever and it did not: phase falls 10.915 → 6.595, and λ_phase_only (λ_total − λ_classical) falls
+**3.80 → 1.90**. The classical figure also cross-checks the screen: 6.214 ± 0.429 on the harness
+against 5.787 ± 0.125 on 400 screened nonces, a 1.0σ agreement between two independent instruments.
+
+### What a seed now costs
+
+| | λ_total | P(clean) | harness trials/seed | at 205 trials/hour |
+|---|---|---|---|---|
+| shipped | 20.04 | 2.0e-9 | 5.0e8 | **279 years** |
+| **delta 2** | **8.111** | **3.0e-4** | **3,340** | **16 hours** |
+
+And with the screen in front of it, the two-stage search is better still: a classical-clean
+candidate every ~4.5 minutes, of which `e^-1.90 = 15%` are also phase-clean, so **≈7 candidates and
+under an hour per clean seed** on this laptop.
+
+**This is the result the project needed.** `lambda-measurement.md` concluded that "nonce grinding is
+not merely impractical on this hardware; it is off by three orders of magnitude", and that λ
+reduction carried essentially all the weight. It did, and it was available: 11.9 λ-units of it, for
+1.27% of score.
+
+**Caveat on precision.** n=42 is a small sample for a covariance estimator; the sem on each channel
+is ~0.42 and λ_total inherits more than that. Read 8.111 as "about 8", i.e. thousands of trials per
+seed rather than hundreds of millions. That is an order-of-magnitude claim, and the order of
+magnitude is what changed. The directional argument in `lambda-measurement.md` still applies —
+the covariance estimate is conservative for planning and cannot understate the cost of a grind.
 
 ## Status: what is and is not established
 
@@ -206,10 +247,13 @@ discipline exists precisely for this), so a full-harness run is needed — see
   tripwire is insufficient rather than merely imperfect.
 - `TLM_SCHED_J2_DELTA` buys 6.9 to 10.7 λ_classical at 0.098–0.237% of score per λ-unit.
 
+- **λ_total = 8.111 at delta 2** (n=42, full harness), against 20.04 shipped. The phase channel
+  moved with the classical one; λ_phase_only falls 3.80 → 1.90. A clean seed costs ~3,340 harness
+  trials, ~16 hours, against 279 years.
+
 **Not established:**
 
-- **λ_total under the lever.** Everything above is λ_classical. A full-harness sweep at delta 2 is
-  the next measurement and the one that decides whether a grind is now feasible.
+- **The precision of λ_total.** n=42 supports an order of magnitude, not a third significant figure.
 - **The score prices are un-retuned upper bounds.** `TLM_TARGET_Q` and `TLM_SQUARE_PEAK_CAP` are
   pinned at 1154 and every delta arm moves peak to 1155. `05-qubit-reduction.md`'s central
   operational fact is that a persistent-set change only pays if the cap moves with it, so the

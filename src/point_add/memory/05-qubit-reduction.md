@@ -47,6 +47,17 @@ lever than qubits. But ITERS **must be ≡ 0 mod 3** or `jump_dialog_regions` gr
 n=12: ITERS=260 → 4,906 classical mismatches, ITERS=259 → 7,348. Both destroyed. 258 reverts to `BAKED_ITERS` and is
 candidate A at λ≈17. So 261 is the only usable value in the neighbourhood.
 
+> **[CORRECTED 2026-08-03 — the mod-3 rule does not exist.]** Those arms were measured with the deep
+> strip ON, and the strip repoints whenever ITERS leaves the value its census was mined at. With
+> `SUB4_APPLY_STRIP=0` on head `801dd20`: ITERS=259 → 21 classical, ITERS=260 → 17 classical, both
+> squarely in the intrinsic band, and λ_classical(259) = 17.000 over n=400. Reproduced the failure
+> too — strip ON gives 9,009 mismatches at 259 and 5,858 at 260, same shape as the numbers above.
+> Independently, `jump_dialog_regions` starts at `n3 = iters/3` and *decrements until it fits*,
+> coding the remainder as Pair/Raw, so the tape grows smoothly at ~2.33 bits per divstep across
+> 258–267 with no mod-3 cliff. What actually capped ITERS was `SCHED_J2`/`GAP_J2` being 261 entries
+> long and indexed by divstep directly — 264 panicked with `index out of bounds`. See
+> `docs/lambda-levers.md`.
+
 ## Step 3 — the exchange-rate trap, confirmed empirically
 
 Narrowing the SCHED_J2 tail frees u,v qubits — and the peak **does not move**:
@@ -110,6 +121,15 @@ slack is.
 
 **Chosen point: N=160, q=1151.** −0.49% proxy at λ_classical 9.67, which is ~22× harder to grind than the shipped
 λ≈7.25 but still on the order of an hour.
+
+> **[2026-08-03 — run this lever backwards and it is the biggest λ win found.]** Widening both
+> schedules instead of narrowing them, via the new `TLM_SCHED_J2_DELTA` (schedule.rs), on head
+> `801dd20`: λ_classical 15.342 → 8.412 (delta 1) → 5.787 (delta 2) → 4.662 (delta 4), n=400 per
+> arm, at 0.098 / 0.133 / 0.237 % of score per λ-unit — an order of magnitude better than ITERS
+> (1.8%+) or the deep strip (1.70%). Confirmed on the full harness at delta 2, n=42:
+> **λ_total 20.04 → 8.111**, phase 10.915 → 6.595, so a clean seed costs ~3,340 trials (16 h)
+> instead of ~5e8 (279 years). The exchange rate here (≈0.14%/λ) matches this table's, from
+> independent data — which is the corroboration. See `docs/lambda-levers.md`.
 
 ## Step 6 — shipped-state measurement
 
