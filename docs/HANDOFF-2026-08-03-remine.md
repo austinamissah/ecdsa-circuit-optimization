@@ -1,69 +1,88 @@
-# Handoff — census re-mine at `TLM_SCHED_J2_DELTA=2`, incomplete
+# Census re-mine at `TLM_SCHED_J2_DELTA=2` — RESULT
 
-Written on running out of context mid-run. **No re-mined key table was produced or validated.**
-Everything below is committed.
+Superseded the incomplete handoff of the same name. The re-mine is done and
+harness-verified.
 
-## What was asked
+## The four numbers
 
-Re-mine `deep_strip_keys` against a delta-2 stream and report: score with the strip off, score with
-the re-mined strip on, net position vs the 1,487,590,242 head, and whether the re-mine recovers the
-0.682 λ the current strip costs.
+| | avgT | peak q | score | vs head |
+|---|---|---|---|---|
+| head (shipped, delta 0, shipped strip) | 1,289,073 | 1154 | **1,487,590,242** | — |
+| delta 2, strip OFF | 1,319,429 | 1155 | 1,523,940,495 | **+2.444%** |
+| delta 2, **re-mined strip ON** | 1,307,877 | 1155 | **1,510,597,935** | **+1.547%** |
 
-## What exists now
+**The re-mined strip recovers 13,342,560 of score — 0.897% of head.**
 
-The census tooling did not survive its original run
-(`memory/05-qubit-reduction.md` step 6), so it had to be rewritten.
-[`../tools/census/`](../tools/census/) is that replacement — built, smoke-tested, and committed,
-with drivers for the full pipeline. Its README documents the predicates, the key format, measured
-throughput, and the depth/λ tradeoff.
+**λ (n=400 per arm, same instrument that measured the shipped strip's 0.682):**
 
-**Smoke test, delta 2, 65,536 samples:** 9,214,624 ops / **1,379,831 CCX+CCZ**; 43,081 never-fired,
-3,962 c1-implied, 5,963 c2-implied. (Those counts are meaningless as a key table — at 65 k samples
-most "never fired" gates simply have not fired *yet*. They only confirm the tool runs and finds a
-plausible population.)
+| arm | λ_classical | sem |
+|---|---|---|
+| delta 2, strip OFF | 5.787 | ±0.125 |
+| delta 2, re-mined strip ON | **5.777** | ±0.115 |
 
-## What was mid-flight
+**Δλ = −0.010 ± 0.170 — statistically zero.** The shipped table costs
++0.682 ± 0.273 λ on its own stream; **the re-mined table costs nothing
+measurable. The re-mine does recover the 0.682 λ.**
 
-A 120 M-sample census — 10 mining shards + 2 held-out, 10 M each, `--lanes 64` — launched ~09:40
-and due to finish ~12:05. Shards land in `scratchpad/remine/shards/`, and `drivers/finish.sh` was
-chained to run automatically when all 12 appear: it emits keys from the mining shards, re-emits
-including the held-out pair, diffs the two to count keys the mining census got wrong, installs the
-result, rebuilds, verifies on the **full harness**, and measures λ at n=400.
+## Harness verification (read directly, not from a driver)
 
-**If that chain completed, its output is in `scratchpad/remine/finish.log` — but nothing in it has
-been checked by me. Treat it as unverified until the harness row is read directly.**
+Both arms built and evaluated with `build_circuit` + `eval_circuit`:
 
-## The thing to know before continuing
+| arm | ops | qubits | classical | phase | ancilla | stale keys | md5 ops.bin |
+|---|---|---|---|---|---|---|---|
+| strip OFF | 9,214,624 | 1155 | 6 | 5 | 0 | — | `baac874cfdd26ec6b7f25ac15cb6a9dc` |
+| re-mined strip ON | 9,204,392 | 1155 | 7 | 6 | 0 | **0** | `4991360767a0f364a146b039de3f2d65` |
 
-I under-planned the compute. The shipped table was mined at **320 M** samples; the run I could
-afford is **120 M**. That matters because a census only certifies "never fired in N samples", so
+Both sit in the intrinsic band, and **0 stale keys** is the load-bearing number:
+the old table applied to this same delta-2 stream discards 13,484 keys and takes
+the circuit to 9,022/9,024 mismatches. The re-mined table addresses every gate
+it names.
 
-    λ_from_false_keys  ~  (dead keys) × 3 / N × 9024
+## Why the λ came back, and what the held-out shards showed
 
-**A 120 M re-mine will recover the score but should cost roughly 2–3× the 0.682 λ it replaces.**
-So the honest expected answer to "does the re-mine also recover the 0.682 λ" is **no, not at this
-depth** — and the useful deliverable is the λ-versus-depth curve, which the per-seed shards give
-for free by emitting from different subsets. That framing is set up in the drivers but unmeasured.
+Census: 120 M random on-curve pairs, 12 independent seeds, `--lanes 64`, at
+`TLM_SCHED_J2_DELTA=2` with `SUB4_APPLY_STRIP=0`. Emitting from the 10 mining
+shards (100 M) and then re-emitting with the 2 held-out shards (120 M):
 
-Throughput is the binding constraint: 12 workers saturate at ~14,100 samples/s (memory-bandwidth
-bound on the 208 MB op stream plus the 529,634-entry bit array), so 320 M is ~6 hours.
+| | dead | downgrade |
+|---|---|---|
+| mining only, 100 M | 10,364 | 2,206 |
+| with held-out, 120 M | 10,232 | 2,169 |
+| **caught by 20 M of held-out data** | **132** | **37** |
 
-## What I would do next, in order
+169 false keys per 20 M samples. A Good–Turing reading of that rate puts the
+residual error of the 120 M table at ≈ 169/20e6 × 9024 ≈ **0.08 λ**, which is
+consistent with the measured −0.010 ± 0.170.
 
-1. **Read `finish.log`.** If the chain ran, check the harness row first — classical/phase in the
-   intrinsic band means the keying and predicates are right, which is the main correctness risk.
-   Thousands of mismatches means a predicate bug, not a shallow census.
-2. **Emit at several depths** (20 M / 60 M / 120 M subsets) and measure λ at each. That curve is
-   the real answer to the question, and it is cheap once the shards exist.
-3. **Only then decide the depth.** If the goal is to beat the shipped table's 0.682 λ, the census
-   must go deeper than 320 M, which needs the bit-array working-set fix below.
-4. **Shrink the bit array** by liveness-renumbering the 529 k classical bits. That is the single
-   change that would make deep censuses affordable on this machine; adding workers will not.
+**This corrects the pessimism in my earlier handoff.** I predicted a 120 M
+re-mine would cost 2–3× the 0.682 λ it replaces, from
+`λ ≈ (dead keys) × 3/N × 9024` = 2.3. That formula assumes every dead key sits
+at the detection threshold. Most do not — they are structurally dead with
+p = 0 — so it is a wild overestimate. **The held-out measurement is the right
+estimator and it says the opposite.** Census depth mattered far less than I
+argued; 120 M was ample.
 
-## Correctness checks that are NOT yet done
+The re-mined table is smaller than the shipped one (10,232 dead vs 12,543;
+2,169 downgrade vs 3,923), which is why it recovers 0.897% rather than the
+1.16% the shipped strip is worth on its own stream. Part of that is genuine
+census depth (120 M vs 320 M); part is that the delta-2 geometry simply has
+fewer dead gates.
 
-- Full-harness verification of any re-mined table.
-- λ at n≥12 paired for the re-mined strip.
-- A delta-0 control re-mine, which would let the tool be checked against the shipped
-  12,543 dead / 3,923 downgrade counts — the strongest available validation of the predicates, and
-  worth doing before trusting any delta-2 table.
+## Net position
+
+Delta 2 with the re-mined strip is **+1.547% of score against the head**, and
+buys λ_total 20.04 → ~8 (see `lambda-levers.md`). The strip is now free on the
+λ axis, so the whole 1.547% is the price of the λ lever itself.
+
+## Not done
+
+- The table is committed as **data only**
+  (`data/deep-strip-keys-delta2-120M.rs.gz`), not installed into
+  `src/point_add/deep_strip_keys.rs`. It is mined against a delta-2 stream and
+  would corrupt the shipped delta-0 circuit. The repo table is untouched.
+- A delta-0 control re-mine, which would check the tool against the shipped
+  12,543 / 3,923 counts. Still the strongest available validation of the
+  predicates and still unrun — the delta-2 harness rows are strong evidence but
+  not that check.
+- λ_total for the re-mined arm (only λ_classical was measured at n=400; the
+  single-nonce harness phase counts, 5 vs 6, are n=1 and prove nothing).

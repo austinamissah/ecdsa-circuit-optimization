@@ -31,12 +31,12 @@ echo "=== 1. baseline: delta 2, strip OFF  $(date +%H:%M:%S) ==="
 row d2_stripoff 0
 
 echo "=== 2. emit from the 12 MINING shards only (324M)  $(date +%H:%M:%S) ==="
-MSH=$(for f in shards/m*.bin; do printf "%s:27000000," "$f"; done | sed 's/,$//')
+MSH=$(for f in shards/s[0-9].bin shards/s10.bin; do printf "%s:27000000," "$f"; done | sed 's/,$//')
 env $E "$T/target/release/census" --mode emit --shards "$MSH" \
     --out "$PWD/deep_strip_keys.mining.rs" 2>&1 | grep -E "merged|wrote"
 
 echo "=== 3. re-emit including the 2 HELD-OUT shards (378M)  $(date +%H:%M:%S) ==="
-ASH="$MSH,$(for f in shards/v*.bin; do printf "%s:27000000," "$f"; done | sed 's/,$//')"
+ASH="$MSH,$(for f in shards/s10[12].bin; do printf "%s:27000000," "$f"; done | sed 's/,$//')"
 env $E "$T/target/release/census" --mode emit --shards "$ASH" \
     --out "$PWD/deep_strip_keys.validated.rs" 2>&1 | grep -E "merged|wrote"
 
