@@ -243,15 +243,25 @@ struct Sim<const L: usize> {
     q: Vec<u64>,
     b: Vec<u64>,
     rng: u64,
+    /// Harness mode: pre-drawn XOF words, consumed in stream order by BOTH Hmr
+    /// and R -- real sim.rs reads 8 bytes for each, so R must consume too or
+    /// the whole downstream stream desynchronises.
+    rngbuf: Vec<u64>,
+    rngpos: usize,
 }
 
 impl<const L: usize> Sim<L> {
     fn new(nq: usize, nb: usize, seed: u64) -> Self {
-        Self { q: vec![0; nq * L], b: vec![0; nb * L], rng: seed | 1 }
+        Self { q: vec![0; nq * L], b: vec![0; nb * L], rng: seed | 1, rngbuf: Vec::new(), rngpos: 0 }
     }
     fn clear(&mut self) { self.q.fill(0); self.b.fill(0); }
     #[inline(always)]
     fn next_rng(&mut self) -> u64 {
+        if !self.rngbuf.is_empty() {
+            let v = self.rngbuf[self.rngpos];
+            self.rngpos += 1;
+            return v;
+        }
         let mut x = self.rng;
         x ^= x >> 12; x ^= x << 25; x ^= x >> 27;
         self.rng = x;
@@ -298,7 +308,7 @@ impl<const L: usize> Sim<L> {
                         self.b[ct + w] = (self.b[ct + w] & !cw[w]) ^ (r & cw[w]);
                         self.q[t + w] &= !cw[w]; } }
                 K_R => { let t = op.qt as usize * L;
-                    for w in 0..L { self.q[t + w] &= !cw[w]; } }
+                    for w in 0..L { let _ = self.next_rng(); self.q[t + w] &= !cw[w]; } }
                 K_BINV => { let t = op.ct as usize * L;
                     for w in 0..L { self.b[t + w] ^= cw[w]; } }
                 K_BST0 => { let t = op.ct as usize * L;
@@ -369,6 +379,73 @@ fn census_shard<const L: usize>(
     acc
 }
 
+
+fn absorb_op(h: &mut Shake256, op: &Op) {
+    h.update(&[op.kind as u8]);
+    h.update(&op.q_control2.0.to_le_bytes());
+    h.update(&op.q_control1.0.to_le_bytes());
+    h.update(&op.q_target.0.to_le_bytes());
+    h.update(&op.c_target.0.to_le_bytes());
+    h.update(&op.c_condition.0.to_le_bytes());
+    h.update(&op.r_target.0.to_le_bytes());
+}
+
+/// One census shard in HARNESS ORDER: W=64 (one u64), inputs and the Hmr/R
+/// stream both drawn from the real Fiat-Shamir XOF, pairs drawn up front and
+/// the simulator continuing from the same reader -- exactly eval_circuit.
+fn census_harness(
+    ops: &[Op], cops: &[COp], regs: &[Vec<QubitOrBit>], nq: usize, nb: usize,
+    ngates: usize, samples: usize, fb: &FastBase, curve: &WeierstrassEllipticCurve,
+) -> Vec<u8> {
+    let mut h = Shake256::default();
+    h.update(b"quantum_ecc-fiat-shamir-v2");
+    h.update(&(ops.len() as u64).to_le_bytes());
+    for op in ops { absorb_op(&mut h, op); }
+    let mut xof = h.finalize_xof();
+
+    let mut targets = Vec::with_capacity(samples);
+    let mut offsets = Vec::with_capacity(samples);
+    for _ in 0..samples {
+        let mut rb = [[0u8; 32]; 2];
+        XofReader::read(&mut xof, &mut rb[0]);
+        XofReader::read(&mut xof, &mut rb[1]);
+        let t = fb.mul_g(curve, U256::from_le_bytes(rb[0]));
+        let o = fb.mul_g(curve, U256::from_le_bytes(rb[1]));
+        if t.0 == o.0 || (t.0.is_zero() && t.1.is_zero()) || (o.0.is_zero() && o.1.is_zero()) { continue; }
+        targets.push(t); offsets.push(o);
+    }
+    let n = targets.len();
+    let mut acc = vec![0u8; ngates];
+    let nrng = cops.iter().filter(|o| o.kind == K_HMR || o.kind == K_R).count();
+    eprintln!("harness mode: {} XOF words per 64-shot pass", nrng);
+    let mut sim: Sim<1> = Sim::new(nq, nb, 1);
+    let t0 = Instant::now();
+    for b in 0..n.div_ceil(64) {
+        let bs = 64.min(n - b * 64);
+        sim.clear();
+        for shot in 0..bs {
+            let i = b * 64 + shot;
+            sim.set_reg(&regs[0], targets[i].0, shot);
+            sim.set_reg(&regs[1], targets[i].1, shot);
+            sim.set_reg(&regs[2], offsets[i].0, shot);
+            sim.set_reg(&regs[3], offsets[i].1, shot);
+        }
+        sim.rngbuf.clear();
+        sim.rngbuf.resize(nrng, 0);
+        for v in sim.rngbuf.iter_mut() {
+            let mut bb = [0u8; 8];
+            XofReader::read(&mut xof, &mut bb);
+            *v = u64::from_le_bytes(bb);
+        }
+        sim.rngpos = 0;
+        sim.run(cops, &mut acc);
+        if b % 20000 == 0 && b > 0 {
+            eprintln!("  harness {}/{} ({:.0} shots/s)", b*64, n, (b*64) as f64 / t0.elapsed().as_secs_f64());
+        }
+    }
+    acc
+}
+
 fn out_path_dump(s: &str) -> String { s.to_string() }
 
 fn main() {
@@ -379,6 +456,7 @@ fn main() {
     let mut lanes = 16usize;
     let mut out_file = String::from("shard.bin");
     let mut shards = String::new();
+    let mut harness = false;
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
@@ -388,6 +466,7 @@ fn main() {
             "--lanes" => { lanes = args[i + 1].parse().unwrap(); i += 2; }
             "--out" => { out_file = args[i + 1].clone(); i += 2; }
             "--shards" => { shards = args[i + 1].clone(); i += 2; }
+            "--harness" => { harness = true; i += 1; }
             o => { eprintln!("unknown arg {o}"); std::process::exit(2); }
         }
         }
@@ -400,6 +479,16 @@ fn main() {
     eprintln!("census: ops={} compacted={} gates(CCX+CCZ)={} qubits={} bits={} mode={mode}",
               ops.len(), cops.len(), ngates, total_qubits, num_bits);
 
+    if mode == "shard" && harness {
+        let t0 = Instant::now();
+        let acc = census_harness(&ops, &cops, &regs, total_qubits as usize, num_bits as usize, ngates, samples, &fb, &curve);
+        std::fs::write(&out_file, &acc).expect("write shard");
+        let dead = acc.iter().filter(|f| **f & F_FIRED == 0).count();
+        let d1 = acc.iter().filter(|f| **f & F_FIRED != 0 && **f & F_VIOL1 == 0).count();
+        let d2 = acc.iter().filter(|f| **f & F_FIRED != 0 && **f & F_VIOL2 == 0).count();
+        eprintln!("HARNESS-ORDER shard samples={samples} in {:.1}s -> never-fired {dead}, c1-implied {d1}, c2-implied {d2}", t0.elapsed().as_secs_f64());
+        return;
+    }
     if mode == "shard" {
         let t0 = Instant::now();
         let acc = match lanes {
