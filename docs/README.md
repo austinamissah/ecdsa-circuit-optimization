@@ -33,6 +33,9 @@ frontier comparison — with its wrong verdicts marked in place and a
   every 0.88 days: the DGM controller, its 512/2,048/8,192/9,024 shot ladder, why λ is absent from
   its selection function, and what a screen can and cannot tell you.
 - [`data/`](data/), raw per-trial measurements, with the integrity checks that make them citable.
+- [`../tools/nonce-screen/`](../tools/nonce-screen/) — an **unbuilt, unvalidated draft** of a fast
+  nonce screen, kept for its design only. Never compiled, never checked against the harness. Read
+  its README before touching it.
 
 ## Frontier & literature research
 - [`quantum-inversion-frontier-research.md`](quantum-inversion-frontier-research.md), multi-source,
