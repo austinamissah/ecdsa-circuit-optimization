@@ -12,7 +12,7 @@
 > [the section that decides the question](#λ_total-at-delta-2-measured-on-the-full-harness).
 >
 > **Headline: `TLM_SCHED_J2_DELTA=2` takes λ_total from 20.04 to 8.111**, i.e. a clean seed from
-> ~5e8 harness trials (279 years) to ~3,340 (16 hours), for 1.27% of score.
+> ~5e8 harness trials (279 years) to ~3,340 (16 hours), for 1.25% of score.
 
 [`lambda-measurement.md`](lambda-measurement.md) established that λ reduction is the gating
 project: at λ_total = 20.04 a clean seed costs ~5e8 harness trials, and every score-lowering
