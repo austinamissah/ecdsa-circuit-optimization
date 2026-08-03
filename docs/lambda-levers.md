@@ -42,34 +42,42 @@ that no arm is confounded by the strip repointing under it.
 
 ## The `ITERS` ladder is spent, and not for the recorded reason
 
-| ITERS | λ_classical | sem | tail-curve prediction | avgT | peak q | score | vs shipped |
-|---|---|---|---|---|---|---|---|
-| 259 | 17.000 | ±0.202 | 17.312 | 1,297,846 | 1154 | 1,497,714,284 | +0.68% |
-| **261 (shipped)** | **15.342** | ±0.189 | *(anchor)* | 1,304,032 | 1154 | 1,504,852,928 | +1.16% |
-| 262 | 15.637 | ±0.184 | 15.059 | 1,307,157 | 1155 | 1,509,766,335 | +1.49% |
+| ITERS | λ_classical | sem | Δλ vs 261 | tail-curve prediction | avgT | peak q | score | vs shipped |
+|---|---|---|---|---|---|---|---|---|
+| 259 | 17.000 | ±0.202 | **+1.658 ± 0.277** (6.0σ) | +1.970 | 1,297,846 | 1154 | 1,497,714,284 | +0.68% |
+| **261 (shipped)** | **15.342** | ±0.189 | *(anchor)* | — | 1,304,032 | 1154 | 1,504,852,928 | +1.16% |
+| 262 | 15.637 | ±0.184 | +0.295 ± 0.264 (1.1σ) | −0.283 | 1,307,157 | 1155 | 1,509,766,335 | +1.49% |
+| 264 | 15.695 | ±0.195 | +0.353 ± 0.272 (1.3σ) | −0.449 | 1,313,674 | 1155 | 1,517,293,470 | +2.00% |
+| 267 | 14.967 | ±0.202 | −0.375 ± 0.277 (1.4σ) | −0.480 | 1,323,362 | 1158 | 1,532,453,196 | +3.02% |
 
 The prediction column is `02-lambda.md`'s divstep convergence tail — `258→5.228, 259→2.453,
-260→1.114, 261→0.483, 262→0.200, 265→0.014` from a 1e6-sample convergence distribution — anchored
-at the measured 261 value.
+260→1.114, 261→0.483, 262→0.200, 265→0.014`, from a 1e6-sample convergence distribution — as a
+delta against the tail term at 261.
 
-**Downward, the model is right.** 259 predicts 17.312 and measures 17.000 ± 0.202: 1.5σ, with the
-small shortfall in the direction you would expect, since removing two divsteps also removes two
-divsteps' worth of their *own* truncation error.
+**Downward, the model is right, decisively.** 259 predicts +1.970 and measures **+1.658 ± 0.277**,
+a 6.0σ effect at 84% of the predicted magnitude. The small shortfall is in the direction you would
+expect: removing two divsteps also removes two divsteps' worth of their *own* truncation error.
+This is the first direct confirmation of that curve on the current head, and it is the result that
+lets the rest of the row be trusted.
 
-**Upward, it is wrong, and in the decision-relevant direction.** 262 predicts a *fall* to 15.059
-and instead *rises* to 15.637 ± 0.184 — **3.1σ the wrong way**, Δ = +0.295 ± 0.264 against the
-shipped 261.
+**Upward, the predicted gain does not appear.** 262, 264 and 267 predict −0.28, −0.45 and −0.48.
+They measure +0.295, +0.353 and −0.375, none individually significant and scattering either side
+of zero; pooled they give **≈ +0.09 ± 0.16**. So the honest statement is a bound, not an effect:
+**|Δλ| < 0.4 at 95% confidence for any `ITERS` above 261, against a predicted gain of 0.3–0.5.**
 
-That is not a contradiction of the convergence model, it is the model running out of room. The
-tail term at 261 is already down to 0.483, so an added divstep can recover at most half a
-λ-unit — while, because `SCHED_J2` holds at 9 and `GAP_J2` at 10 past the end, that divstep runs
-at the *terminal* register width and contributes its own truncation error through the same two
-channels (`SCHED_J2` dropping a nonzero bit, fold-window carry escapes) that cost 2.80 and 2.18 in
-the original decomposition. Past 261 the second term dominates the first.
+Two things plausibly absorb the predicted gain, and the data does not separate them. The tail term
+at 261 is already down to 0.483, so an added divstep can recover at most half a λ-unit — while,
+because `SCHED_J2` holds at 9 and `GAP_J2` at 10 past the end, that divstep runs at the *terminal*
+register width and pays its own truncation error through the same two channels (`SCHED_J2`
+dropping a nonzero bit, fold-window carry escapes) that cost 2.80 and 2.18 in the original
+decomposition. Peak qubits also move — 1155 at 262 and 264, 1158 at 267 — and
+`memory/05-qubit-reduction.md` records that the vent pool expands to fill whatever is freed, so
+the 267 arm is not a clean read of the divstep channel alone.
 
-**So 261 is at or very near the λ minimum of this schedule**, and it costs 0.33% of score to move
-one step either way. The lever is spent. This is a stronger statement than "the tail curve is
-steep": adding divsteps at terminal width is not merely low-yield, it is *negative* yield.
+**Either way the lever is spent.** Its entire remaining budget is the 0.483 λ still in the tail at
+261, and buying it costs 0.33% of score per step up — 1.86% by 267. Nothing above 261 is worth
+taking, and 259 is 1.66 λ worse for 0.48% of score. `ITERS = 261` is the right value; it is simply
+not a place where λ can still be found.
 
 ### The `ITERS ≡ 0 mod 3` rule does not exist
 
