@@ -1,5 +1,10 @@
 # Where the Toffolis are spent, `src/point_add/` recon
 
+> **Provenance:** written 2026-07-11 against commit `422f21d`. The fork was rebased onto upstream
+> `8af8a6f` on 2026-08-02 and the circuit has changed since (`ITERS` 258 → 261, `SCHED_J2` rewritten,
+> new occupancy tripwire, peak 1152 → 1154). Accurate for the circuit it describes; verify specific
+> numbers against current source. See [`CONCLUSION.md`](CONCLUSION.md) for the re-audit.
+
 **Nothing was modified, built, or run.** All findings are from reading source. The two headline numbers, ~1,398,187 emitted CCX and 1,320,763 avg *executed* Toffolis, differ because executed count only tallies CCX/CCZ whose condition stack is active per shot (`sim.rs:82-86`); emitted is the static gate count.
 
 ## 0. The live path (important framing)

@@ -1,5 +1,10 @@
 # GCD per-iteration width schedules: SCHED_J2 and GAP_J2
 
+> **Provenance:** written 2026-07-11 against commit `422f21d`. The fork was rebased onto upstream
+> `8af8a6f` on 2026-08-02 and the circuit has changed since (`ITERS` 258 → 261, `SCHED_J2` rewritten,
+> new occupancy tripwire, peak 1152 → 1154). Accurate for the circuit it describes; verify specific
+> numbers against current source. See [`CONCLUSION.md`](CONCLUSION.md) for the re-audit.
+
 Data extraction from `src/point_add/trailmix_ludicrous/schedule.rs`. Pure data + consumption
 sites; no changes proposed. All values below are the exact table contents as of extraction.
 

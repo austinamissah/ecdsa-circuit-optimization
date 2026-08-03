@@ -1,5 +1,10 @@
 # How submission to ecdsa.fail works (from the repo)
 
+> **Provenance:** written 2026-07-11 against commit `422f21d`. The fork was rebased onto upstream
+> `8af8a6f` on 2026-08-02 and the circuit has changed since (`ITERS` 258 → 261, `SCHED_J2` rewritten,
+> new occupancy tripwire, peak 1152 → 1154). Accurate for the circuit it describes; verify specific
+> numbers against current source. See [`CONCLUSION.md`](CONCLUSION.md) for the re-audit.
+
 Read-only recon of what this repository states about submitting to the official
 ecdsa.fail platform (as opposed to the local `benchmark.sh` / `cargo run` path).
 Sources are quoted with file references. Nothing was installed, run, or submitted

@@ -74,16 +74,81 @@ baseline, that the published Pareto frontier sits about 3× lower still, and tha
 both points on that frontier and points below them are beatable. Those are the upstream authors'
 claims. This fork's own analysis is in the next section.
 
-### Optimization analysis (this fork)
+### What this fork did, and what it found
 
-The circuit in this repository is the community-contributed frontier from the challenge. It was
-reproduced and validated locally at about 1,320,763 Toffoli × 1,152 qubits (about 1.52 × 10⁹) for one
-bare affine point addition, which is below both reference Pareto points above. The circuit itself is
-not this fork's work; the work here is the profiling and the analysis of which optimizations are
-available, in [`docs/`](docs/).
+*Project write-up: **[amissah.net](https://amissah.net)**.*
 
-The analysis found no available lever that lowers the score. About 95% of the budget is the two
-modular inversions that reversible affine point addition requires. In the literature surveyed in
+**Scope, plainly stated.** The circuit is not mine. It is the community-contributed frontier from
+the challenge, and by now it also carries a large body of another contestant's work (see
+[What is not this fork's work](#what-is-not-this-forks-work)). What is mine is the *measurement and
+analysis*: reproducing the circuit locally, profiling where its cost actually goes, checking the
+published comparisons against their sources, enumerating what could be improved — and then, when
+that analysis turned out to be partly wrong, measuring why.
+
+As of the 2026-08-02 rebase onto upstream `8af8a6f`, the circuit reproduces locally at
+**1,289,073.125 Toffoli × 1,154 qubits = 1,487,590,242**, 9,024/9,024 shots clean.
+
+#### 1. My first conclusion was wrong, and the record of that is kept
+
+The first pass, written against commit `422f21d`, measured 1,320,763 × 1,152 (≈1.52 × 10⁹),
+enumerated eleven possible improvements, found all eleven blocked, and concluded that **no lever was
+available** — that only a research-scale rewrite could lower the score.
+
+In the three weeks that followed, upstream landed **25 accepted score-lowering submissions**, none
+of them a rewrite. So the conclusion was wrong.
+
+Rather than quietly correct it, the original claims are kept verbatim in
+[`docs/CONCLUSION.md`](docs/CONCLUSION.md) and marked in place, with a
+[lever verdict audit](docs/CONCLUSION.md#lever-verdict-audit) that quotes each superseded claim and
+states what refuted it. **Seven of the eleven verdicts stand; four moved.** The most instructive
+failure is lever 11: the *measurements* were correct, but I generalised them into a structural floor
+that does not exist — the peak qubit count tracks a configuration cap, and 124 of those qubits are a
+borrowed pool that expands to fill whatever cap is set.
+
+#### 2. The score is not the binding constraint — λ is
+
+This is the finding I think is worth other people's attention.
+
+The benchmark hashes its 9,024 test inputs from the circuit's own op stream. So **any change that
+lowers the score also re-rolls the test inputs.** A circuit therefore has no fixed pass/fail status;
+it has an intrinsic failure *rate*, called λ here, and shipping requires searching for an input seed
+on which it happens to pass everything.
+
+Measured on the current head over 199 independent seeds, each a full benchmark run:
+**λ_total ≈ 20.0**, so P(clean seed) ≈ 2.0 × 10⁻⁹ — about **5 × 10⁸ trials per usable seed**, or
+roughly 60 wall-years on a 16-core workstation.
+
+That reframes the whole problem. Optimising the score is the easy half; the hard half is that every
+optimisation must then be paid for in seed-search. Method and full numbers:
+[`docs/lambda-measurement.md`](docs/lambda-measurement.md), raw per-trial data in
+[`docs/data/`](docs/data/).
+
+#### 3. How the leaderboard leader actually operates
+
+The leader is a single autonomous agent (`yukon-autoresearch[bot]`) landing a submission every 0.88
+days, and it ships its search controller inside its own submissions. Reading it explains the pace
+without any exotic trick: a **512 / 2,048 / 8,192 / 9,024 shot ladder** that rejects bad seeds early
+(7.2× cheaper at λ = 20), plus a per-trial cost roughly 50× below a naive full run. It was also
+grinding at much lower λ for most of the campaign.
+
+Notably, **λ appears nowhere in its selection function** — it is tolerated as a pass/fail gate,
+never optimised. Details: [`docs/upstream-search-economics.md`](docs/upstream-search-economics.md).
+
+#### 4. Measurement traps that silently invalidate results
+
+Several findings are about *method*, and they generalise beyond this project. The sharpest: the
+benchmark script runs the build under `sudo`, and sudo's `env_reset` **silently strips the
+environment variable** that selects the seed — so every trial measures the default and returns a
+byte-identical artifact. It looks exactly like "my change had no effect". It is also intermittent,
+because sudo's credential cache expires mid-run.
+
+The only thing that caught it was a rule borrowed from the other contestant's notes: *a null result
+is only a result if the output hash changed.* That rule is now load-bearing in everything here.
+
+#### Where the cost actually is
+
+About 95% of the budget is the two modular inversions that reversible affine point addition
+requires. In the literature surveyed in
 [`docs/quantum-inversion-frontier-research.md`](docs/quantum-inversion-frontier-research.md), no
 reversible modular-inversion implementation has a lower Toffoli count than the windowed binary GCD
 used here.
@@ -95,9 +160,8 @@ resource estimates with the circuits withheld behind a zero-knowledge proof. See
 [`docs/quantum-inversion-frontier-research.md`](docs/quantum-inversion-frontier-research.md) for the
 scopes.
 
-Start with [`docs/CONCLUSION.md`](docs/CONCLUSION.md) for the full write-up: the levers tried, the
-literature research, and the remaining research-scale option (a jump-k GCD engine). See
-[`docs/`](docs/) for the detailed per-component analyses.
+Start with [`docs/CONCLUSION.md`](docs/CONCLUSION.md) for the full write-up and the audit of what
+was wrong. See [`docs/`](docs/) for the per-component analyses and the current findings.
 
 ---
 
@@ -179,13 +243,35 @@ Benchmarks are run in hardened processes and we recommend using caution when run
 
 ## How this was built
 
-The profiling, the optimization analysis, and the documents under `docs/` in this
-fork were produced with Claude Code, Anthropic's agentic coding tool. The reversible
-circuit itself is the community's work from the challenge repository; my part was
-reproducing and validating it locally and analyzing where its cost is and which
-optimizations are available, and I did that analysis with Claude Code. Figures
-quoted from outside papers were checked against their sources; see
-`docs/quantum-inversion-frontier-research.md` for the provenance.
+The profiling, the optimization analysis, the λ measurement, and the documents under
+`docs/` in this fork were produced with Claude Code, Anthropic's agentic coding tool.
+The reversible circuit itself is the community's work from the challenge repository;
+my part was reproducing and validating it locally, measuring where its cost is and
+what actually gates progress, and writing up both the findings and the errors — and I
+did that work with Claude Code.
+
+Every number quoted from this fork's own measurements is reproducible from the repo:
+the score from `./benchmark.sh`, the λ figures from the raw per-trial data in
+[`docs/data/`](docs/data/). Figures quoted from outside papers were checked against
+their sources; see `docs/quantum-inversion-frontier-research.md` for the provenance.
+Where a claim is an inference rather than a measurement, the documents say so.
+
+### What is not this fork's work
+
+Beyond the circuit itself, the 2026-08-02 rebase onto upstream `8af8a6f` brought in a substantial
+body of another contestant's material, which ships inside `src/point_add/` because that is the
+challenge's `editablePaths` root. None of it is ours:
+
+- **`src/point_add/memory/01-05` and `README.md`** (533 lines) — their working notes on the
+  circuit's architecture, its intrinsic error rate, proven floors, traps, and the qubit programme.
+  Attributed to whoever authored the accepted submissions; the upstream commits are authored by
+  `yukon-autoresearch[bot]`.
+- **`src/point_add/memory/repro/dgm_search.py`** (2,848 lines) and `test_dgm_search.py` (507) —
+  their Darwin-Gödel-Machine search controller. It ports mechanisms from
+  [jennyzzt/dgm](https://github.com/jennyzzt/dgm) (pinned at `a565fd2`), as its own header states.
+
+Our documents cite these heavily and are careful to say so at each point. `docs/` is this fork's
+work; `src/point_add/` is not.
 
 ## Credits
 
@@ -196,3 +282,11 @@ and its [companion Zenodo dataset](https://zenodo.org/records/19597130).
 Thanks to the authors for releasing the code that made this benchmark possible.
 
 Thanks to [Kirk Baird](https://github.com/kirk-baird) from SigmaPrime for reviewing the codebase.
+
+The analysis in `docs/` leans heavily on the working notes and search controller that
+arrived with the upstream rebase, in `src/point_add/memory/` — another contestant's
+work, not mine. Several of this fork's findings are extensions of theirs, and the
+documents cite them at each point. See
+[What is not this fork's work](#what-is-not-this-forks-work).
+
+Project write-up: **[amissah.net](https://amissah.net)**.

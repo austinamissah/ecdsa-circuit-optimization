@@ -1,5 +1,10 @@
 # Modular squaring: is it at its floor?
 
+> **Provenance:** written 2026-07-11 against commit `422f21d`. The fork was rebased onto upstream
+> `8af8a6f` on 2026-08-02 and the circuit has changed since (`ITERS` 258 → 261, `SCHED_J2` rewritten,
+> new occupancy tripwire, peak 1152 → 1154). Accurate for the circuit it describes; verify specific
+> numbers against current source. See [`CONCLUSION.md`](CONCLUSION.md) for the re-audit.
+
 Read-only. No source changed. Target: modular squaring, ~4.5% of the Toffoli budget (~62,081 CCX
 across its phases), via `mod_square_sub_pm_secp256k1_symmetric` (square.rs:471) and the live backend
 `square_addsub_vented` (arith/multiply.rs:2087). Question: untaken slack, or already at its floor?

@@ -1,5 +1,10 @@
 # How low can a single reversible secp256k1 point addition go?, a literature-grounded frontier analysis
 
+> **Provenance:** written 2026-07-11 against commit `422f21d`. The fork was rebased onto upstream
+> `8af8a6f` on 2026-08-02 and the circuit has changed since (`ITERS` 258 → 261, `SCHED_J2` rewritten,
+> new occupancy tripwire, peak 1152 → 1154). Accurate for the circuit it describes; verify specific
+> numbers against current source. See [`CONCLUSION.md`](CONCLUSION.md) for the re-audit.
+
 A research synthesis on the cost floor of a reversible elliptic-curve point addition scored by
 **Toffoli count × peak qubit width** (the ecdsa.fail metric), and on which algorithmic levers can and
 cannot move it. Compiled from a multi-source, adversarially-verified survey of the quantum-ECC

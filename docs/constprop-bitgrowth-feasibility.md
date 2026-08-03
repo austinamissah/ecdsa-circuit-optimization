@@ -1,5 +1,10 @@
 # Feasibility: teaching CONSTPROP a binary-GCD bit-growth invariant
 
+> **Provenance:** written 2026-07-11 against commit `422f21d`. The fork was rebased onto upstream
+> `8af8a6f` on 2026-08-02 and the circuit has changed since (`ITERS` 258 → 261, `SCHED_J2` rewritten,
+> new occupancy tripwire, peak 1152 → 1154). Accurate for the circuit it describes; verify specific
+> numbers against current source. See [`CONCLUSION.md`](CONCLUSION.md) for the re-audit.
+
 Read-only. No source changed. Question: could CONSTPROP prove more Toffoli controls constant-zero by
 injecting a bit-growth invariant (`|u|,|v| < 2^{w(i)}` at iteration `i`) that its local dataflow
 can't currently see, and is the prize worth the math?

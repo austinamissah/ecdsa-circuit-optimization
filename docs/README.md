@@ -3,8 +3,36 @@
 Analyses from the optimization campaign on this reversible secp256k1 point-addition circuit
 (metric: **average executed Toffoli × peak qubit width**).
 
+**New here?** The top-level [README](../README.md#what-this-fork-did-and-what-it-found) has the
+short version of what this fork measured and what it got wrong. Project write-up:
+[amissah.net](https://amissah.net). The three things worth knowing:
+
+1. The first-pass conclusion — *no lever available* — **was wrong**, and is kept and marked rather
+   than deleted. See the [lever verdict audit](CONCLUSION.md#lever-verdict-audit).
+2. The score is not the binding constraint. **λ**, the intrinsic error rate, is —
+   [`lambda-measurement.md`](lambda-measurement.md).
+3. The leaderboard leader is an autonomous agent whose method is readable from its own submissions
+   — [`upstream-search-economics.md`](upstream-search-economics.md).
+
+> **Provenance.** Everything under "Frontier & literature research" and "Per-component analyses"
+> was written 2026-07-11 against commit `422f21d`. The fork was rebased onto upstream `8af8a6f`
+> on 2026-08-02, 25 accepted submissions later, and the circuit changed materially (`ITERS`
+> 258 → 261, `SCHED_J2` rewritten, a new occupancy tripwire, peak 1152 → 1154). Those documents
+> are accurate for the circuit they describe and are kept as a record; check any specific number
+> against the current source before relying on it. The 2026-08-02 documents are current.
+
 **Start here:** **[`CONCLUSION.md`](CONCLUSION.md)**, the campaign verdict, every lever tried, the
-frontier comparison, and the one remaining research-scale lever.
+frontier comparison — with its wrong verdicts marked in place and a
+[lever verdict audit](CONCLUSION.md#lever-verdict-audit) of what refuted each one.
+
+## Current (2026-08-02)
+- [`lambda-measurement.md`](lambda-measurement.md), λ_total ≈ 20.0 measured on the rebased head
+  over 199 nonces: the third axis that is not in the score but decides what can ship, why a clean
+  seed costs ~5e8 trials, and the λ targets that would make a grind feasible.
+- [`upstream-search-economics.md`](upstream-search-economics.md), how upstream lands a submission
+  every 0.88 days: the DGM controller, its 512/2,048/8,192/9,024 shot ladder, why λ is absent from
+  its selection function, and what a screen can and cannot tell you.
+- [`data/`](data/), raw per-trial measurements, with the integrity checks that make them citable.
 
 ## Frontier & literature research
 - [`quantum-inversion-frontier-research.md`](quantum-inversion-frontier-research.md), multi-source,
