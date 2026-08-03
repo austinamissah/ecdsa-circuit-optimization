@@ -3,6 +3,26 @@
 Primary data behind [`../lambda-measurement.md`](../lambda-measurement.md). These are the
 measurements themselves, not a summary — keep them so the analysis can be re-derived or challenged.
 
+## Stream-provenance dumps
+
+Behind [`../census-stream-provenance.md`](../census-stream-provenance.md), taken 2026-08-03. All
+four are produced by [`../../tools/census/dump_gates.rs`](../../tools/census/dump_gates.rs) under
+`SUB4_APPLY_STRIP=0`.
+
+| file | contents |
+|---|---|
+| `census-stream-d9ef3e9.gates.tsv.gz` | the census stream — 9,073,163 ops / 1,361,613 CCX+CCZ, the numbers in `deep_strip_keys.rs`'s header |
+| `head-stream-7d844fa.gates.tsv.gz` | the current head's unstripped stream — 9,070,297 / 1,360,635 |
+| `census-vs-head.gates.diff.gz` | the 354-hunk unified diff between the two, net −978 CCX |
+| `stream-walk-by-commit.tsv` | ops / gates / distinct tuples at each of the 18 commits from `d9ef3e9` to HEAD |
+
+Columns in the two gate dumps: `opidx, kind, q_control2, q_control1, q_target, c_condition,
+ordinal, tuple_occupancy` — the last three keyed exactly as `apply_deep_strip_identity` expects.
+
+**Integrity gate.** Replaying the occupancy tripwire against `head-stream-7d844fa.gates.tsv.gz`
+reproduces `build_circuit` exactly: 12,292 dead accepted / 251 stale, 3,923 downgrades / 0 stale.
+If a re-derivation does not reproduce those four numbers it is not reading the shipped stream.
+
 ## `lambda-sweep-801dd20.tsv`
 
 The λ sweep on the rebased upstream head `801dd20` (score 1,487,590,242 = 1,289,073.125 executed

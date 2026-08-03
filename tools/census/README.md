@@ -8,6 +8,12 @@ The census tooling that produced `src/point_add/deep_strip_keys.rs` did not surv
 `/tmp` and `/dev/shm` on a VM (`memory/05-qubit-reduction.md` step 6). This is a replacement, built
 on the fixed-base multiplier and wide-lane simulator from [`../lam-screen/`](../lam-screen/).
 
+**The stream it was mined against did survive**: commit `d9ef3e9`, which rebuilds to exactly the
+9,073,163 ops / 1,361,613 CCX+CCZ in the key table's header. See
+[`../../docs/census-stream-provenance.md`](../../docs/census-stream-provenance.md) — which also
+rules the stream difference out as the reason this miner cannot reproduce the shipped table.
+[`dump_gates.rs`](dump_gates.rs) is the instrument for that comparison.
+
 ## What it certifies
 
 For every CCX/CCZ in the **unstripped** stream, over many random on-curve input pairs:

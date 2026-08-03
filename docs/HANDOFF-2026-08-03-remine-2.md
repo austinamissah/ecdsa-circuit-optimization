@@ -26,6 +26,10 @@ so a correct miner would recover more and the real net at delta 2 is better than
 
 - Stale keys of the shipped table against the current head stream: **251**, not
   zero — so in principle there was something to recover.
+  **Corrected 2026-08-03: there was not.** All 251 went stale at commit `d6eed9a`
+  because their operand tuple was *deleted from the stream*; none are occupancy
+  drift. The gates do not exist and the score is already banked. See
+  [`census-stream-provenance.md`](census-stream-provenance.md).
 - The miner **cannot certify replacements for those 251**, and separately misses
   **3,165 dead** and **1,727 downgrade** keys the shipped table finds.
 - Re-mined delta 0 scores **+0.324% against head** — a loss. λ_classical
@@ -94,10 +98,17 @@ the per-gate dump (`--mode dump`), not from that script.**
 
 ## What to run next, in order
 
-1. **Diff the streams first — cheapest and most likely cause.** The shipped
+1. ~~**Diff the streams first — cheapest and most likely cause.** The shipped
    census header says **9,073,163 ops / 1,361,613 CCX+CCZ**; the current head's
    unstripped stream is **9,070,297 / 1,360,635**. It was mined on a materially
-   different circuit. Establish what that stream was before anything else.
+   different circuit. Establish what that stream was before anything else.~~
+   **Done 2026-08-03, and it is NOT the cause** —
+   [`census-stream-provenance.md`](census-stream-provenance.md). The census stream
+   is commit `d9ef3e9`; the header is accurate and all 16,466 keys stamp that one
+   stream at 100%. Head differs by 978 CCX in three attributable edits, which
+   explains all 251 stale keys and **none** of the 3,165/1,727 gap: every
+   un-reproduced key addresses a tuple still present in head with unchanged
+   occupancy. Go straight to item 2.
 2. Then the two remaining suspects for the over-observation: (a) the CCZ
    effective condition — this census folds the target in (`cond & t & c1 & c2`)
    and the shipped census may not; (b) condition-stack handling of nested

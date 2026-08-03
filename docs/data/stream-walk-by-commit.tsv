@@ -1,0 +1,18 @@
+d9ef3e9	DUMP ops=9073163 gates=1361613 distinct_tuples=194973	Accept submission 8233cd7e-d4cb-4351-9bd4-e3741d0d6ba3
+7936360	DUMP ops=9073163 gates=1361613 distinct_tuples=194973	Accept submission c3f37273-8881-40b0-b7c3-c65312b62dea
+b978905	DUMP ops=9103995 gates=1364107 distinct_tuples=195895	Accept submission 92214c20-7b16-4619-b410-1a5f5665b411
+6e9f0af	DUMP ops=9073163 gates=1361613 distinct_tuples=194973	Accept submission 4c5a9722-9a6a-449c-a98c-5464a7c75101
+266b783	DUMP ops=9073163 gates=1361613 distinct_tuples=194973	Accept submission a0ce6196-5532-49f8-a047-f9496eaf88b4
+ea785b7	DUMP ops=9073163 gates=1361613 distinct_tuples=194973	Accept submission 9275b0b2-200f-453e-aae6-c8793cff1afa
+330d42d	DUMP ops=9073163 gates=1361269 distinct_tuples=194802	Accept submission 604741ed-6d31-48b5-8ad1-2988391bb4b5
+cf5aa02	DUMP ops=9073163 gates=1361269 distinct_tuples=194802	Accept submission 0c5b1b7b-561a-48a0-abc6-5fefaffdc0ad
+37ab267	DUMP ops=9073163 gates=1361613 distinct_tuples=194973	Accept submission 447d5a59-cffb-4cd8-a8d8-504d12434e1a
+7fa872d	DUMP ops=9073163 gates=1361613 distinct_tuples=194973	Accept submission 705b36a4-7571-4c4a-85e4-3b79d9dec0f7
+7726431	DUMP ops=9073163 gates=1361269 distinct_tuples=194802	Accept submission 26842313-738a-4f3d-bd5f-1818bfc18a63
+5265674	DUMP ops=9073163 gates=1361269 distinct_tuples=194802	Accept submission 9f99e0bc-75d0-4353-83b2-c4eb3b0120a1
+d6eed9a	DUMP ops=9070357 gates=1360639 distinct_tuples=194559	Accept submission 87bbecb8-58ba-40e1-af55-9aa7cb73d9f3
+4579b79	DUMP ops=9070357 gates=1360639 distinct_tuples=194559	Accept submission 90e90e6d-38c5-4de3-a4f4-3ba9b8241d77
+8af8a6f	DUMP ops=9070297 gates=1360635 distinct_tuples=194555	Accept submission 220845c4-f197-4b0c-bec6-81a96f431c4e
+b1c8f84	DUMP ops=9070297 gates=1360635 distinct_tuples=194555	Lift the ITERS cap: SCHED_J2/GAP_J2 hold their terminal entry past the end
+9f34bb9	DUMP ops=9070297 gates=1360635 distinct_tuples=194555	TLM_SCHED_J2_DELTA=2: lambda_classical 15.34 -> 5.79, for 1.27% of score
+7d844fa	DUMP ops=9070297 gates=1360635 distinct_tuples=194555	Handoff 2: harness-order mode, and why the hypothesis is now doubtful

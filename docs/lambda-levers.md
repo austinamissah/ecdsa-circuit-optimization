@@ -130,6 +130,13 @@ The finding that matters is that **it has a λ cost at all**, so it belongs in t
 than being carried as free, and that a re-mine against the current stream should recover both the
 251 stale keys *and* this 0.68.
 
+> **Corrected 2026-08-03 — the 251 are not recoverable.**
+> [`census-stream-provenance.md`](census-stream-provenance.md) shows all 251 went stale at one
+> commit (`d6eed9a`) because their operand tuple was *deleted from the stream*, not because
+> occupancy drifted. Those gates no longer exist, a later optimisation already did the strip's job,
+> and the score is banked in the head figure. A re-mine can still recover the 0.68 λ; it cannot
+> recover the 251.
+
 
 ## The lever: widening the divstep width schedule
 
