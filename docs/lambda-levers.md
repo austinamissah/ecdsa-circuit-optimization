@@ -126,6 +126,98 @@ than being carried as free, and that a re-mine against the current stream should
 251 stale keys *and* this 0.68.
 
 
+## The lever: widening the divstep width schedule
+
+`SCHED_J2[i]` is how many bits of `u` survive divstep `i` — `gcd.rs:1230` pops and frees
+everything above it — so the schedule is a deliberate truncation, and `02-lambda.md` prices
+"`SCHED_J2` drops a nonzero bit, walk still terminates" at 2.80 mismatches per 9,024.
+`TLM_SCHED_J2_DELTA` (added in this branch, `schedule.rs`) widens it by a constant number of bits
+at every divstep, with `GAP_J2` moving in lockstep.
+
+**`GAP_J2` must move with it.** `memory/05-qubit-reduction.md` step 5 records that the divstep
+error depends only on `s = SCHED_J2[i] − cmp_window(i)`, and that moving one without the other
+takes that channel from 8.36 to 4,646 mismatches. A constant delta added to both preserves `s`
+exactly, since `cmp_window` is `min(gap_j2(i), current_n)` with `current_n = sched_j2(i)`. Delta 0
+is the identity — verified, md5 `f5c5f98258ddb7a0b1f250750ad1c6d2`.
+
+| delta | λ_classical | sem | Δλ vs baseline | avgT | peak q | score | Δscore | % score per λ-unit |
+|---|---|---|---|---|---|---|---|---|
+| 0 (baseline) | 15.342 | ±0.189 | — | 1,304,032 | 1154 | 1,504,852,928 | — | — |
+| **1** | **8.412** | ±0.145 | **−6.930 ± 0.238** (29σ) | 1,311,740 | 1155 | 1,515,059,700 | +0.68% | **0.098** |
+| **2** | **5.787** | ±0.125 | **−9.555 ± 0.227** (42σ) | 1,319,429 | 1155 | 1,523,940,495 | +1.27% | 0.133 |
+| 4 | 4.662 | ±0.102 | −10.680 ± 0.215 (50σ) | 1,335,901 | 1155 | 1,542,965,655 | +2.53% | 0.237 |
+
+**This is an order of magnitude better than anything else measured.** Against 1.70% of score per
+λ-unit for the deep strip and 1.8%+ for `ITERS`, the first delta step costs **0.098%**. Marginal
+rates: delta 0→1 is 0.098% per λ-unit, 1→2 is 0.225%, 2→4 is 1.12% — so returns fall off sharply
+and **delta 2 is the sensible stopping point**, with delta 1 the best value per unit if score is
+tight.
+
+Three things make this a real effect rather than an artefact:
+
+- **The standard deviation tracks the mean.** sd falls 3.783 → 2.891 → 2.498 → 2.048 against
+  √λ = 3.917 → 2.900 → 2.406 → 2.159. The distribution stays Poisson with the rate itself lowered;
+  it is not a shifted or truncated distribution.
+- **All 400 stream fingerprints are distinct in every arm**, and every arm has its own
+  `md5 ops.bin` — `baac874c…` at delta 2 against the baseline's `4cb7eb53…`.
+- **The direction check.** `05-qubit-reduction.md` measured this same lever the *other* way —
+  narrowing 160 tail entries bought −0.49% of score for +3.6 λ, i.e. ≈0.14% per λ-unit. Running it
+  backwards reproduces that exchange rate, from independent data on a different head.
+
+The measured 9.56 λ at delta 2 is far larger than the 2.80 that `02-lambda.md` assigned to the
+`SCHED_J2` channel. The width schedule is evidently feeding the other classical channels too,
+which is consistent with that document's own warning that the four sources "are all
+truncation-style approximations driven by the same input magnitudes".
+
+## What this does to feasibility
+
+The target was never "reduce λ_total by 11". With a screen, the search runs in two stages: find
+nonces that are clean on the classical channel, then confirm each on the full harness. So the
+quantity that gates screening throughput is **λ_classical**, and λ_phase_only sets the
+candidates-per-seed ratio.
+
+| | λ_classical | P(classical-clean) | nonces per candidate | at 4,360 nonces/hour |
+|---|---|---|---|---|
+| shipped (strip on) | 16.025 | 1.1e-7 | 9.1e6 | 87 days |
+| baseline (strip off) | 15.342 | 2.2e-7 | 4.6e6 | 44 days |
+| **`DELTA=1`** | **8.412** | 2.2e-4 | 4,520 | **62 minutes** |
+| **`DELTA=2`** | **5.787** | 3.1e-3 | 327 | **4.5 minutes** |
+| `DELTA=4` | 4.662 | 9.4e-3 | 106 | 1.5 minutes |
+
+**At delta 2 the screen produces a classical-clean candidate every few minutes on this laptop**,
+against 44 days at the baseline. That is the difference between a grind that cannot be started and
+one that runs overnight.
+
+**The phase channel is the open question and it decides everything.** The screen is
+classical-only, so none of the above establishes λ_total. What is known is suggestive but not
+sufficient: the single shipped nonce reports phase-garbage batches 16 → 8 → 5 → 2 across
+delta 0/1/2/4, tracking the classical channel down. n=1 proves nothing (`02-lambda.md`'s statistics
+discipline exists precisely for this), so a full-harness run is needed — see
+[Status](#status-what-is-and-is-not-established).
+
+## Status: what is and is not established
+
+**Established, n=400 per arm, on the classical channel:**
+
+- `ITERS` is spent. The `02-lambda.md` tail curve is confirmed downward at 6.0σ; upward the
+  predicted gain is absent, bounded at |Δλ| < 0.4.
+- The `ITERS ≡ 0 mod 3` rule does not exist, and the deep strip is what made 259/260 look destroyed.
+- The deep strip costs 0.682 ± 0.273 λ despite being documented as bit-exact, and its occupancy
+  tripwire is insufficient rather than merely imperfect.
+- `TLM_SCHED_J2_DELTA` buys 6.9 to 10.7 λ_classical at 0.098–0.237% of score per λ-unit.
+
+**Not established:**
+
+- **λ_total under the lever.** Everything above is λ_classical. A full-harness sweep at delta 2 is
+  the next measurement and the one that decides whether a grind is now feasible.
+- **The score prices are un-retuned upper bounds.** `TLM_TARGET_Q` and `TLM_SQUARE_PEAK_CAP` are
+  pinned at 1154 and every delta arm moves peak to 1155. `05-qubit-reduction.md`'s central
+  operational fact is that a persistent-set change only pays if the cap moves with it, so the
+  +1.27% at delta 2 should be re-measured with the caps re-fitted before it is treated as the price.
+- **Interaction with a re-mined census.** Every arm ran with the strip off. Whether a census
+  re-mined against a delta-2 stream recovers its 1.16% without re-introducing its 0.68 λ is
+  untested.
+
 ## Method
 
 **Instrument.** [`../tools/lam-screen/`](../tools/lam-screen/), re-gated against all 199 harness
