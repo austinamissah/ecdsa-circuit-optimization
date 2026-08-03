@@ -369,13 +369,15 @@ fn census_shard<const L: usize>(
     acc
 }
 
+fn out_path_dump(s: &str) -> String { s.to_string() }
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let mut mode = String::from("shard");
     let mut samples = 1_000_000usize;
     let mut seed = 1u64;
     let mut lanes = 16usize;
-    let mut out = String::from("shard.bin");
+    let mut out_file = String::from("shard.bin");
     let mut shards = String::new();
     let mut i = 1;
     while i < args.len() {
@@ -384,7 +386,7 @@ fn main() {
             "--samples" => { samples = args[i + 1].replace('_', "").parse().unwrap(); i += 2; }
             "--seed" => { seed = args[i + 1].parse().unwrap(); i += 2; }
             "--lanes" => { lanes = args[i + 1].parse().unwrap(); i += 2; }
-            "--out" => { out = args[i + 1].clone(); i += 2; }
+            "--out" => { out_file = args[i + 1].clone(); i += 2; }
             "--shards" => { shards = args[i + 1].clone(); i += 2; }
             o => { eprintln!("unknown arg {o}"); std::process::exit(2); }
         }
@@ -408,12 +410,47 @@ fn main() {
             128 => census_shard::<128>(&cops, &regs, total_qubits as usize, num_bits as usize, ngates, samples, seed, &fb, &curve),
             _ => panic!("--lanes must be 8, 16, 32, 64 or 128"),
         };
-        std::fs::write(&out, &acc).expect("write shard");
+        std::fs::write(&out_file, &acc).expect("write shard");
         let dead = acc.iter().filter(|f| **f & F_FIRED == 0).count();
         let d1 = acc.iter().filter(|f| **f & F_FIRED != 0 && **f & F_VIOL1 == 0).count();
         let d2 = acc.iter().filter(|f| **f & F_FIRED != 0 && **f & F_VIOL2 == 0).count();
         eprintln!("shard seed={seed} samples={samples} in {:.1}s -> never-fired {dead}, c1-implied {d1}, c2-implied {d2}",
                   t0.elapsed().as_secs_f64());
+        return;
+    }
+
+    if mode == "dump" {
+        // Every gate: tuple, ordinal, occupancy, merged flags. Lets the
+        // known-answer test be done in full, including gates that are LIVE
+        // (and therefore absent from any emitted key table).
+        let mut merged = vec![0u8; ngates];
+        for f in shards.split(',').filter(|s| !s.is_empty()) {
+            let d = std::fs::read(f.split(':').next().unwrap()).expect("read shard");
+            assert_eq!(d.len(), ngates);
+            for (m, x) in merged.iter_mut().zip(d.iter()) { *m |= *x; }
+        }
+        use std::collections::HashMap;
+        let mut occ: HashMap<(u8,u64,u64,u64,u64), u32> = HashMap::new();
+        for op in &ops {
+            let kb = op.kind as u8;
+            if kb == 13 || kb == 14 {
+                *occ.entry((kb, op.q_control2.0, op.q_control1.0, op.q_target.0, op.c_condition.0)).or_insert(0) += 1;
+            }
+        }
+        let mut ord: HashMap<(u8,u64,u64,u64,u64), u32> = HashMap::new();
+        let mut out = String::new();
+        let mut g = 0usize;
+        for op in &ops {
+            let kb = op.kind as u8;
+            if kb != 13 && kb != 14 { continue; }
+            let tup = (kb, op.q_control2.0, op.q_control1.0, op.q_target.0, op.c_condition.0);
+            let o = ord.entry(tup).or_insert(0);
+            out.push_str(&format!("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n",
+                kb, tup.1, tup.2, tup.3, tup.4, *o, occ[&tup], merged[g]));
+            *o += 1; g += 1;
+        }
+        std::fs::write(&out_path_dump(&out_file), out).expect("write dump");
+        eprintln!("dumped {} gates", g);
         return;
     }
 
@@ -482,6 +519,6 @@ fn main() {
         s.push_str(&format!("    ({k}, {c2}, {c1}, {t}, {cc}, {o}, {tot}, {act}),\n"));
     }
     s.push_str("];\n");
-    std::fs::write(&out, s).expect("write keys");
-    eprintln!("wrote {out}: {} dead, {} downgrade", dead_rows.len(), down_rows.len());
+    std::fs::write(&out_file, s).expect("write keys");
+    eprintln!("wrote {out_file}: {} dead, {} downgrade", dead_rows.len(), down_rows.len());
 }
