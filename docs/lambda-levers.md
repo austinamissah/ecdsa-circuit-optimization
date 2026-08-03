@@ -254,10 +254,23 @@ the covariance estimate is conservative for planning and cannot understate the c
 **Not established:**
 
 - **The precision of λ_total.** n=42 supports an order of magnitude, not a third significant figure.
-- **The score prices are un-retuned upper bounds.** `TLM_TARGET_Q` and `TLM_SQUARE_PEAK_CAP` are
-  pinned at 1154 and every delta arm moves peak to 1155. `05-qubit-reduction.md`'s central
-  operational fact is that a persistent-set change only pays if the cap moves with it, so the
-  +1.27% at delta 2 should be re-measured with the caps re-fitted before it is treated as the price.
+- ~~**The score prices are un-retuned upper bounds.**~~ **Measured, and the effect is small.**
+  Re-fitting `TLM_TARGET_Q` and `TLM_SQUARE_PEAK_CAP` from their pinned 1154 to match the arms'
+  actual peak:
+
+  | config | caps | avgT | peak | score | vs pinned |
+  |---|---|---|---|---|---|
+  | delta 2 | 1154 | 1,319,429 | 1155 | 1,523,940,495 | — |
+  | delta 2 | 1155 | 1,318,032 | 1156 | 1,523,644,992 | −0.019% |
+  | delta 2 | 1156 | 1,316,598 | 1157 | 1,523,303,886 | −0.042% |
+  | delta 1 | 1154 | 1,311,740 | 1155 | 1,515,059,700 | — |
+  | delta 1 | 1155 | 1,310,333 | 1155 | 1,513,434,615 | **−0.107%** |
+
+  At delta 2 `peak = cap + 1` exactly at every setting, so raising the cap buys avgT and gives it
+  straight back in width — a third independent confirmation of `05-qubit-reduction.md`'s central
+  operational fact that the vent pool expands to fill whatever you free. Delta 1 is the exception:
+  peak holds at 1155 while avgT falls, for a real −0.107%. **So the delta-2 price is +1.25% rather
+  than +1.27%, and the delta-1 price is +0.57% rather than +0.68%** — the conclusions do not move.
 - **Interaction with a re-mined census.** Every arm ran with the strip off. Whether a census
   re-mined against a delta-2 stream recovers its 1.16% without re-introducing its 0.68 λ is
   untested.
