@@ -6,9 +6,23 @@
 >
 > This document concluded that no lever was available and that only a research-scale rewrite
 > could lower the score. In the 21 days that followed, upstream landed **25 accepted
-> score-lowering submissions** by ordinary tuning — no rewrite. Our fork was rebased onto
-> `8af8a6f` on 2026-08-02 and the current head measures **1,487,590,242** (1,289,073.125
-> executed Toffoli × **1154** qubits, 9,024/9,024 clean), against the 1.52e9 quoted below.
+> score-lowering submissions**. Our fork was rebased onto `8af8a6f` on 2026-08-02 and the current
+> head measures **1,487,590,242** (1,289,073.125 executed Toffoli × **1154** qubits, 9,024/9,024
+> clean), against the 1.52e9 quoted below.
+>
+> Calling that "tuning we missed" would undersell what actually happened. Upstream is a single
+> autonomous agent (`yukon-autoresearch[bot]`) running a Darwin-Gödel-Machine loop: it mutates
+> `src/point_add/` in disposable worktrees, screens candidates on a 512/2,048/8,192/9,024 shot
+> ladder, and promotes only what a full verifier passes. It ran that loop **while λ was still low
+> enough for a clean seed to be cheap**, and spent the resulting throughput climbing the
+> aggressiveness curve — `ITERS` moved 258 → 261 on 2026-07-26, the same day 8 submissions landed.
+> The pace then fell to 3 on 08-01 as λ rose. That is the shape of the campaign: not a better
+> lever, but a search loop run hard against a constraint that was cheap early and is expensive now.
+>
+> So the real error here is not "we missed a lever." It is that this document was scoring levers
+> on Toffoli × qubits while the thing actually governing progress was λ and the cost of a seed
+> search — a quantity it never measures or mentions. See
+> [`upstream-search-economics.md`](upstream-search-economics.md).
 >
 > **The original text is kept intact on purpose.** Each superseded claim is marked in place and
 > itemised in [Lever verdict audit](#lever-verdict-audit). What we got wrong, and why, is the

@@ -115,8 +115,10 @@ it has an intrinsic failure *rate*, called λ here, and shipping requires search
 on which it happens to pass everything.
 
 Measured on the current head over 199 independent seeds, each a full benchmark run:
-**λ_total ≈ 20.0**, so P(clean seed) ≈ 2.0 × 10⁻⁹ — about **5 × 10⁸ trials per usable seed**, or
-roughly 60 wall-years on a 16-core workstation.
+**λ_total ≈ 20.0**, so P(clean seed) ≈ 2.0 × 10⁻⁹ — about **5 × 10⁸ trials per usable seed**. At the
+throughput actually measured on the laptop used (205 full benchmark runs per hour), that is on the
+order of **280 wall-years**. The 95% confidence interval on λ spans a factor of ~38 in that figure,
+so read it as an order of magnitude rather than a number.
 
 That reframes the whole problem. Optimising the score is the easy half; the hard half is that every
 optimisation must then be paid for in seed-search. Method and full numbers:
