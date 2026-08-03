@@ -96,15 +96,24 @@ Two dull things, not one clever one:
    were cleaner and their grinds correspondingly cheap. The shape of the campaign (8 submissions
    on 07-26, 3 on 08-01) is a rising-λ ramp.
 2. **Per-trial cost, not trial count.** ~1e8 trials in ~1 day is ~1,157 trials/s; on 1,344 vCPU
-   that is ~1.2 s/trial, about **50× faster than our 61 s full-harness run**. The ladder supplies
-   7.2× of that. The rest is available structurally and is not exotic: `apply_tail_nonce` touches
-   only the last 96 ops, and `fiat_shamir_seed` is a *streaming* SHAKE256 absorb, so the hash state
-   over ops[0 … n−96] can be computed once and cloned per nonce — 5,376 bytes absorbed instead of
-   ~507 MB — with no circuit rebuild at all. Nothing that shipped implements this; it is an
-   inference about what they run.
+   that is ~1.2 s/trial, about **90× faster than our 110 s full-harness run**. The ladder supplies
+   7.2× of that. Skipping the rebuild supplies most of the rest, and is not exotic:
+   `apply_tail_nonce` touches only the last 96 ops, and `fiat_shamir_seed` is a *streaming*
+   SHAKE256 absorb, so the hash state over ops[0 … n−96] can be computed once and cloned per nonce
+   — 5,376 bytes absorbed instead of ~507 MB — with no circuit rebuild at all.
 
-So they are not beating brute force with a correctness oracle. They are ~50× faster per trial
-through ordinary engineering, and they spent most of the campaign at a λ where the grind was cheap.
+**Both of those are now built and measured on our side, and they do not close the gap.** The
+validated screen ([`../tools/nonce-screen/`](../tools/nonce-screen/)) does exactly the above and
+reaches **12 s/nonce against the harness's 110 s — 9.2×, not 90×**. Since the rebuild was the
+whole of our saving, the residual ~10× must come from somewhere we have not touched: the
+simulation itself. `eval_circuit` spends 57 s on 9,024 shots, which includes 18,048 secp256k1
+scalar multiplications for test-pair generation. A faster simulator, cheaper pair generation, or
+simply better hardware would each account for it. Which of those they use is **unknown** — the
+screening code did not ship — and it is the open question worth the most.
+
+So they are not beating brute force with a correctness oracle. They are much faster per trial
+through engineering we have only partly reproduced, and they spent most of the campaign at a λ
+where the grind was cheap.
 
 ## Consequence: a screen is a candidate filter, never a seed finder
 

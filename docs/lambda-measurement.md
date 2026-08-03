@@ -1,11 +1,14 @@
 # λ, the third axis — measured on `801dd20`
 
-> **Measured 2026-08-02** on a Lenovo ThinkPad X1 Carbon Gen 10 — Intel i7-1270P (12 physical
+> **Measured 2026-08-02/03** on a Lenovo ThinkPad X1 Carbon Gen 10 — Intel i7-1270P (12 physical
 > cores: 4 performance + 8 efficient, 16 threads), 31 GB RAM, Ubuntu 24.04.4, kernel 6.17.0-35,
-> rustc/cargo 1.93.0. Circuit head `801dd20`. Every wall-clock figure below is anchored to the
-> **measured aggregate throughput of 205 trials/hour** on this machine — 202 trials in 59 minutes
-> across 14 concurrent workers — and not to an extrapolation from a single uncontended run. The
-> distinction matters: see [Throughput](#throughput).
+> rustc/cargo 1.93.0. Circuit head `801dd20`.
+>
+> Wall-clock anchors, all measured rather than extrapolated: **110 s** for one uncontended
+> `./benchmark.sh` (build 59 s + eval 57 s), **12 s** for one uncontended `screen --mode ladder`
+> nonce, and **205 trials/hour** aggregate for the harness across 14 concurrent workers (202
+> trials in 59 minutes). Note this machine throttles: timings taken cold early in a session run
+> materially faster than the settled figures. See [Throughput](#throughput).
 
 The score is `average executed Toffoli × peak qubits`. There is a third quantity that decides
 whether a circuit can ship at all, and it is not in the score: **λ, the intrinsic per-run failure
@@ -117,16 +120,32 @@ is no better than grinding anywhere.
 <a name="throughput"></a>
 ### Throughput
 
-A single uncontended trial takes **61 s**. That number does not extrapolate: running 14 workers
-concurrently gave an aggregate of **205 trials/hour**, i.e. **245 s per trial under load** and a
-parallel efficiency of only **3.5×**, not 14×. Two reasons, both structural — this is a hybrid
-laptop CPU where only 4 of the 12 cores are performance cores, and each trial re-emits the full
-op stream and pushes ~507 MB through zstd to produce a 30 MB `ops.bin`, so the workers contend on
-memory bandwidth and I/O rather than on arithmetic.
+Measured uncontended on an idle machine, each binary timed separately:
 
-**Use 205 trials/hour, the measured aggregate, for any cost estimate on this hardware.** An
-earlier draft of this document quoted "60 wall-years" by dividing the 61 s single-trial time by
-16; that assumed perfect scaling and understated the cost by about 4.6×.
+| | uncontended, one core |
+|---|---|
+| `./benchmark.sh` | **110 s/trial** |
+| ├─ `build_circuit` | 59 s |
+| └─ `eval_circuit` (9,024 shots) | 57 s |
+| `screen --mode count` | ~55 s/nonce |
+| `screen --mode ladder` | **~12 s/nonce** |
+
+**An earlier draft of this document said 61 s.** That measurement was taken early in the session
+on a cold machine; this is a 15 W-class laptop that throttles under sustained load, and 110 s is
+the settled figure after hours of running. It is not a units error — both were single uncontended
+`./benchmark.sh` runs. Treat 110 s as the number, and treat any timing taken in the first minutes
+of a session on this hardware as optimistic.
+
+Under 14 concurrent workers the sweep achieved an aggregate of **205 trials/hour**. Against the
+110 s single-core figure (32.7 trials/hour) that is an effective **6.3×**, i.e. **45% parallel
+efficiency** — an earlier draft said 3.5×, computed against the too-fast 61 s baseline. Two
+structural reasons: only 4 of this CPU's 12 cores are performance cores, and each harness trial
+re-emits the full op stream and pushes ~507 MB through zstd to produce a 30 MB `ops.bin`, so
+workers contend on memory bandwidth and I/O rather than on arithmetic.
+
+**Use 205 trials/hour, the measured aggregate, for any whole-machine cost estimate.** It is
+unchanged by the correction above, because it was measured directly rather than extrapolated —
+which is exactly why the seed-cost figures below did not move.
 
 ### The cost of a seed
 
@@ -146,21 +165,45 @@ figure here should be read as an order of magnitude, not a quantity.
 ### What would make a grind feasible
 
 Since every score-lowering change re-rolls the seed, **λ reduction is the gating project**, not a
-side concern. For a one-day grind on this machine:
+side concern. The screen is now built and validated
+([`../tools/nonce-screen/`](../tools/nonce-screen/), 199/199 exact against the harness), so its
+contribution can be measured rather than projected. On one core, for a one-day grind:
 
-| | trials/day | λ needed |
+| | trials/day | λ affordable |
 |---|---|---|
-| measured full harness (205/hr) | 4.9e3 | **≈ 8.5** |
-| with a 50× screen, if achieved | 2.5e5 | **≈ 12.4** |
+| full harness, 110 s/trial | 785 | **≈ 6.7** |
+| screen, ladder mode, 12 s/nonce | 7,200 | **≈ 8.9** |
 
-A screen is therefore worth roughly **4 λ-units** — cheaper to buy in engineering than in circuit
-correctness, which is the argument for building it first. The 50× is upstream's inferred per-trial
-figure, not ours, and is unvalidated here; a screen should also scale better in parallel than the
-harness does, since it eliminates the per-trial rebuild and the zstd I/O that caused the 3.5×
-efficiency. Both effects are unmeasured. See
-[`upstream-search-economics.md`](upstream-search-economics.md) for what such a screen looks like
-and why it is only a *candidate* filter, and
-[`../tools/nonce-screen/`](../tools/nonce-screen/) for an unbuilt draft.
+**The screen buys ≈ 2.2 λ-units** — `ln(110/12)` — not the ≈ 4 projected earlier. That projection
+assumed a 50× per-trial speedup inferred from upstream's cadence; the screen actually delivers
+**9.2×**.
+
+The gap is informative. Our 9.2× comes entirely from **not rebuilding**: `point_add::build()` is
+59 s and the harness pays it on every trial, while the screen pays it once per process. What we
+did *not* do is make the simulation itself cheaper, and `eval_circuit` at 57 s for 9,024 shots is
+the floor the ladder then cuts into. Upstream's inferred ~1.2 s/trial cannot be reached by
+skipping the rebuild alone, so **they must also have cut per-shot simulation cost** — by some
+combination of a faster simulator, cheaper test-pair generation (9,024 pairs is 18,048 secp256k1
+scalar multiplications per nonce), or hardware we do not have. That remains unexplained and is the
+obvious place to look for another order of magnitude.
+
+### λ reduction now carries essentially all the weight
+
+Against λ_total = 20.04 measured, a one-day single-core grind needs λ ≈ 8.9 with the screen. That
+is a shortfall of **≈ 11 λ-units**, and the screen closes 2.2 of it. Even granting the full
+machine and assuming the screen parallelises as well as the harness did (6.3× effective —
+plausibly conservative, since the screen eliminates the zstd I/O that caused the contention, but
+**unmeasured**), a one-day grind still only affords λ ≈ 10.7.
+
+So the screen is necessary instrumentation and nowhere near sufficient. **It does not make a
+grind feasible; it makes λ work measurable.** Everything now depends on lowering λ itself, and
+`memory/02-lambda.md` prices the four classical sources — each of which is a deliberate
+correctness-for-gates trade, so every λ-unit recovered pushes back against the score axis. That
+tension, not the tooling, is the actual problem.
+
+See [`upstream-search-economics.md`](upstream-search-economics.md) for why a screen hit is only a
+*candidate* — with λ_phase_only = 3.80 it needs full-harness confirmation at roughly 45 candidates
+per true seed.
 
 `memory/02-lambda.md` prices the four classical sources: divstep convergence tail (5.73, bought
 back by raising `ITERS` at ~2,930 emitted CCX per iteration), i=257 apply skips (5.30),

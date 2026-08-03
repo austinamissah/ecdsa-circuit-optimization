@@ -40,12 +40,36 @@ Uncontended, on the machine described in [`../../docs/lambda-measurement.md`](..
 | `screen --mode count` | **~55 s** | eval-equivalent; build amortised |
 | `screen --mode ladder` | **~12 s** | mean over 20 nonces |
 
-**~9× over the harness.** The saving is the rebuild, not the simulation: `point_add::build()` is
+**9.2× over the harness.** The saving is the rebuild, not the simulation: `point_add::build()` is
 ~59 s and the harness pays it every single trial, while the screen pays it once per process. So
 **batch as many nonces per invocation as possible** — a one-nonce invocation is worse than useless.
 
 Ladder rung distribution over those 20 nonces, which is what the 7.2× theoretical saving looks
 like in practice: 12 stopped at 512 shots, 6 at 2,048, 2 at 8,192.
+
+### What that is worth, and what it is not
+
+On one core, for a one-day grind:
+
+| | trials/day | λ affordable |
+|---|---|---|
+| full harness | 785 | ≈ 6.7 |
+| this screen, ladder | 7,200 | ≈ 8.9 |
+
+**The screen buys ≈ 2.2 λ-units** (`ln(110/12)`), not the ≈ 4 projected before it was built. That
+projection assumed a 50× per-trial speedup inferred from upstream's cadence; the real figure is
+9.2×, because our entire saving is *not rebuilding*. We did not make the simulation cheaper, and
+`eval_circuit` at 57 s per 9,024 shots is the floor the ladder cuts into. Upstream's inferred
+~1.2 s/trial is unreachable by skipping the rebuild alone, so they must also have cut per-shot
+simulation cost — a faster simulator, cheaper test-pair generation (9,024 pairs is 18,048
+secp256k1 scalar multiplications), or better hardware. Which, we do not know.
+
+**Against λ = 20.04 this is not close to sufficient.** A one-day single-core grind needs λ ≈ 8.9;
+the shortfall is ~11 λ-units and the screen closes 2.2 of them. Even on the full machine, assuming
+it parallelises as well as the harness did, a one-day grind affords only λ ≈ 10.7. So this tool
+does not make a grind feasible — **it makes λ work measurable.** λ reduction carries essentially
+all the remaining weight. See
+[`../../docs/lambda-measurement.md`](../../docs/lambda-measurement.md).
 
 ## Why it is fast
 
