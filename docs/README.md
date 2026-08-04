@@ -26,6 +26,11 @@ frontier comparison — with its wrong verdicts marked in place and a
 [lever verdict audit](CONCLUSION.md#lever-verdict-audit) of what refuted each one.
 
 ## Current (2026-08-03)
+- [`syntactic-certification-is-exhausted.md`](syntactic-certification-is-exhausted.md), **the
+  consolidated negative**: cooling, census sampling and affine relations over GF(2) all fail to
+  certify any of the 46,134 never-firing gates, each with a passing control. All three reason about
+  the *form* of a value, and a circuit computing modular inversion has no exploitable form. Also
+  identifies the mechanism behind the census miner's 25%/43% over-observation gap.
 - [`stream-agnostic-certification.md`](stream-agnostic-certification.md), can any of the 46,134
   never-firing gates be certified dead independent of the draw? **No** — zero gates have a provably
   constant control, because `build()`'s own CONSTPROP already harvested that class. Their
