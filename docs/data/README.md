@@ -83,6 +83,43 @@ reproduce `build_circuit` exactly: 12,292 dead accepted / 251 stale, 3,923 downg
 a re-derivation does not reproduce those four numbers it is not reading the shipped stream. The
 census dump's own gate is its size: 1,361,613 gates, matching `deep_strip_keys.rs`'s header.
 
+## `lambda-sweep-6909d15.tsv`
+
+The λ sweep on **`upstream/main` `6909d15`** (`src/` identical to accepted submission `ed4b529`;
+score 1,486,468,554 = 1,288,101.386 executed Toffoli × 1154 qubits), taken 2026-08-04. Behind
+[`../lambda-6909d15.md`](../lambda-6909d15.md).
+
+Same 202-trial design and same columns as `lambda-sweep-801dd20.tsv` below, so the two heads are
+directly comparable. Two differences, both deliberate:
+
+- `base` = **200321420125**, the nonce *this* head bakes in at `src/point_add/mod.rs:2384`. It is
+  not `801dd20`'s `62000008397024`. The positive control must be the head's own shipped nonce;
+  using the other head's would have failed the control and voided the sweep.
+- 6 workers, not 14 — the machine loses its desktop session under a 14-worker load. Cost only 11%
+  of throughput (183 vs 205 trials/hour).
+
+### Integrity properties (check these before trusting any re-analysis)
+
+- **199 distinct md5 values across the 199 non-control nonces.** Equal hashes for distinct nonces
+  mean the tail edit never reached the stream — issue #23 / `04-traps.md` §1.
+- **3 control rows**, all `nonce = 200321420125`, all `0/0/0`, all md5
+  `ef30945f3afcb369192ea32897232d2f`, matching upstream's shipped artifact. A dirty control voids
+  the sweep.
+- 0 parse failures; `ancilla` is 0 in every row.
+
+## `lambda-sweep-6909d15-nonces.tsv`
+
+The trial list as generated (`block`, `nonce`), in construction order — sharded round-robin across
+workers, so it does not match row order in the results file.
+
+## `lambda-sweep-driver-6909d15.sh`
+
+The driver that produced it, adapted from `lambda-sweep-driver.sh`. The two load-bearing details
+described under that file apply here unchanged (the `sudo` shim forcing the `setpriv` path, and
+per-worker builds so `eval_circuit` does not race one `results.tsv`). Worker isolation was verified
+empirically before launch rather than assumed: a trial run in `w01` grew `w01/results.tsv` and left
+`w00`'s untouched.
+
 ## `lambda-sweep-801dd20.tsv`
 
 The λ sweep on the rebased upstream head `801dd20` (score 1,487,590,242 = 1,289,073.125 executed

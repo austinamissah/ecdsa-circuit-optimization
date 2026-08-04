@@ -9,6 +9,12 @@
 > nonce, and **205 trials/hour** aggregate for the harness across 14 concurrent workers (202
 > trials in 59 minutes). Note this machine throttles: timings taken cold early in a session run
 > materially faster than the settled figures. See [Throughput](#throughput).
+>
+> **A newer measurement exists.** [`lambda-6909d15.md`](lambda-6909d15.md) repeats this sweep on
+> `upstream/main` `6909d15` (= accepted submission `ed4b529`) and reports λ_total = 20.560, 95% CI
+> 18.007–23.016 — statistically indistinguishable from the 20.04 below. This document remains the
+> reference for method, traps and the estimator's directional caveat; quote the newer one for the
+> current head.
 
 The score is `average executed Toffoli × peak qubits`. There is a third quantity that decides
 whether a circuit can ship at all, and it is not in the score: **λ, the intrinsic per-run failure
