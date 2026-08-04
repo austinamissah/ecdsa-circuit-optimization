@@ -26,6 +26,11 @@ frontier comparison — with its wrong verdicts marked in place and a
 [lever verdict audit](CONCLUSION.md#lever-verdict-audit) of what refuted each one.
 
 ## Current (2026-08-03)
+- [`stream-agnostic-certification.md`](stream-agnostic-certification.md), can any of the 46,134
+  never-firing gates be certified dead independent of the draw? **No** — zero gates have a provably
+  constant control, because `build()`'s own CONSTPROP already harvested that class. Their
+  non-firing is a data invariant, which is also why the census miner over-observes. Names the
+  affine-relation analysis as the next rung.
 - [`HANDOFF-2026-08-04-overnight.md`](HANDOFF-2026-08-04-overnight.md), **the overnight queue's
   state**: item 1 closed (the cooling lever is structurally empty), item 2 in flight with the
   11,416/54,051 known-answer test passed and the symmetry-break selftest unvalidated, items 3-4

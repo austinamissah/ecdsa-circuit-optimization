@@ -90,3 +90,21 @@ It reconstructs `eval_circuit`'s Toffoli total exactly and asserts as much befor
 See [`../../docs/gate-hotness-census.md`](../../docs/gate-hotness-census.md) for the measured
 distribution on head `6909d15` — bimodal at 1.0 and 0.5, **zero cold gates**, and charge spread so
 evenly that the top 100 gates of 1.34 M carry 0.008% of it.
+
+## `constzero.rs` — stream-agnostic dead-gate certification
+
+Asks whether a gate's control is **provably zero** rather than merely unobserved: a
+three-valued constant-propagation lattice over the final op stream, with conditions
+tracked as AllOnes/AllZeros/Mixed so a write under a partial condition degrades
+conservatively to Unknown.
+
+`--check <hot.tsv>` cross-checks every certificate against the measured fire counts and
+exits non-zero if a certified gate ever fired.
+
+**Result on head `6909d15`: zero gates certified**, with all 1,343,361 CCX/CCZ having
+both controls Unknown — the class is empty because `build()`'s own CONSTPROP pass has
+already emptied it. See
+[`../../docs/stream-agnostic-certification.md`](../../docs/stream-agnostic-certification.md),
+including the non-vacuity diagnostics that make that negative meaningful and the
+affine-relation analysis that is the next rung.
+
