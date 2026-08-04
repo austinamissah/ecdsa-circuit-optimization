@@ -90,19 +90,78 @@ stream-specificity error that `04-traps.md` §1 documents and that
 [`HANDOFF-2026-08-03-remine-2.md`](HANDOFF-2026-08-03-remine-2.md) raised against harness-order
 mining. **Prove before removing** — and nothing here proved anything.
 
+## Rung 2: affine-relation analysis over GF(2) — also zero, and also not vacuous
+
+Built as [`../tools/census/affine.rs`](../tools/census/affine.rs). Each qubit and bit carries an
+affine form `constant XOR (XOR of atoms)`, with atoms XOR-hashed into a `u128` so equality and
+complementarity are one compare. `X`, `CX`, `Swap`, `R`/`Hmr` propagate **exactly** under a
+provably-`AllOnes` condition. `CCX` is nonlinear, so its target takes a **hash-consed AND term**
+keyed on the two control forms — making the representation an XOR-of-AND graph in which identical
+subexpressions collapse rather than an XOR of opaque unknowns.
+
+Certificates: either control constant-0, or the controls **complementary** (`c1 = ¬c2`, so the AND
+is identically zero); for `CCZ`, the same over any pair among `{t, c1, c2}`.
+
+**Positive control — the analysis can see a pair it is handed directly.** `--positive-control`
+runs a synthetic stream where `CX(q0→q1); X(q1)` makes `q1 = ¬q0`, then a `CCX(q1, q0, q2)` and a
+`CCZ(q1, q0, q5)` on that complementary pair, plus a `CCX(q3, q0, q4)` on unrelated controls:
+
+```
+CERTIFIED never-firing gates : 2
+  op 2 kind 13 reason c1=!c2
+  op 4 kind 14 reason c1=!c2
+POSITIVE CONTROL PASS
+```
+
+Both complementary gates certified, the unrelated one correctly not. **On the real circuit:**
+
+```
+CERTIFIED never-firing gates        : 0
+CCX/CCZ whose controls share a tag  : 0
+never-fire in dump: 46134   certified: 0   still unexplained: 46134
+```
+
+The propagation diagnostics say why, and they are the substance of the result:
+
+| diagnostic | value |
+|---|---|
+| atoms minted | 2,996,434 |
+| CCX total | 1,338,625 |
+| CCX with a constant-1 control (stays affine) | **0** |
+| CCX with equal controls (stays affine) | **0** |
+| CCX handled as a hash-consed AND | 1,338,625 |
+| — of which reused an existing AND term | 6,354 |
+| distinct AND terms | 1,226,517 |
+| **CCX/CCZ whose controls share a tag** | **0** |
+
+**Not one gate in the circuit has controls that are affinely related at all** — not equal, not
+complementary, not even sharing a single atom. Hash-consing recovers almost nothing: 6,354 of
+1,338,625 AND terms are reused, so 1,226,517 distinct nonlinear terms are genuinely distinct
+subexpressions.
+
+That is the honest shape of this circuit. It computes modular inversion and multiplication, so
+essentially every value is a *nonlinear* function of the inputs, and affine structure survives only
+through `CX`/`X` chains that no `CCX` interrupts. There are no such chains reaching any gate's
+control pair. The complementary-flag intuition — that GCD sign/branch logic would produce
+`c1 = ¬c2` pairs — is not borne out: whatever complementary flags exist are consumed by nonlinear
+gates before they meet as a control pair, or are never a control pair to begin with.
+
 ## The next rung, if this is worth continuing
 
-The analysis is a *constant* analysis. The obvious strengthening is an **affine-relation analysis
-over GF(2)**: track not just `q = 0` and `q = 1` but relations between qubits — `q_a = q_b`,
-`q_a = ¬q_b`, and XOR combinations. A `CCX(c1, c2, t)` whose controls are provably **complementary**
-(`c1 = ¬c2`) never fires, and complementary flag pairs are exactly the shape the GCD sign/branch
-logic produces. That certificate is still structural, still stream-agnostic, and still cheap to
-check — and CX/X chains propagate affine relations exactly, so the analysis is a natural fit for
-this circuit's op mix.
+Two rungs of syntactic analysis are now done and both return zero, with positive controls showing
+neither is vacuous. What they have in common is that they reason about the *form* of a value, and
+this circuit's values have no exploitable form: 1.23 M distinct nonlinear terms, no two gate
+controls affinely related.
 
-It is a bigger build than a constant lattice (union-find plus an XOR basis per qubit) and was not
-attempted here. It is the single most promising remaining route to a *provable* deletion, and it is
-the one thing that would turn the 46,134 from an observation into a submission.
+Any further rung has to reason about **what the values can be**, not how they are written — the
+data invariants of the binary-GCD engine (register bit ranges, mutual exclusion of branch flags,
+the loop invariant relating `u`, `v` and the schedule width). That is a semantic proof obligation,
+plausibly discharged by a bounded model checker or an SMT encoding over one divstep, then lifted by
+induction. It is a research-scale task, not an overnight one, and it is the same obligation that
+would explain the census miner's 25%/43% gap.
+
+**The cheap structural routes are exhausted.** That is a real finding: it means the 46,134 are not
+low-hanging, and any claim to delete them has to carry a semantic argument.
 
 ## Reproducing
 
