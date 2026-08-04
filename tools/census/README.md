@@ -77,3 +77,16 @@ so the two effects nearly cancel: L=128 is only 1.33× L=16. Twelve concurrent w
 
 **If you need materially more depth, the fix is to shrink the bit array's working set** (liveness
 renumbering of the 529 k classical bits), not to add workers.
+
+## `hotness.rs` — the per-gate charge census
+
+A companion instrument answering a different question from the one above. `census.rs` certifies
+whether a gate ever **fires**; [`hotness.rs`](hotness.rs) measures how often it is **charged** —
+the popcount of its condition stack over the official 9,024 shots, which is the only thing the
+scorer actually bills (`src/sim.rs:77-86`). The two are independent: an unconditional gate that
+never fires is charged in full, and a conditioned gate that always fires costs only its hotness.
+
+It reconstructs `eval_circuit`'s Toffoli total exactly and asserts as much before printing anything.
+See [`../../docs/gate-hotness-census.md`](../../docs/gate-hotness-census.md) for the measured
+distribution on head `6909d15` — bimodal at 1.0 and 0.5, **zero cold gates**, and charge spread so
+evenly that the top 100 gates of 1.34 M carry 0.008% of it.

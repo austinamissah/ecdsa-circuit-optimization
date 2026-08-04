@@ -31,6 +31,58 @@ So the real move is **−1,121,688, or −0.0754%**, in the right direction. Ups
 not regress. Reading the comment at face value inverts the sign of that conclusion, which is
 precisely the failure mode this document exists to prevent.
 
+### Three numbers disagree; only one was built
+
+| source | value | what it actually is |
+|---|---|---|
+| `memory/RIG.md:12`, `CEILING.md:35` | 1,489,216,228 | frontier at submission `705b36a`, **source `7fa872d`** — an older head (avgT 1,290,482). `RIG.md` also pins 9,062,420 ops against the current 9,057,301. Stale by construction: it records the rig's last *promoted* witness, not the tree it ships in. |
+| `mod.rs:2379` comment | 1,487,599,474 | stale by 980 avgT; see above. |
+| **`./benchmark.sh`** | **1,486,468,554** | **the tree.** |
+
+**Measure against 1,486,468,554.** The other two are provenance records of earlier states, and both
+are worse than the circuit actually in the repo.
+
+## Arms priced against the new baseline
+
+Full harness, `build_circuit` + `eval_circuit`, at the shipped nonce. "upstream strip" is the new
+13,056 / 4,222 table; delta is `TLM_SCHED_J2_DELTA`.
+
+| arm | avgT | peak q | score | vs head | strip applied |
+|---|---:|---:|---:|---:|---|
+| head (delta 0, upstream strip) | 1,288,101.386 | 1154 | 1,486,468,554 | — | 13,056 / 4,222, 0 stale |
+| delta 0, strip OFF | 1,304,021.591 | 1154 | 1,504,841,388 | +1.2360% | — |
+| **A: delta 1, upstream strip** | 1,308,633.614 | 1155 | 1,511,472,270 | **+1.6821%** | 2,687 / 646, **13,945 stale** |
+| **B: delta 1, strip OFF** | 1,311,736.513 | 1155 | 1,515,056,235 | **+1.9232%** | — |
+| delta 2, upstream strip | 1,316,550.882 | 1155 | 1,520,616,405 | +2.2972% | 2,510 / 607, 14,161 stale |
+| delta 2, strip OFF | 1,319,434.332 | 1155 | 1,523,946,270 | +2.5213% | — |
+
+Each arm has a distinct `md5 ops.bin`. Note peak qubits go 1154 → 1155 at every delta ≥ 1, which
+costs **+0.0867%** on its own before any avgT movement.
+
+### Arm C is a foregone conclusion — do not spend the census
+
+C was "delta 1 with a census re-mined at delta 1", and it is worth running only if it can land
+*below* 1,486,468,554. It cannot, and the bound does not depend on how good our miner is:
+
+- B sits at **+1.9232%**. To reach the head at q=1155 the strip must take avgT from 1,311,736.5 to
+  ≤ 1,286,985 — a saving of **24,751.5**.
+- The *complete, upstream-quality* strip at delta 0 saves **15,920.2** avgT (the head vs
+  strip-OFF row). A delta-1 strip would have to save **1.55×** what a full-quality strip saves at
+  delta 0.
+- Even granting a perfect miner that matches upstream's own table, C lands at
+  **+0.686%** — still above the head.
+- Our miner is a strict conservative subset. On the old head it realised 0.897% where a full strip
+  was worth 1.16%, a ratio of 0.77; against upstream's *larger* 13,056 / 4,222 table that ratio can
+  only fall. Scaling 1.236% by it predicts **C ≈ +0.97%**.
+
+So the realistic outcome is +0.97% and the optimistic ceiling is +0.69%, against a target of 0.00%.
+**Skipped.** Two hours of census would have confirmed a gap that the delta-0 strip row already
+bounds.
+
+The delta lever itself is unaffected as a **λ** instrument — this says the delta arms cost score on
+the new head, exactly as they did on the old one, not that λ has stopped responding to them. λ on
+the new stream is unmeasured.
+
 ## The identity gate: our two source changes survive the rebase exactly
 
 46 commits replayed onto `upstream/main` with **zero conflicts** — upstream touched none of the

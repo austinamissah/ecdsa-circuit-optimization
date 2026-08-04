@@ -3,6 +3,24 @@
 Primary data behind [`../lambda-measurement.md`](../lambda-measurement.md). These are the
 measurements themselves, not a summary — keep them so the analysis can be re-derived or challenged.
 
+## New-baseline arms (2026-08-03, after the `ed4b529` rebase)
+
+| file | contents |
+|---|---|
+| `arms-newbase-2026-08-03.tsv` | the six full-harness arms behind [`../rebase-2026-08-03-upstream-ed4b529.md`](../rebase-2026-08-03-upstream-ed4b529.md): label, strip, delta, ops, peak q, avgT, score, classical/phase/ancilla, and a distinct `md5 ops.bin` per arm |
+
+The per-gate hotness dump behind [`../gate-hotness-census.md`](../gate-hotness-census.md) is
+**deliberately not checked in** — 1,343,361 rows, ~11 MB compressed, and 53 s to rebuild:
+
+```bash
+mkdir -p examples && cp tools/census/hotness.rs examples/
+cargo build --release --offline --example hotness
+./target/release/examples/hotness /tmp/head      # writes /tmp/head.hot.tsv
+rm -rf examples          # transient; do not commit it
+```
+
+Check the `GATE ok` line and that the printed `avgT` matches `eval_circuit` before using the dump.
+
 ## Stream-provenance dumps
 
 Behind [`../census-stream-provenance.md`](../census-stream-provenance.md), taken 2026-08-03. All
