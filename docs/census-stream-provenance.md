@@ -202,11 +202,11 @@ commit" is not a monotone quantity and cannot be inferred from commit order.
 
 | file | contents |
 |---|---|
-| [`data/census-stream-d9ef3e9.gates.tsv.gz`](data/census-stream-d9ef3e9.gates.tsv.gz) | the 1,361,613-gate census stream, full dump |
-| [`data/head-stream-7d844fa.gates.tsv.gz`](data/head-stream-7d844fa.gates.tsv.gz) | the 1,360,635-gate head stream, full dump |
-| [`data/census-vs-head.gates.diff.gz`](data/census-vs-head.gates.diff.gz) | the 354-hunk unified diff between them |
+| [`data/census-vs-head.gates.diff.gz`](data/census-vs-head.gates.diff.gz) | the 354-hunk unified diff between the two streams |
 | [`data/stream-walk-by-commit.tsv`](data/stream-walk-by-commit.tsv) | ops / gates / distinct tuples at each of the 18 commits |
 
-The two gate dumps are ~12 MB each compressed and are regenerable in about a minute apiece from
-`dump_gates.rs`; they are kept so the diff and every occupancy claim above can be re-derived or
-challenged without a rebuild.
+The two full gate dumps behind the diff are **not checked in** — ~12 MB each compressed, and about a
+minute apiece to rebuild. [`data/README.md`](data/README.md#regenerating-the-gate-dumps) has the
+exact commands, including the detached-worktree recipe for `d9ef3e9`, which predates the tool. Every
+occupancy claim in this document is re-derivable from those two dumps; the integrity gate on the
+regenerated head dump is `build_circuit`'s own 12,292 / 251 and 3,923 / 0.

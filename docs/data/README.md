@@ -11,17 +11,59 @@ four are produced by [`../../tools/census/dump_gates.rs`](../../tools/census/dum
 
 | file | contents |
 |---|---|
-| `census-stream-d9ef3e9.gates.tsv.gz` | the census stream — 9,073,163 ops / 1,361,613 CCX+CCZ, the numbers in `deep_strip_keys.rs`'s header |
-| `head-stream-7d844fa.gates.tsv.gz` | the current head's unstripped stream — 9,070,297 / 1,360,635 |
-| `census-vs-head.gates.diff.gz` | the 354-hunk unified diff between the two, net −978 CCX |
+| `census-vs-head.gates.diff.gz` | the 354-hunk unified diff between the census and head gate streams, net −978 CCX |
 | `stream-walk-by-commit.tsv` | ops / gates / distinct tuples at each of the 18 commits from `d9ef3e9` to HEAD |
 
-Columns in the two gate dumps: `opidx, kind, q_control2, q_control1, q_target, c_condition,
-ordinal, tuple_occupancy` — the last three keyed exactly as `apply_deep_strip_identity` expects.
+The two full gate dumps the diff was taken from are **deliberately not checked in** — they are
+~12 MB each compressed and about a minute apiece to rebuild. Regenerate them with the commands
+below rather than carrying 24 MB of derived data in the tree.
 
-**Integrity gate.** Replaying the occupancy tripwire against `head-stream-7d844fa.gates.tsv.gz`
-reproduces `build_circuit` exactly: 12,292 dead accepted / 251 stale, 3,923 downgrades / 0 stale.
-If a re-derivation does not reproduce those four numbers it is not reading the shipped stream.
+### Regenerating the gate dumps
+
+The instrument is [`../../tools/census/dump_gates.rs`](../../tools/census/dump_gates.rs), a cargo
+*example* so it can be dropped into any historical checkout without touching `Cargo.toml`.
+
+```bash
+# --- head (9,070,297 ops / 1,360,635 CCX+CCZ) ---
+mkdir -p examples && cp tools/census/dump_gates.rs examples/
+cargo build --release --offline --example dump_gates
+SUB4_APPLY_STRIP=0 ./target/release/examples/dump_gates /tmp/head
+rm -rf examples          # transient; do not commit it
+
+# --- the census stream (9,073,163 / 1,361,613) ---
+# d9ef3e9 predates the tool, so the example is copied in from THIS checkout.
+git worktree add /tmp/wt-census d9ef3e9 --detach
+mkdir -p /tmp/wt-census/examples
+cp tools/census/dump_gates.rs /tmp/wt-census/examples/
+( cd /tmp/wt-census \
+  && cargo build --release --offline --example dump_gates \
+  && SUB4_APPLY_STRIP=0 ./target/release/examples/dump_gates /tmp/census )
+git worktree remove --force /tmp/wt-census
+
+# --- rebuild census-vs-head.gates.diff (drop the ordinal/occupancy columns:
+#     they shift globally, so diffing them buries the structural change) ---
+cut -f2-6 /tmp/census.gates.tsv > /tmp/census.gt
+cut -f2-6 /tmp/head.gates.tsv   > /tmp/head.gt
+git diff --no-index --unified=0 --minimal /tmp/census.gt /tmp/head.gt > /tmp/census-vs-head.gates.diff
+```
+
+`SUB4_APPLY_STRIP=0` is load-bearing: the census sees the **unstripped** stream. Passing `-` as the
+output prefix prints the summary counts only and skips the ~950 MB of files — that is the form the
+18-commit stream walk uses.
+
+**This recipe is verified, not assumed.** Run verbatim on 2026-08-03 it rebuilds 9,070,297 /
+1,360,635 and 9,073,163 / 1,361,613, and the resulting diff is byte-identical to the committed
+`census-vs-head.gates.diff.gz` in its body — the git blob hashes in the two hunk headers agree, so
+the intermediate `.gt` files match as well. Only the `a/`,`b/` paths differ, since the committed
+copy was taken from a scratch directory.
+
+Columns in each gate dump: `opidx, kind, q_control2, q_control1, q_target, c_condition, ordinal,
+tuple_occupancy` — the last three keyed exactly as `apply_deep_strip_identity` expects.
+
+**Integrity gate.** Replaying the occupancy tripwire against the regenerated head dump must
+reproduce `build_circuit` exactly: 12,292 dead accepted / 251 stale, 3,923 downgrades / 0 stale. If
+a re-derivation does not reproduce those four numbers it is not reading the shipped stream. The
+census dump's own gate is its size: 1,361,613 gates, matching `deep_strip_keys.rs`'s header.
 
 ## `lambda-sweep-801dd20.tsv`
 
