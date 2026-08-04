@@ -122,7 +122,12 @@ fn fiat_shamir_seed(ops: &[Op]) -> sha3::Shake256Reader {
 /// `src/sim.rs::apply_iter`, copied dispatch-for-dispatch, plus per-op attribution
 /// of `executed_shots`. Any divergence from the trusted loop shows up as a failed
 /// total-charge assertion, which is why that assertion is not optional.
-fn apply_iter_charged<R: XofReader>(sim: &mut Simulator<'_, R>, ops: &[Op], charge: &mut [u64]) {
+fn apply_iter_charged<R: XofReader>(
+    sim: &mut Simulator<'_, R>,
+    ops: &[Op],
+    charge: &mut [u64],
+    fire: &mut [u64],
+) {
     let mut condition_stack: Vec<u64> = Vec::new();
     let mut current_base_condition = u64::MAX;
 
@@ -152,6 +157,7 @@ fn apply_iter_charged<R: XofReader>(sim: &mut Simulator<'_, R>, ops: &[Op], char
         match op.kind {
             OperationType::CCX => {
                 let v = cond & sim.qubit(op.q_control1) & sim.qubit(op.q_control2);
+                fire[i] += v.count_ones() as u64;
                 *sim.qubit_mut(op.q_target) ^= v;
             }
             OperationType::CX => {
@@ -175,6 +181,7 @@ fn apply_iter_charged<R: XofReader>(sim: &mut Simulator<'_, R>, ops: &[Op], char
                     & sim.qubit(op.q_target)
                     & sim.qubit(op.q_control1)
                     & sim.qubit(op.q_control2);
+                fire[i] += v.count_ones() as u64;
                 sim.phase ^= v;
             }
             OperationType::CZ => {
@@ -268,8 +275,10 @@ fn main() {
     println!("shots={n}");
 
     let mut charge = vec![0u64; ops.len()];
+    let mut fire = vec![0u64; ops.len()];
     let mut sim = Simulator::new(total_qubits as usize, num_bits as usize, &mut xof);
 
+    assert_eq!(n % BATCH, 0, "partial final batch would need lane masking for fire counts");
     let num_batches = (n + BATCH - 1) / BATCH;
     for batch in 0..num_batches {
         let bs = BATCH.min(n - batch * BATCH);
@@ -281,7 +290,7 @@ fn main() {
             sim.set_register(&regs[2], offsets[i].0, shot);
             sim.set_register(&regs[3], offsets[i].1, shot);
         }
-        apply_iter_charged(&mut sim, &ops, &mut charge);
+        apply_iter_charged(&mut sim, &ops, &mut charge, &mut fire);
     }
 
     // ---- the gate: attribution must reconstruct the scorer's own total ----
@@ -297,8 +306,49 @@ fn main() {
         "attribution does not reconstruct the scorer total"
     );
     let avg_t = total as f64 / n as f64;
+    let gates_n = ops
+        .iter()
+        .filter(|op| matches!(op.kind, OperationType::CCX | OperationType::CCZ))
+        .count();
     println!("GATE ok: attributed={attributed} == toffoli_gates={total}");
     println!("avgT={avg_t:.3}  (compare eval_circuit's 'avg executed Toffoli')");
+
+    // ---- the cooling bound ----
+    //
+    // A semantics-preserving condition must be TRUE on every shot where the gate
+    // fires, so the most any condition can save on gate g is
+    //     charge(g) - fire(g)
+    // shot-charges. Summed over the stream this is an absolute ceiling on the
+    // "make gates conditionally cold" lever, and it needs no candidate bit to be
+    // found -- it grants a perfect oracle condition to every gate at once.
+    let mut head_total: u64 = 0;
+    let mut fired_total: u64 = 0;
+    let mut dead_gates = 0usize;
+    let mut dead_charge = 0u64;
+    let mut always_fire = 0usize;
+    for (i, op) in ops.iter().enumerate() {
+        if !matches!(op.kind, OperationType::CCX | OperationType::CCZ) {
+            continue;
+        }
+        head_total += charge[i] - fire[i];
+        fired_total += fire[i];
+        if fire[i] == 0 {
+            dead_gates += 1;
+            dead_charge += charge[i];
+        }
+        if fire[i] == charge[i] {
+            always_fire += 1;
+        }
+    }
+    println!("\n=== COOLING BOUND (perfect-oracle condition on every gate) ===");
+    println!("total charge         : {total}");
+    println!("total fired          : {fired_total}  ({:.4}% of charge)", 100.0*fired_total as f64/total as f64);
+    println!("COOLING HEADROOM     : {head_total} shot-charges = {:.3} avgT ({:.4}% of score)",
+             head_total as f64 / n as f64, 100.0*head_total as f64/total as f64);
+    println!("gates that NEVER fire: {dead_gates} carrying {dead_charge} charge = {:.3} avgT",
+             dead_charge as f64 / n as f64);
+    println!("gates fired on every charged shot (uncoolable): {always_fire} ({:.3}%)",
+             100.0*always_fire as f64 / gates_n as f64);
 
     // ---- distribution ----
     let gates: Vec<(usize, &Op)> = ops
@@ -429,11 +479,11 @@ fn main() {
     if write_files {
         let f = std::fs::File::create(format!("{prefix}.hot.tsv")).unwrap();
         let mut w = std::io::BufWriter::new(f);
-        writeln!(w, "opidx\tkind\tc2\tc1\tt\tcond\tcharge\thotness").unwrap();
+        writeln!(w, "opidx\tkind\tc2\tc1\tt\tcond\tcharge\tfire\thead\thotness").unwrap();
         for (i, op) in &gates {
             writeln!(
                 w,
-                "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.6}",
+                "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.6}",
                 i,
                 op.kind as u8,
                 op.q_control2.0,
@@ -441,6 +491,8 @@ fn main() {
                 op.q_target.0,
                 op.c_condition.0,
                 charge[*i],
+                fire[*i],
+                charge[*i] - fire[*i],
                 charge[*i] as f64 / n as f64
             )
             .unwrap();
