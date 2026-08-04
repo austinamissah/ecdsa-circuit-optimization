@@ -25,7 +25,16 @@ short version of what this fork measured and what it got wrong. Project write-up
 frontier comparison — with its wrong verdicts marked in place and a
 [lever verdict audit](CONCLUSION.md#lever-verdict-audit) of what refuted each one.
 
-## Current (2026-08-02)
+## Current (2026-08-03)
+- [`rebase-2026-08-03-upstream-ed4b529.md`](rebase-2026-08-03-upstream-ed4b529.md), **read this
+  first — it moves the baseline.** Upstream accepted `ed4b529`; the new head measures
+  **1,486,468,554**, not the `1,487,599,474` its own `mod.rs` comment claims. Rebased with zero
+  conflicts and our two source changes re-gated as exact identities. Also: "risk-3.0" is a
+  provenance nickname and not a phase-risk budget, and what the 45-minute Blacksmith CI workflow
+  requires of a submission. **Every λ and score figure below is priced against the superseded
+  1,487,590,242 head.**
+
+## Superseded baseline (2026-08-02)
 - [`lambda-measurement.md`](lambda-measurement.md), λ_total ≈ 20.0 measured on the rebased head
   over 199 nonces: the third axis that is not in the score but decides what can ship, why a clean
   seed costs ~5e8 trials, and the λ targets that would make a grind feasible.
