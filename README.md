@@ -85,8 +85,9 @@ analysis*: reproducing the circuit locally, profiling where its cost actually go
 published comparisons against their sources, enumerating what could be improved — and then, when
 that analysis turned out to be partly wrong, measuring why.
 
-As of the 2026-08-02 rebase onto upstream `8af8a6f`, the circuit reproduces locally at
-**1,289,073.125 Toffoli × 1,154 qubits = 1,487,590,242**, 9,024/9,024 shots clean.
+As of the 2026-08-03 rebase onto upstream `ed4b529` — `upstream/main` `6909d15`, whose `src/` tree
+is identical — the circuit reproduces locally at
+**1,288,101.386 Toffoli × 1,154 qubits = 1,486,468,554**, 9,024/9,024 shots clean.
 
 #### 1. My first conclusion was wrong, and the record of that is kept
 
@@ -114,15 +115,24 @@ lowers the score also re-rolls the test inputs.** A circuit therefore has no fix
 it has an intrinsic failure *rate*, called λ here, and shipping requires searching for an input seed
 on which it happens to pass everything.
 
-Measured on the current head over 199 independent seeds, each a full benchmark run:
-**λ_total ≈ 20.0**, so P(clean seed) ≈ 2.0 × 10⁻⁹ — about **5 × 10⁸ trials per usable seed**. At the
-throughput actually measured on the laptop used (205 full benchmark runs per hour), that is on the
-order of **280 wall-years**. The 95% confidence interval on λ spans a factor of ~38 in that figure,
-so read it as an order of magnitude rather than a number.
+Measured on the current head `6909d15` over 199 independent seeds, each a full benchmark run:
+**λ_total = 20.560** (95% CI 18.007–23.016), so P(clean seed) ≈ 1.2 × 10⁻⁹ — about **8.5 × 10⁸
+trials per usable seed**. At the throughput actually measured on the laptop used (183 full benchmark
+runs per hour), that is on the order of **500 wall-years**. The confidence interval spans a factor of
+~150 in that figure, so read it as an order of magnitude rather than a number.
+
+**And λ has not moved.** The same measurement on `801dd20` gave 20.04. The bootstrapped difference
+is **+0.525, 95% CI −2.626 to +3.632**, with 37% of resamples at or below zero — on this evidence
+the two heads have the same λ_total. Between them upstream accepted **eight submissions**, every one
+of them lowering the score, and the intrinsic failure rate came out statistically unchanged. That
+stability is the stronger finding: λ is not drifting as a by-product of score-lowering work in
+either direction, which is what you would expect of a quantity that appears nowhere in anyone's
+selection function (§3). It is a separate axis, and it is untouched.
 
 That reframes the whole problem. Optimising the score is the easy half; the hard half is that every
 optimisation must then be paid for in seed-search. Method and full numbers:
-[`docs/lambda-measurement.md`](docs/lambda-measurement.md), raw per-trial data in
+[`docs/lambda-6909d15.md`](docs/lambda-6909d15.md) for the current head and
+[`docs/lambda-measurement.md`](docs/lambda-measurement.md) for the method, raw per-trial data in
 [`docs/data/`](docs/data/).
 
 #### 3. How the leaderboard leader actually operates
@@ -146,6 +156,58 @@ because sudo's credential cache expires mid-run.
 
 The only thing that caught it was a rule borrowed from the other contestant's notes: *a null result
 is only a result if the output hash changed.* That rule is now load-bearing in everything here.
+
+#### 5. The cheap ways to certify a dead gate are the wrong kind of argument
+
+On this fork's head `6909d15`, 46,134 gates — 3.35% of the score — fire on **none** of the 9,024
+official shots, and the strict-beat bar is 0.886 avgT (avgT 1,288,101.386, so `round(avgT) ≤
+1,288,100` wins). Every count in this section is on that head; the upstream version of this work
+(PR #27 below) re-measures them on the certified frontier `cf5aa02`, where the bar is 0.802. Either
+way, *one* certified gate would be a submission. The obstacle is §2
+again: the test inputs are hashed from the op stream, so "never fired on this draw" is a certificate
+that cannot survive its own use. Three ways to get one that does survive were tried. All three are
+now closed, and each is paired with a positive control showing the instrument detects what it
+reports absent — two of those controls caught real defects before the negatives were believed.
+
+- **Cooling** — charge a gate on fewer shots rather than making it fire less. The ceiling is real
+  and enormous: 76.7% of the score is charge on shots where the gate never fires. It is also
+  unreachable. Charging is gated by a **classical** bit, firing is a function of the **quantum**
+  controls, and in this circuit the two are independent — the probability that one gate's ~2,256
+  firing shots all fall inside a given fair coin's true shots is **2⁻²²⁵⁶**. The candidate class is
+  empty for a structural reason, not a failed search.
+- **Census sampling** — certify dead by observation. Our census claims 25% of the shipped dead keys
+  fire, in a circuit that demonstrably passes 9,024/9,024, so the census over-observes. The
+  mechanism is the finding: a sampler sees *firing* and has no access to *why* a gate is quiet, so a
+  data invariant is invisible to it at any depth. That also resolves the 25%/43% gap carried open
+  across three earlier documents.
+- **Affine relations over GF(2)** — certify dead by form, since a `CCX` never fires if its controls
+  are complementary. Zero gates certified. **Not one gate in the circuit has controls that are
+  affinely related at all** — not equal, not complementary, not even sharing a single atom — across
+  1,338,625 CCX and 1.23M distinct nonlinear terms.
+
+The three are one result. All three reason about the **form** of a value, and this circuit computes
+modular inversion and modular multiplication, so essentially every value is a nonlinear function of
+the inputs and there is no exploitable form left to inspect. The 46,134 gates are quiet because of
+*what their controls can be*, not because of how those controls are written or how often they were
+watched. What would actually certify one is a **semantic** argument over the binary-GCD loop
+invariant — discharged on a single divstep, lifted by induction over the 261 — which is
+research-scale, and now the only identified route. Nothing was removed:
+[`docs/syntactic-certification-is-exhausted.md`](docs/syntactic-certification-is-exhausted.md).
+
+#### Contributed upstream
+
+Three of the findings above went back to the challenge repository rather than staying in this fork.
+All three are open at the time of writing:
+
+- **[Layr-Labs/ecdsafail-challenge#23](https://github.com/Layr-Labs/ecdsafail-challenge/issues/23)** —
+  we filed the sudo trap from §4: `benchmark.sh` prefers the `sudo` sandbox path, `env_reset` strips
+  the environment variable that selects the seed, and the run silently measures the default while
+  reporting success.
+- **[PR #27](https://github.com/Layr-Labs/ecdsafail-challenge/pull/27)** — the syntactic
+  certification result from §5, with its three positive controls.
+- **[PR #28](https://github.com/Layr-Labs/ecdsafail-challenge/pull/28)** — the λ correction from §2,
+  replacing `memory/02-lambda.md`'s stale 23.29 with 20.560 on the current head, plus the stability
+  result.
 
 #### Where the cost actually is
 
@@ -260,17 +322,21 @@ Where a claim is an inference rather than a measurement, the documents say so.
 
 ### What is not this fork's work
 
-Beyond the circuit itself, the 2026-08-02 rebase onto upstream `8af8a6f` brought in a substantial
-body of another contestant's material, which ships inside `src/point_add/` because that is the
-challenge's `editablePaths` root. None of it is ours:
+Beyond the circuit itself, the 2026-08-02 rebase onto upstream `8af8a6f` first brought in a
+substantial body of another contestant's material, and the 2026-08-03 rebase to the current head
+brought in a great deal more. It ships inside `src/point_add/` because that is the challenge's
+`editablePaths` root. As of `6909d15` that is **13,909 lines across 50 files**, none of it ours:
 
-- **`src/point_add/memory/01-05` and `README.md`** (533 lines) — their working notes on the
-  circuit's architecture, its intrinsic error rate, proven floors, traps, and the qubit programme.
-  Attributed to whoever authored the accepted submissions; the upstream commits are authored by
-  `yukon-autoresearch[bot]`.
-- **`src/point_add/memory/repro/dgm_search.py`** (2,848 lines) and `test_dgm_search.py` (507) —
-  their Darwin-Gödel-Machine search controller. It ports mechanisms from
+- **`src/point_add/memory/01-06` and `README.md`** (776 lines) — their working notes on the
+  circuit's architecture, its intrinsic error rate, proven floors, traps, the qubit programme, and
+  the research status of the verifier-centered work. Attributed to whoever authored the accepted
+  submissions; the upstream commits are authored by `yukon-autoresearch[bot]`.
+- **`src/point_add/memory/repro/`** (39 files, 12,686 lines) — their retained executable knowledge.
+  This includes the Darwin-Gödel-Machine search controller `dgm_search.py` (2,848 lines) and
+  `test_dgm_search.py` (507), which port mechanisms from
   [jennyzzt/dgm](https://github.com/jennyzzt/dgm) (pinned at `a565fd2`), as its own header states.
+  The 2026-08-03 rebase added 59 files and ~10,000 lines here — world models, joint-codec synthesis,
+  verifier-ceiling work — that the earlier description predates.
 
 Our documents cite these heavily and are careful to say so at each point. `docs/` is this fork's
 work; `src/point_add/` is not.
