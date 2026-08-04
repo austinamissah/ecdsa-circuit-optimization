@@ -26,6 +26,16 @@ frontier comparison — with its wrong verdicts marked in place and a
 [lever verdict audit](CONCLUSION.md#lever-verdict-audit) of what refuted each one.
 
 ## Current (2026-08-03)
+- [`HANDOFF-2026-08-04-overnight.md`](HANDOFF-2026-08-04-overnight.md), **the overnight queue's
+  state**: item 1 closed (the cooling lever is structurally empty), item 2 in flight with the
+  11,416/54,051 known-answer test passed and the symmetry-break selftest unvalidated, items 3-4
+  correctly not fired. Start here to resume.
+- [`fire-vs-charge-cross-census.md`](fire-vs-charge-cross-census.md), 76.70% of the score is
+  charge on gates that do nothing that shot — and it is unreachable, because fire depends on
+  quantum controls and conditions are classical bits independent of them.
+- [`gate-hotness-census.md`](gate-hotness-census.md), the per-gate charge census: zero cold
+  gates, bimodal at 1.0 and a fair-coin 0.5, and charge so diffuse the top 100 gates of 1.34 M
+  carry 0.008% of it.
 - [`rebase-2026-08-03-upstream-ed4b529.md`](rebase-2026-08-03-upstream-ed4b529.md), **read this
   first — it moves the baseline.** Upstream accepted `ed4b529`; the new head measures
   **1,486,468,554**, not the `1,487,599,474` its own `mod.rs` comment claims. Rebased with zero
