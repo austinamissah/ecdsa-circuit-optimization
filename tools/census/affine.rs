@@ -7,8 +7,8 @@
 //!
 //! ## The idea
 //!
-//! A `CCX(c2, c1, t)` fires on `cond & q(c1) & q(c2)`. It can never fire — on any
-//! input, on any draw — whenever `q(c1) & q(c2) = 0` identically. Two cases are
+//! A `CCX(c2, c1, t)` fires on `cond & q(c1) & q(c2)`. It can never fire, on any
+//! input, on any draw, whenever `q(c1) & q(c2) = 0` identically. Two cases are
 //! decidable without knowing the values:
 //!
 //!   - either control is the **constant 0** (what `constzero.rs` tests), or
@@ -25,7 +25,7 @@
 //!     value = constant  XOR  (XOR of some set of atoms)
 //!
 //! An *atom* is a fresh symbolic unknown, minted whenever a value stops being an
-//! affine function of what came before — the 512 input-register qubits at op 0, the
+//! affine function of what came before, the 512 input-register qubits at op 0, the
 //! target of a genuinely nonlinear `CCX`, an `Hmr` measurement outcome, or any write
 //! under a partial (`Mixed`) condition.
 //!
@@ -65,8 +65,8 @@
 //! A false certificate deletes a live gate and destroys the circuit. `--check
 //! <hot.tsv>` requires that **every certified gate has `fire == 0`** in the measured
 //! 9,024-shot dump from `hotness.rs`; any certified gate that fired is a soundness
-//! bug and the tool exits non-zero. This is necessary, not sufficient — the whole
-//! point of a structural certificate is that it claims more than the draw shows — but
+//! bug and the tool exits non-zero. This is necessary, not sufficient, the whole
+//! point of a structural certificate is that it claims more than the draw shows, but
 //! a certificate that contradicts the draw is definitively wrong.
 //!
 //! Usage:
@@ -120,7 +120,7 @@ impl Atoms {
         }
     }
     fn next_u64(&mut self) -> u64 {
-        // splitmix64 — deterministic, so runs are reproducible
+        // splitmix64, deterministic, so runs are reproducible
         self.state = self.state.wrapping_add(0x9E3779B97F4A7C15);
         let mut z = self.state;
         z = (z ^ (z >> 30)).wrapping_mul(0xBF58476D1CE4E5B9);
@@ -486,7 +486,7 @@ fn main() {
             println!("  !! opidx {i} certified never-firing but FIRED {f} times");
         }
         if !violated.is_empty() {
-            eprintln!("SOUNDNESS BUG — analysis refuted, do not remove anything");
+            eprintln!("SOUNDNESS BUG, analysis refuted, do not remove anything");
             std::process::exit(1);
         }
         println!("CHECK ok: no certified gate fired on any of the 9,024 shots");

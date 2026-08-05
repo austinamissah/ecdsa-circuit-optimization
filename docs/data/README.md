@@ -1,7 +1,7 @@
 # Raw measurement data
 
 Primary data behind [`../lambda-measurement.md`](../lambda-measurement.md). These are the
-measurements themselves, not a summary — keep them so the analysis can be re-derived or challenged.
+measurements themselves, not a summary. Keep them so the analysis can be re-derived or challenged.
 
 ## New-baseline arms (2026-08-03, after the `ed4b529` rebase)
 
@@ -10,7 +10,7 @@ measurements themselves, not a summary — keep them so the analysis can be re-d
 | `arms-newbase-2026-08-03.tsv` | the six full-harness arms behind [`../rebase-2026-08-03-upstream-ed4b529.md`](../rebase-2026-08-03-upstream-ed4b529.md): label, strip, delta, ops, peak q, avgT, score, classical/phase/ancilla, and a distinct `md5 ops.bin` per arm |
 
 The per-gate hotness dump behind [`../gate-hotness-census.md`](../gate-hotness-census.md) is
-**deliberately not checked in** — 1,343,361 rows, ~11 MB compressed, and 53 s to rebuild:
+**deliberately not checked in**: 1,343,361 rows, ~11 MB compressed, and 53 s to rebuild:
 
 ```bash
 mkdir -p examples && cp tools/census/hotness.rs examples/
@@ -32,7 +32,22 @@ four are produced by [`../../tools/census/dump_gates.rs`](../../tools/census/dum
 | `census-vs-head.gates.diff.gz` | the 354-hunk unified diff between the census and head gate streams, net −978 CCX |
 | `stream-walk-by-commit.tsv` | ops / gates / distinct tuples at each of the 18 commits from `d9ef3e9` to HEAD |
 
-The two full gate dumps the diff was taken from are **deliberately not checked in** — they are
+**Three SHAs in `stream-walk-by-commit.tsv` no longer resolve.** The 14 upstream commits do, but
+this fork's three were rewritten by the 2026-08-03 rebase onto `ed4b529`
+([`../rebase-2026-08-03-upstream-ed4b529.md`](../rebase-2026-08-03-upstream-ed4b529.md)), which
+gave every commit above `upstream/main` a new hash. The file records the hashes as they were when
+the walk ran, which is why they are left alone. Current equivalents, matched by subject:
+
+| in the TSV | now | subject |
+|---|---|---|
+| `b1c8f84` | `36bea26` | Lift the ITERS cap: `SCHED_J2`/`GAP_J2` hold their terminal entry past the end |
+| `9f34bb9` | `38853ea` | `TLM_SCHED_J2_DELTA=2`: λ_classical 15.34 → 5.79 |
+| `7d844fa` | `37c33b8` | harness-order mode, and why the hypothesis is now doubtful |
+
+The measurements themselves are unaffected: the walk rebuilt each commit and recorded its stream,
+and those trees are unchanged by a rehash.
+
+The two full gate dumps the diff was taken from are **deliberately not checked in**, being
 ~12 MB each compressed and about a minute apiece to rebuild. Regenerate them with the commands
 below rather than carrying 24 MB of derived data in the tree.
 
@@ -66,17 +81,17 @@ git diff --no-index --unified=0 --minimal /tmp/census.gt /tmp/head.gt > /tmp/cen
 ```
 
 `SUB4_APPLY_STRIP=0` is load-bearing: the census sees the **unstripped** stream. Passing `-` as the
-output prefix prints the summary counts only and skips the ~950 MB of files — that is the form the
+output prefix prints the summary counts only and skips the ~950 MB of files, which is the form the
 18-commit stream walk uses.
 
 **This recipe is verified, not assumed.** Run verbatim on 2026-08-03 it rebuilds 9,070,297 /
 1,360,635 and 9,073,163 / 1,361,613, and the resulting diff is byte-identical to the committed
-`census-vs-head.gates.diff.gz` in its body — the git blob hashes in the two hunk headers agree, so
+`census-vs-head.gates.diff.gz` in its body: the git blob hashes in the two hunk headers agree, so
 the intermediate `.gt` files match as well. Only the `a/`,`b/` paths differ, since the committed
 copy was taken from a scratch directory.
 
 Columns in each gate dump: `opidx, kind, q_control2, q_control1, q_target, c_condition, ordinal,
-tuple_occupancy` — the last three keyed exactly as `apply_deep_strip_identity` expects.
+tuple_occupancy`, the last three keyed exactly as `apply_deep_strip_identity` expects.
 
 **Integrity gate.** Replaying the occupancy tripwire against the regenerated head dump must
 reproduce `build_circuit` exactly: 12,292 dead accepted / 251 stale, 3,923 downgrades / 0 stale. If
@@ -95,13 +110,13 @@ directly comparable. Two differences, both deliberate:
 - `base` = **200321420125**, the nonce *this* head bakes in at `src/point_add/mod.rs:2384`. It is
   not `801dd20`'s `62000008397024`. The positive control must be the head's own shipped nonce;
   using the other head's would have failed the control and voided the sweep.
-- 6 workers, not 14 — the machine loses its desktop session under a 14-worker load. Cost only 11%
+- 6 workers, not 14, because the machine loses its desktop session under a 14-worker load. Cost only 11%
   of throughput (183 vs 205 trials/hour).
 
 ### Integrity properties (check these before trusting any re-analysis)
 
 - **199 distinct md5 values across the 199 non-control nonces.** Equal hashes for distinct nonces
-  mean the tail edit never reached the stream — issue #23 / `04-traps.md` §1.
+  mean the tail edit never reached the stream: issue #23 / `04-traps.md` §1.
 - **3 control rows**, all `nonce = 200321420125`, all `0/0/0`, all md5
   `ef30945f3afcb369192ea32897232d2f`, matching upstream's shipped artifact. A dirty control voids
   the sweep.
@@ -109,7 +124,7 @@ directly comparable. Two differences, both deliberate:
 
 ## `lambda-sweep-6909d15-nonces.tsv`
 
-The trial list as generated (`block`, `nonce`), in construction order — sharded round-robin across
+The trial list as generated (`block`, `nonce`), in construction order, sharded round-robin across
 workers, so it does not match row order in the results file.
 
 ## `lambda-sweep-driver-6909d15.sh`
@@ -125,7 +140,7 @@ empirically before launch rather than assumed: a trial run in `w01` grew `w01/re
 The λ sweep on the rebased upstream head `801dd20` (score 1,487,590,242 = 1,289,073.125 executed
 Toffoli × 1154 qubits), taken 2026-08-02.
 
-202 trials. Each row is one **full `./benchmark.sh` run** — build plus a 9,024-shot `eval_circuit`.
+202 trials. Each row is one **full `./benchmark.sh` run**, meaning a build plus a 9,024-shot `eval_circuit`.
 No custom screen was used, deliberately: `src/point_add/memory/04-traps.md` §4 documents a
 lazy-XOF screening bug that reported false clean results and cost its author a 1,344-vCPU grind.
 
@@ -137,7 +152,7 @@ lazy-XOF screening bug that reported false clean results and cost its author a 1
 | `classical` | classical mismatches out of 9,024 shots |
 | `phase` | phase-garbage batches |
 | `ancilla` | ancilla-garbage batches (identically 0; guaranteed by construction, see `02-lambda.md`) |
-| `avgT` | average executed Toffoli, W=64 harness order — read from `eval_circuit` only |
+| `avgT` | average executed Toffoli, W=64 harness order, read from `eval_circuit` only |
 | `md5` | md5 of the generated `ops.bin` |
 
 `base` = 62000008397024, the nonce baked into the shipped head.
@@ -145,7 +160,7 @@ lazy-XOF screening bug that reported false clean results and cost its author a 1
 ### Integrity properties (check these before trusting any re-analysis)
 
 - **199 distinct md5 values across the 199 non-control nonces.** Equal hashes for distinct nonces
-  would mean the tail edit never reached the stream — the failure mode in `04-traps.md` §1. It is
+  would mean the tail edit never reached the stream, the failure mode in `04-traps.md` §1. It is
   what caught the sudo/`env_reset` problem described in `../lambda-measurement.md`.
 - **3 control rows**, all `nonce = 62000008397024`, all `0/0/0`, all md5 `f5c5f98258ddb7a0b1f250750ad1c6d2`,
   matching the shipped artifact exactly. If a control row is dirty the whole sweep is void.

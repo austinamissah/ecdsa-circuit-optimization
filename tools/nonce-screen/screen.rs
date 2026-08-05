@@ -1,10 +1,10 @@
 //! ============================================================================
-//!  VALIDATED 2026-08-02 on head 801dd20 — CLASSICAL CHANNEL ONLY.
+//!  VALIDATED 2026-08-02 on head 801dd20, CLASSICAL CHANNEL ONLY.
 //! ============================================================================
 //!
 //! Built clean and passed its correctness gate: it reproduces the full
-//! harness's per-nonce classical mismatch **count** — not merely its
-//! clean/dirty verdict — on **199 / 199** nonces, exactly. The paired
+//! harness's per-nonce classical mismatch **count**, not merely its
+//! clean/dirty verdict, on **199 / 199** nonces, exactly. The paired
 //! difference (screen − harness) is a single spike at zero: min 0, max 0,
 //! mean 0, zero nonzero entries, and the totals agree at 3,230 mismatches on
 //! both sides. All 199 produced distinct stream fingerprints, so the tail
@@ -19,7 +19,7 @@
 //! there: it validates a transcription of `eval_circuit`'s test loop, and that
 //! transcription is only known correct for the stream it was checked on.
 //!
-//! ## What it does — CLASSICAL CHANNEL ONLY
+//! ## What it does, CLASSICAL CHANNEL ONLY
 //!
 //! Reproduce `eval_circuit`'s classical-mismatch count without re-emitting the
 //! op stream per nonce. Two structural savings over `./benchmark.sh`:
@@ -32,8 +32,8 @@
 //!      ops[0 .. n-96] is absorbed once and cloned per nonce; each nonce then
 //!      absorbs only 96*56 = 5,376 bytes instead of the full ~507 MB.
 //!
-//! Everything downstream of the seed — pair drawing, register layout, the batch
-//! loop, the comparison — is transcribed from `src/bin/eval_circuit.rs`, and
+//! Everything downstream of the seed, pair drawing, register layout, the batch
+//! loop, the comparison, is transcribed from `src/bin/eval_circuit.rs`, and
 //! the gate above confirms the classical count comes out identical.
 //!
 //! Measured uncontended on the validation machine (see
@@ -67,8 +67,8 @@
 //!
 //! It is deliberately NOT under `src/bin/`, so cargo does not auto-discover it
 //! and it cannot affect `cargo build` or `./benchmark.sh` in the submission
-//! tree. Copy it into `src/bin/` of a THROWAWAY copy of the repo — never the
-//! submission tree — and `cargo build --release --bin screen`. It links the
+//! tree. Copy it into `src/bin/` of a THROWAWAY copy of the repo, never the
+//! submission tree, and `cargo build --release --bin screen`. It links the
 //! `quantum_ecc` lib and adds no dependencies.
 //!
 //!     ./screen --nonces LIST --mode count  --out OUT.tsv   # all 9024 shots

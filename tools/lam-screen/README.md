@@ -1,11 +1,11 @@
-# `lam-screen` — the λ instrument
+# `lam-screen`: the λ instrument
 
 > **Status: built, run, and re-gated 2026-08-03 on head `801dd20`.** Reproduces the full harness's
 > per-nonce classical mismatch **count** on **199 / 199** nonces, exactly, at two independent lane
 > widths. **14.2×** the harness on throughput.
 
 This is [`../nonce-screen/`](../nonce-screen/) with the two hot paths replaced. Same seed, same
-pairs, same comparison, same counts — it is the *speed* that changed, and the gate is the proof
+pairs, same comparison, same counts. It is the *speed* that changed, and the gate is the proof
 that nothing else did. Read `../nonce-screen/README.md` first: everything it says about what a
 screen can and cannot tell you applies here unchanged.
 
@@ -23,7 +23,7 @@ Raw output: [`../../docs/data/lamscreen-gate-801dd20.tsv`](../../docs/data/lamsc
 
 The two widths agreeing is a second, independent check: the wide simulator is licensed by
 `memory/04-traps.md` §4 (classical outcomes are insensitive to the value and consumption order of
-the Hmr/R stream), and if that licence were wrong, L=4 and L=16 would consume the randomness
+the Hmr/R stream), and if that license were wrong, L=4 and L=16 would consume the randomness
 differently and diverge.
 
 ## What was changed, and what it bought
@@ -43,7 +43,7 @@ against 1.46 ms. `--selftest N` asserts bit-equality against the library routine
 scalars plus `k ∈ {0, 1, 255, 256, order}`.
 
 **2. A wide-lane simulator.** `sim::Simulator` bitslices 64 shots into one `u64` and walks all
-9.06 M ops once per batch — 141 passes over 507 MB, plus a random read into a 4.2 MB bit array for
+9.06 M ops once per batch: 141 passes over 507 MB, plus a random read into a 4.2 MB bit array for
 every conditioned op. `--lanes L` gives `W = 64·L` shots per pass, so the bit-array read becomes L
 consecutive words (one cache line up to L = 8) and the miss count per op is unchanged while L times
 the shots ride on it. Alongside that, a 24-byte packed op replaces the 56-byte `Op`, the 535,472
@@ -62,7 +62,7 @@ feeds the Hmr/R lanes in place of 1.01 M 8-byte SHAKE256 squeezes per pass.
 | `lam-screen --lanes 16`, 8 workers | 2,912 |
 | `lam-screen --lanes 16`, 10 workers | ~4,360 |
 
-On one core that is `ln(110/4.7) = 3.1` λ-units bought rather than the screen's 2.2 — still nowhere
+On one core that is `ln(110/4.7) = 3.1` λ-units bought rather than the screen's 2.2, still nowhere
 near the ~11 needed. **It does not make a grind feasible; it makes λ work fast enough to explore
 with.** See [`../../docs/lambda-levers.md`](../../docs/lambda-levers.md) for what it was used for.
 
@@ -90,5 +90,5 @@ nonces per invocation as possible.
 - All test pairs for a rung are drawn before the simulator is constructed.
 - Every generated stream is fingerprinted; two identical fingerprints across distinct nonces mean
   the tail edit never reached the stream.
-- avgT is never read from this binary — it is W=64-harness-order only.
+- avgT is never read from this binary, since it is W=64-harness-order only.
 - **Re-run the gate against any new circuit head before trusting it there.**

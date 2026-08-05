@@ -63,7 +63,7 @@ try:
     print("| arm | knob | λ_classical | sem | Δλ vs base | avgT | peak q | score | Δscore | % score per λ-unit |")
     print("|---|---|---|---|---|---|---|---|---|---|")
     bp = ep['base261s0']; bs = int(bp[5])
-    print(f"| baseline | — | {base['m']:.3f} | ±{base['sem']:.3f} | — | {float(bp[4]):,.0f} | {bp[3]} | {bs:,} | — | — |")
+    print(f"| baseline |, | {base['m']:.3f} | ±{base['sem']:.3f} |, | {float(bp[4]):,.0f} | {bp[3]} | {bs:,} |, |, |")
     for name, p in ep.items():
         if name == 'base261s0': continue
         L = lam(f'env/L_{name}_*.tsv')
@@ -72,7 +72,7 @@ try:
             continue
         d, s, sig = delta(L, base)
         ds = 100*(int(p[5])/bs-1)
-        rate = f"{ds/abs(d):.2f}" if abs(d) > 1e-9 else "—"
+        rate = f"{ds/abs(d):.2f}" if abs(d) > 1e-9 else "-"
         print(f"| {name} | `{p[1]}` | {L['m']:.3f} | ±{L['sem']:.3f} | {d:+.3f} ± {s:.3f} ({sig:.1f}σ) | "
               f"{float(p[4]):,.0f} | {p[3]} | {int(p[5]):,} | {ds:+.2f}% | {rate} |")
 except (FileNotFoundError, KeyError) as e:

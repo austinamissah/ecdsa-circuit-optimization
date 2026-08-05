@@ -1,6 +1,6 @@
 //! Stream-agnostic dead-gate certification by constant propagation.
 //!
-//! The deep strip and the census both certify gates dead *statistically* — "never
+//! The deep strip and the census both certify gates dead *statistically*, "never
 //! fired in N sampled inputs". [`../../docs/fire-vs-charge-cross-census.md`](../../docs/fire-vs-charge-cross-census.md)
 //! showed the limit of that: 46,134 gates fire on none of the 9,024 official shots,
 //! but "never fired on this draw" is a claim about one draw, and deleting a gate
@@ -10,7 +10,7 @@
 //! This instrument asks the structural question instead: **is a control provably
 //! zero at that point in the stream, for every input?** A CCX whose control is
 //! constant-zero never fires on any input whatsoever, so deleting it is an exact
-//! identity — no sampling, no stream dependence, no λ cost.
+//! identity, no sampling, no stream dependence, no λ cost.
 //!
 //! ## The lattice
 //!
@@ -23,15 +23,15 @@
 //! Conditions are tracked as `AllOnes` / `AllZeros` / `Mixed` over the shot lanes,
 //! combining the `PushCondition` stack with the op's own `c_condition`. A write under
 //! a `Mixed` condition lands on some lanes and not others, so its target degrades to
-//! `Unknown` — that is the conservative direction, and it is what keeps the
+//! `Unknown`, that is the conservative direction, and it is what keeps the
 //! certificate sound rather than merely plausible.
 //!
 //! ## What is certified
 //!
 //! - `CCX(c2, c1, t)` fires on `cond & q(c1) & q(c2)`. If either control is `Zero`,
 //!   it can never fire.
-//! - `CCZ(c2, c1, t)` fires on `cond & q(t) & q(c1) & q(c2)` — the target is part of
-//!   the effective condition — so `Zero` on any of the three certifies it.
+//! - `CCZ(c2, c1, t)` fires on `cond & q(t) & q(c1) & q(c2)`, the target is part of
+//!   the effective condition, so `Zero` on any of the three certifies it.
 //!
 //! ## Gate on the instrument
 //!
@@ -40,7 +40,7 @@
 //! `--check <hot.tsv>` (from `hotness.rs`) and **every certified gate must have
 //! `fire == 0` in the 9,024-shot measurement.** A certified gate that fired is a
 //! refutation of the analysis, and the tool exits non-zero. Necessary, not
-//! sufficient — but it is the strongest available cross-check, and it is the same
+//! sufficient, but it is the strongest available cross-check, and it is the same
 //! discipline `hotness.rs` is held to.
 //!
 //! Usage:
@@ -371,7 +371,7 @@ fn main() {
             println!("  !! opidx {i} certified dead but fired {f} times");
         }
         if !violated.is_empty() {
-            eprintln!("ANALYSIS REFUTED — do not use");
+            eprintln!("ANALYSIS REFUTED, do not use");
             std::process::exit(1);
         }
         println!("CHECK ok: no certified gate fired");

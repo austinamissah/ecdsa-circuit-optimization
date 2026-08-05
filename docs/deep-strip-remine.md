@@ -116,7 +116,7 @@ produces. The scored circuit's stream is determined by its own op sequence, and 
 edit re-rolls it, so a table tuned to one stream would silently delete live gates under another.
 That is exactly the failure mode in `04-traps.md` §1 and the reason the occupancy tripwire exists.
 **Only a stream-agnostic census is shippable.** If harness-order mining wins on counts, that is
-evidence the shipped table is fragile, not a licence to copy it.
+evidence the shipped table is fragile, not a license to copy it.
 
 ## Two bugs found while doing this
 

@@ -1,10 +1,10 @@
-//! `census` — re-mine the identity-keyed deep strip against the CURRENT stream.
+//! `census`, re-mine the identity-keyed deep strip against the CURRENT stream.
 //!
 //! Identical in semantics to `tools/nonce-screen/screen.rs`: same seed, same
 //! pairs, same simulator, same classical count. The only change is HOW `k*G` is
 //! computed. `WeierstrassEllipticCurve::mul` is an affine double-and-add that
 //! pays a modular inversion on every one of its ~384 group operations, which
-//! measured at 690 us per point — 12.5 s of the screen's 22.3 s per nonce.
+//! measured at 690 us per point, 12.5 s of the screen's 22.3 s per nonce.
 //!
 //! `FastBase` replaces it with a 8-bit fixed-base window table plus Jacobian
 //! accumulation, so the whole scalar multiplication costs 32 mixed additions and
