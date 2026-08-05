@@ -92,6 +92,16 @@ covariance measures exactly that overlap.
 
 Decomposition: λ_classical_only 8.932, λ_both 8.193, λ_phase_only 3.435. Pearson ρ(c,p) = 0.569.
 
+**Reproduce this number** from the committed TSV. No build, no circuit, no network:
+
+```bash
+python3 docs/data/analyze-sweep.py docs/data/lambda-sweep-6909d15.tsv --seed 20260804
+```
+
+That prints every figure in this section: both channel rows, λ_total = 20.560 with the CI
+18.007 to 23.016, the decomposition, ρ, and the two bounds. It excludes the 3 control rows and
+refuses to report anything if a control is not 0/0/0.
+
 CI is a 4,000-resample bootstrap over whole rows (seed 20260804). A bootstrap re-draws the measured
 rows at random, with replacement, thousands of times, and reports how much the answer moves. The
 `sum(means)` sem is the independent-sum `sqrt(sem_c² + sem_p²)`, the same convention
@@ -193,11 +203,20 @@ PATH="$SCRATCH/shim:$PATH" ./benchmark.sh
 # 6 worker trees, each with its OWN build (see lambda-measurement.md)
 # then:
 bash docs/data/lambda-sweep-driver-6909d15.sh   # ~66 min
-python3 analyse.py sweep_results.tsv
+python3 docs/data/analyze-sweep.py sweep_results.tsv --seed 20260804
 ```
+
+That second command is the same analyzer as the one-liner above, just pointed at a sweep you ran
+yourself instead of the committed one. To check the analyzer alone, skip the 66 minutes and run it
+against [`data/lambda-sweep-6909d15.tsv`](data/lambda-sweep-6909d15.tsv).
 
 The analysis code was checked by re-deriving every published `801dd20` figure from
 [`data/lambda-sweep-801dd20.tsv`](data/lambda-sweep-801dd20.tsv) before being applied here.
+
+Note that [`../tools/lam-screen/drivers/analyze.py`](../tools/lam-screen/drivers/analyze.py) is a
+different tool and will not work here. It aggregates *lam-screen* TSVs, which have another schema,
+and reports λ_classical only. The screen covers the classical channel, so it cannot produce λ_total
+at all. It is the instrument behind [`lambda-levers.md`](lambda-levers.md), not behind this figure.
 
 The three ways to silently invalidate the run are unchanged from
 [`lambda-measurement.md`](lambda-measurement.md#three-things-that-will-silently-invalidate-the-run):

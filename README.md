@@ -93,6 +93,12 @@ that lowers the score also re-rolls the test inputs.** That means a circuit is n
 or failing. It has a built-in failure *rate*, called λ here, and to ship anything you have to search
 for an input seed that it happens to pass completely.
 
+To be clear about what that does and does not mean: **λ does not block anyone, it prices them, and
+the price has been going up.** Improvements land all the time, 25 of them in three weeks (§2). Each
+one just has to be paid for with a seed search, and λ sets that bill. You can watch the bill rise in
+the leader's own record: eight submissions on one day while λ was still low, down to three on a day
+three weeks later (§3). Nothing stopped working. It got more expensive.
+
 Measured on the current head `6909d15` over 199 independent seeds, each one a full benchmark run:
 **λ_total = 20.560** (95% CI 18.007 to 23.016), so P(clean seed) ≈ 1.2 × 10⁻⁹, which is about
 **8.5 × 10⁸ trials per usable seed**. At the throughput actually measured on the laptop used (183
@@ -146,6 +152,11 @@ days, and it ships its search code inside its own submissions. Reading that code
 without any clever trick. It uses a **512 / 2,048 / 8,192 / 9,024 shot ladder** that throws out bad
 seeds early (7.2× cheaper at λ = 20), plus a cost per try roughly 50× below a plain full run. It was
 also searching at a much lower λ for most of the campaign.
+
+That last point is visible in the pace itself. **Eight submissions landed on 2026-07-26**, the same
+day `ITERS` moved 258 → 261 and made the circuit more aggressive. **Three landed on 2026-08-01**,
+three weeks later, with λ higher. Same program, same method, fewer submissions per day: the shape of
+the campaign is a rising-λ ramp, which is §1 showing up as a schedule.
 
 Worth noting: **λ appears nowhere in what it selects on.** It is treated as a pass/fail gate and
 never improved. Details: [`docs/upstream-search-economics.md`](docs/upstream-search-economics.md).
@@ -274,7 +285,7 @@ than match it.
 You can also run the harness directly:
 
 ```bash
-cargo run --release -- --note "what I tried"
+./benchmark.sh --note "what I tried"
 ```
 
 That single command builds the circuit, validates it, scores it, and
@@ -286,6 +297,27 @@ written to `score.json` in the format
 { "score": 10704574395, "metrics": { "toffoli": 3942753, "qubits": 2715 } }
 ```
 
+`benchmark.sh` runs the two binaries in order: `build_circuit` produces
+`ops.bin` (sandboxed, since it is the one that compiles in your code from
+`src/point_add/`), then `eval_circuit` re-simulates that op stream, checks it,
+and writes the score. Any arguments you pass are forwarded to `eval_circuit`,
+which is what makes `--note` work. If the build cannot find `cargo` or a C
+compiler, run `./setup.sh` first.
+
+Use `./benchmark.sh` rather than a bare `cargo run`. This crate defines two
+binaries and no default, so `cargo run --release` cannot pick one and exits with
+an error. To drive them by hand, name the binary and keep the order:
+
+```bash
+cargo run --release --bin build_circuit    # writes ops.bin (unsandboxed)
+cargo run --release --bin eval_circuit -- --note "what I tried"
+```
+
+Note that this local layout is what the repository ships. The challenge CLI's
+`ecdsafail clone` provisions its own checkout, which may lay the harness out
+differently; if the commands above do not match what you get from the CLI,
+follow the CLI's copy.
+
 ### What you can edit
 
 You may modify **anything inside `src/point_add/`**. Split it into
@@ -293,10 +325,13 @@ submodules, rewrite primitives, swap algorithms, refactor freely.
 
 You may **not** touch the harness:
 
-- `src/main.rs`, `src/circuit.rs`, `src/sim.rs`, and
+- `src/lib.rs`, `src/circuit.rs`, `src/sim.rs`, and
   `src/weierstrass_elliptic_curve.rs`, which are the contract.
+- `src/bin/build_circuit.rs` and `src/bin/eval_circuit.rs`, the two binaries
+  `benchmark.sh` drives.
 - `Cargo.toml`, `Cargo.lock`, and `rust-toolchain`, so no new dependencies.
 - `results.tsv` directly (the harness appends to it for you).
+- `benchmark.sh` itself, which decides how the two binaries are run.
 
 ### Memory notes
 

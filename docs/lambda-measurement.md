@@ -81,6 +81,19 @@ with independent components, the covariance *is* λ_both, which makes it directl
 Decomposition: λ_classical_only 9.12, λ_both 7.11, λ_phase_only 3.80. Pearson ρ(c,p) = 0.576,
 against 0.5205 measured on the older head, so the same overlap structure.
 
+**Reproduce this number** from the committed TSV. No build, no circuit, no network:
+
+```bash
+python3 docs/data/analyze-sweep.py docs/data/lambda-sweep-801dd20.tsv
+```
+
+That prints both channel rows, the decomposition, ρ, the bounds, and λ_total = 20.035, which is the
+20.04 quoted above. **The CI is the one figure that will not match to the digit.** This document
+did not record its bootstrap seed, and the seed changes the interval by roughly ±0.05, so expect
+something near 18.22 to 21.85 rather than exactly it. Everything that does not depend on the seed
+reproduces exactly. [`lambda-6909d15.md`](lambda-6909d15.md) records its seed (20260804) and its CI
+does reproduce to the digit.
+
 **What would falsify this, and which way it breaks.** The covariance estimator relies on an
 assumption that is not tested by the data: that the *non-shared* components, the
 classical-only and phase-only failures, are **independent** of each other, so that all of the
@@ -294,3 +307,17 @@ per-channel mean/sd/sem over the 199 non-control rows, plus
 `λ_total = mean_classical + mean_phase − Cov(classical, phase)`, with a 4,000-resample bootstrap
 over rows for the CI. Nothing in the analysis is weighted or filtered; rows are used exactly as
 recorded.
+
+[`data/analyze-sweep.py`](data/analyze-sweep.py) implements exactly that:
+
+```bash
+python3 docs/data/analyze-sweep.py docs/data/lambda-sweep-801dd20.tsv
+```
+
+Covariance and sd use the sample convention (ddof=1), and the CI is a percentile bootstrap with
+linear interpolation between order statistics. Those two choices are what reproduce the published
+figures; the script states both in its header so they can be challenged rather than guessed at.
+
+It is not [`../tools/lam-screen/drivers/analyze.py`](../tools/lam-screen/drivers/analyze.py), which
+reads *lam-screen* TSVs (a different schema, and it will exit with a `ValueError` on this one) and
+reports λ_classical only. That screen is the classical channel alone, so it cannot produce λ_total.

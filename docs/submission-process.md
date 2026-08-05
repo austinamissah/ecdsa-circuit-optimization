@@ -118,9 +118,17 @@ how you create the account itself is not covered by the repo, check ecdsa.fail d
    source-only accept commits, but not explicitly documented.
 5. **Account registration**, the web sign-up step preceding "create an API key" is not
    described.
-6. **Minor doc drift (not a blocker):** the README refers to `src/main.rs` and
+6. ~~**Minor doc drift (not a blocker):** the README refers to `src/main.rs` and
    `cargo run --release -- --note` (`README.md:113,131`), but this repo has **no
    `src/main.rs`**, the actual binaries are `src/bin/build_circuit.rs` and
    `src/bin/eval_circuit.rs` (`Cargo.toml:9-15`), driven by `benchmark.sh`. So the
    README's local-run command may not work as written; the CLI's `ecdsafail clone`
-   presumably provisions whatever layout it expects, which could differ from this checkout.
+   presumably provisions whatever layout it expects, which could differ from this checkout.~~
+
+   **Fixed 2026-08-04.** The drift was real and is confirmed: there is no `src/main.rs`,
+   and `cargo run --release` exits with *"could not determine which binary to run"* because
+   `Cargo.toml` declares `build_circuit` and `eval_circuit` with no `default-run`. The README
+   now points at `./benchmark.sh --note "..."`, lists the real harness files, and says the
+   CLI's `ecdsafail clone` may provision a different layout. `--note` itself was never the
+   problem: `eval_circuit.rs:378` parses it and `benchmark.sh` forwards `"$@"` through to
+   that binary, so the flag works once the invocation is right.
