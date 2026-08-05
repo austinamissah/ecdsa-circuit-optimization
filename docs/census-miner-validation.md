@@ -1,7 +1,14 @@
 # The census miner fails its known-answer test
 
-> Measured 2026-08-03. The miner is [`../tools/census/`](../tools/census/); the
-> table under test is the shipped `src/point_add/deep_strip_keys.rs`.
+> Measured 2026-08-03 on head **`801dd20`** (score 1,487,590,242, 9,058,005 ops). The miner is
+> [`../tools/census/`](../tools/census/); the table under test is the shipped
+> `src/point_add/deep_strip_keys.rs`.
+>
+> **⚠ One head behind.** The fork was rebased onto `ed4b529` / `6909d15` later the same day
+> ([`rebase-2026-08-03-upstream-ed4b529.md`](rebase-2026-08-03-upstream-ed4b529.md)), where the
+> score is 1,486,468,554 and the stream is 9,057,301 ops. The *result*, that the miner fails its
+> known-answer test and the miner is what is wrong, is a property of the instrument, not the
+> head, and stands. The score and ops figures below do not.
 
 ## Result: FAIL, and the miner is the thing that is wrong
 
@@ -18,8 +25,8 @@ dumped per-gate flags reproduces `build_circuit` exactly:
 | downgrade | 3,923 | 0 | `downgraded 3923 / 3923` ✅ |
 
 **The certification predicates are not.** Of the shipped keys the tripwire
-accepts — the ones that actually get applied, in a circuit that passes
-9,024/9,024 — this census claims:
+accepts, meaning the ones that actually get applied, in a circuit that
+passes 9,024/9,024, this census claims:
 
 | | accepted | census says it fires / is violated |
 |---|---|---|
@@ -37,12 +44,12 @@ The miner certifies a strict subset of what is truly dead:
 - delta 0: 9,378 dead / 2,196 downgrade, against 12,543 / 3,923 shipped.
 - **Keys in the re-mine that are NOT in the shipped table: 0.** A pure subset.
 
-A subset is *safe* — every gate it deletes really is dead — it just leaves score
+A subset is *safe*, since every gate it deletes really is dead. It just leaves score
 on the table. That is consistent with everything measured:
 
 | circuit | ops | q | classical | phase | score | vs head |
 |---|---|---|---|---|---|---|
-| head (shipped strip) | 9,058,005 | 1154 | 0 | 0 | 1,487,590,242 | — |
+| head (shipped strip) | 9,058,005 | 1154 | 0 | 0 | 1,487,590,242 | n/a |
 | delta 0, re-mined strip | 9,060,919 | 1154 | 20 | 13 | 1,492,415,116 | **+0.324%** |
 
 λ_classical, n=400 per arm:
@@ -50,10 +57,10 @@ on the table. That is consistent with everything measured:
 | arm | λ_classical | vs strip OFF |
 |---|---|---|
 | head, shipped strip | 16.025 ± 0.197 | +0.682 ± 0.273 |
-| delta 0, strip OFF | 15.342 ± 0.189 | — |
+| delta 0, strip OFF | 15.342 ± 0.189 | n/a |
 | delta 0, **re-mined strip** | **15.258 ± 0.202** | **−0.084 ± 0.277** |
 
-So the re-mined table is λ-free at delta 0 too — but it **costs 0.324% of score**.
+So the re-mined table is λ-free at delta 0 too, but it **costs 0.324% of score**.
 **A delta-0 re-mine is not a score win. It is a score loss.** There is nothing to
 recover: the 251 stale keys are real, but this miner cannot certify replacements
 for them, let alone the 3,165 dead keys it fails to reproduce.
@@ -66,7 +73,7 @@ The census drives Hmr/R from a xorshift PRNG, so it explores measurement-outcome
 combinations freely. The shipped census may have been taken in the harness's own
 XOF order, seeing a narrower set of reachable states and therefore certifying
 more gates dead. If so the shipped table is tuned to that stream and this miner
-is the safer of the two — which would be consistent with the strip's measured
+is the safer of the two, which would be consistent with the strip's measured
 0.682 λ cost. **This is a hypothesis; it has not been tested.** The test is to
 re-run one shard with the harness XOF in W=64 order and see whether the 25%/43%
 disagreement collapses.

@@ -1,31 +1,32 @@
 # Optimization campaign: conclusion
 
-> ## ⚠ Superseded — read this first
+> ## ⚠ Superseded, read this first
 >
 > **Written 2026-07-11 against commit `422f21d`. Its headline verdict is wrong.**
 >
 > This document concluded that no lever was available and that only a research-scale rewrite
 > could lower the score. In the 21 days that followed, upstream landed **25 accepted
-> score-lowering submissions**. Our fork was rebased onto `8af8a6f` on 2026-08-02 and the current
-> head measures **1,487,590,242** (1,289,073.125 executed Toffoli × **1154** qubits, 9,024/9,024
-> clean), against the 1.52e9 quoted below.
+> score-lowering submissions**. Our fork was rebased onto `8af8a6f` on 2026-08-02, measuring
+> **1,487,590,242** on `801dd20` (1,289,073.125 executed Toffoli × **1154** qubits), and again onto
+> `ed4b529` on 2026-08-03: the current head `6909d15` measures **1,486,468,554**
+> (1,288,101.386 × 1154, 9,024/9,024 clean), against the 1.52e9 quoted below.
 >
 > Calling that "tuning we missed" would undersell what actually happened. Upstream is a single
 > autonomous agent (`yukon-autoresearch[bot]`) running a Darwin-Gödel-Machine loop: it mutates
 > `src/point_add/` in disposable worktrees, screens candidates on a 512/2,048/8,192/9,024 shot
 > ladder, and promotes only what a full verifier passes. It ran that loop **while λ was still low
 > enough for a clean seed to be cheap**, and spent the resulting throughput climbing the
-> aggressiveness curve — `ITERS` moved 258 → 261 on 2026-07-26, the same day 8 submissions landed.
+> aggressiveness curve. `ITERS` moved 258 → 261 on 2026-07-26, the same day 8 submissions landed.
 > The pace then fell to 3 on 08-01 as λ rose. That is the shape of the campaign: not a better
 > lever, but a search loop run hard against a constraint that was cheap early and is expensive now.
 >
 > So the real error here is not "we missed a lever." It is that this document was scoring levers
 > on Toffoli × qubits while the thing actually governing progress was λ and the cost of a seed
-> search — a quantity it never measures or mentions. See
+> search, a quantity it never measures or mentions. See
 > [`upstream-search-economics.md`](upstream-search-economics.md).
 >
 > **The original text is kept intact on purpose.** Each superseded claim is marked in place and
-> itemised in [Lever verdict audit](#lever-verdict-audit). What we got wrong, and why, is the
+> itemized in [Lever verdict audit](#lever-verdict-audit). What we got wrong, and why, is the
 > most useful part of this file.
 >
 > New material from the 2026-08-02 session: [`lambda-measurement.md`](lambda-measurement.md),
@@ -50,13 +51,13 @@ is a ground-up rewrite of the inversion (a jump-k GCD engine) with an uncertain 
 
 > **⚠ Superseded (2026-08-02).** Three errors in the paragraph above.
 >
-> 1. *"about 1.32M Toffoli times 1152 qubits (about 1.52e9)"* — that was `422f21d`. The head is
+> 1. *"about 1.32M Toffoli times 1152 qubits (about 1.52e9)"*: that was `422f21d`. The head is
 >    now `801dd20` at **1,289,073.125 × 1154 = 1,487,590,242**, measured locally, 9,024/9,024
 >    clean. Peak went **up** by 2 qubits while Toffoli fell 2.40%; upstream bought Toffoli with
 >    qubits and came out 2.23% ahead.
-> 2. *"found no available lever that lowers the score"* — false. Upstream landed 25
+> 2. *"found no available lever that lowers the score"*: false. Upstream landed 25
 >    score-lowering submissions in the next 21 days. Levers 1, 3 and 11 below were misjudged.
-> 3. *"The remaining option is a ground-up rewrite"* — false. None of the 25 was a rewrite.
+> 3. *"The remaining option is a ground-up rewrite"*: false. None of the 25 was a rewrite.
 >
 > The paragraph also never mentions λ, the intrinsic error rate. Every lever here was scored on
 > Toffoli × qubits alone, when λ is what actually decides whether a change can ship. See
@@ -105,7 +106,7 @@ re-audit against `src/point_add/memory/` and the rebased head; details in
 Both axes of the score were tested. At peak 1088 emitted Toffoli rose 11.9%; at peak 1216 emitted
 Toffoli fell 0.87% and correctness FAILED. The per-step vent schedules are tuned to 1152.
 
-> **⚠ Superseded (2026-08-02).** The two measurements are real — they did move `TLM_TARGET_Q`,
+> **⚠ Superseded (2026-08-02).** The two measurements are real, and they did move `TLM_TARGET_Q`,
 > confirmed by the +11.9% at 1088 matching the ~2,590 Toffoli/qubit marginal cost in
 > `memory/05-qubit-reduction.md` Step 4. The *conclusion* drawn from them is wrong. The last
 > sentence is false: the schedules are not tuned to 1152, and the head now runs at peak **1154**.
@@ -116,29 +117,29 @@ Toffoli fell 0.87% and correctness FAILED. The per-step vent schedules are tuned
 Seven of eleven verdicts stand. Four moved. Each entry quotes the original claim and states what
 refuted it.
 
-### ❌ Lever 1 — refuted
+### ❌ Lever 1, refuted
 
 > *"needs an unproven bit-growth bound"*
 
 No bound is needed. `memory/05-qubit-reduction.md` Step 5 **measures** the lever: narrowing
 `SCHED_J2`'s tail by N=160 entries, with `TLM_TARGET_Q` lowered in lockstep, gives **−0.49%** on
 the score product. Narrowing shrinks the GCD registers, so the walk's adders, comparators and
-cswaps all get cheaper — it improves both axes at once. The real gate is λ (9.67 classical at
+cswaps all get cheaper, so it improves both axes at once. The real gate is λ (9.67 classical at
 N=160 vs ~7.25 shipped), not a proof. `GAP_J2` must move with it to preserve
 `s = SCHED_J2[i] − cmp_window(i) = −1`; break that coupling and the divstep channel goes from
 8.36 to 4,646 mismatches. N=258 does break, because the *early* entries are a genuinely tight
-magnitude bound — the slack is in the tail.
+magnitude bound, and the slack is in the tail.
 
 We tested the cap and the schedule separately, concluded neither worked, and never tested them
 together. That combination is the whole lever.
 
-### ⚠ Lever 3 — superseded, not wrong
+### ⚠ Lever 3, superseded but not wrong
 
 > *"saturated; about 10.6K already skipped, CONSTPROP reaches a fixpoint at plus 269"*
 
 Correct for `422f21d`, and *more* saturated now. Measured on `801dd20`,
 `apply_deep_strip_identity` removes **12,292/12,543** dead keys and downgrades **3,923/3,923**
-CCX to CX/CZ — every candidate in the table taken.
+CCX to CX/CZ, so every candidate in the table is taken.
 
 Two corrections to how we described it. The `cond & q1 & ~q2` downgrade is a **census-mined
 table** (`deep_strip_keys::DOWNGRADE_KEYS`), not a build-time predicate. And the
@@ -150,7 +151,7 @@ stale count scales with how far the stream has moved from its census (251 here a
 `memory/05` Step 6 after a structural change). Re-mining is infrastructure for future work, not a
 0.02% win to bank.
 
-### ⚠ Lever 5 — half-suspect
+### ⚠ Lever 5, half-suspect
 
 > *"measured regression: plus 3,458 Toffoli, peak 1153 above 1152, correctness FAILED"*
 
@@ -158,22 +159,22 @@ The +3,458 Toffoli is a gate count and stands. The **`correctness FAILED` is not
 it was measured before `deep_strip_keys.rs`'s occupancy tripwire existed, so any perturbation to
 the stream desynced ordinal-keyed drop tables and silently deleted live Toffolis. `memory/03`
 carries the same caveat about its own pre-tripwire results: *"every pre-tripwire 'impossible'
-verdict is suspect."* Needs re-running. "peak 1153 above 1152" is also a stale reference frame —
+verdict is suspect."* Needs re-running. "peak 1153 above 1152" is also a stale reference frame,
 the cap is now 1154.
 
-### ❌ Lever 11 — refuted in part
+### ❌ Lever 11, refuted in part
 
 > *"peak is fixed to 1152 by the baked schedules"*
 
 False. Peak tracks `TLM_TARGET_Q` directly. The B0 owner census in `memory/01-architecture.md`
-Layer 3 sums to 1152 with **124 qubits at `gidney.rs:1206` marked "BORROWED, fills to the cap"** —
+Layer 3 sums to 1152 with **124 qubits at `gidney.rs:1206` marked "BORROWED, fills to the cap"**,
 a vent pool, not persistent state. `memory/05` Step 4 measures peaks of 1153/1152/1151 by moving
 the cap alone, and the head now runs at **1154** (traced statically through
 `build()` → `mod.rs:2033`, then confirmed by measurement).
 
-What *does* survive is "the dial alone loses" — independently reproduced by `memory/05` Step 4.
+What *does* survive is "the dial alone loses", independently reproduced by `memory/05` Step 4.
 Lowering the cap without narrowing the schedule costs ~2,590 Toffoli/qubit against a ~1,188
-break-even. We measured that correctly and then over-generalised it into a structural floor that
+break-even. We measured that correctly and then over-generalized it into a structural floor that
 does not exist.
 
 The `1216: FAIL` is suspect for the same reason as lever 5: pre-tripwire.
@@ -204,9 +205,11 @@ one bare affine point addition, so they are not a direct score ranking.
 
 Because Schrottenloher's figures are for windowed additions or the full attack, and Babbush's circuits
 are not disclosed, none of these is a bare single-addition circuit directly comparable to the 1.32M /
-1152 figure. The README's "about 3x lower" target (about 5e8) corresponds to no disclosed standalone
-single-addition circuit; it is below the two-inversion cost and would require cross-addition windowing
-that a single-addition benchmark does not use.
+1152 figure. The README's "about 3x lower" target is **~5e8 of score**, meaning Toffoli × qubits.
+That is not the ~8.5e8 *trials per clean seed* of [`lambda-6909d15.md`](lambda-6909d15.md), which is
+a different quantity at a similar size. It corresponds to no disclosed standalone single-addition
+circuit: it sits below the two-inversion cost, and reaching it would require cross-addition
+windowing that a single-addition benchmark does not use.
 
 ## Approaches considered and why each did not apply
 
@@ -235,7 +238,7 @@ minutes. Everything cheaper than this was tried and did not lower the score.
 
 > **⚠ Superseded (2026-08-02).** The last sentence is false. Everything cheaper was *not* tried:
 > lever 1's schedule-narrowing combined with a matching cap reduction was never tested, and
-> `memory/05-qubit-reduction.md` Step 5 measures it at −0.49%. `ITERS` is also no longer 258 — it
+> `memory/05-qubit-reduction.md` Step 5 measures it at −0.49%. `ITERS` is also no longer 258. It
 > is 261 on the current head, which changes the iteration-count arithmetic in this paragraph.
 >
 > Jump-k may still be a real lever; the error is calling it *the remaining* one.
@@ -254,11 +257,13 @@ current circuit.
 > jump-k rewrite, all of them tuning. What we mistook for a structural floor was the limit of
 > what we had measured.
 >
-> The binding constraint is not Toffoli count — it is **λ**, the intrinsic error rate, which this
-> document never considers. Measured on the current head at **λ_total ≈ 20.0**, giving
-> P(clean seed) ≈ 2.0e-9. Any change that lowers the score re-rolls the Fiat-Shamir seed, so it
+> The thing that actually limits progress is not Toffoli count. It is **λ**, the intrinsic error
+> rate, which this document never considers. Measured at **λ_total = 20.04** on `801dd20` (P(clean seed) ≈ 2.0e-9)
+> and **20.560** on the current head `6909d15` (≈ 1.2e-9), statistically the same figure on both.
+> Any change that lowers the score re-rolls the Fiat-Shamir seed, so it
 > cannot ship until a clean nonce is found. That, not the inversion algorithm, is what gates
-> progress. See [`lambda-measurement.md`](lambda-measurement.md) and
+> progress. See [`lambda-6909d15.md`](lambda-6909d15.md) for the current figure,
+> [`lambda-measurement.md`](lambda-measurement.md) for the method, and
 > [`upstream-search-economics.md`](upstream-search-economics.md).
 
 ---

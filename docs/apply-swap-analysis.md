@@ -119,7 +119,7 @@ skip. `apply_fwd_cswap_skip(i)` / `apply_inv_cswap_skip(i)` (`gcd.rs:156-174`) d
 `TLM_APPLY_FWD_CSWAP_SKIP_LAST` (submission sets it to `2`, `mod.rs`) and
 `TLM_APPLY_INV_CSWAP_SKIP_LAST` (unset ⇒ 0). That is valid when the swap *control* `swp` is provably
 inactive (or the swap is otherwise a proven no-op) for those tail iterations, an all-or-nothing
-claim about the control, **orthogonal** to per-limb width truncation. It does not generalize to
+claim about the control, **independent of** per-limb width truncation. It does not generalize to
 "truncate the width," because when the swap does fire it must fire across all 256 limbs.
 
 ## Conclusion for candidate C

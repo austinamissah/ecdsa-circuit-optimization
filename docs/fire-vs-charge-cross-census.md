@@ -1,4 +1,4 @@
-# Fire versus charge — 76.7% of the score is provably wasted, and provably unreachable
+# Fire versus charge: 76.7% of the score is provably wasted, and provably unreachable
 
 > Measured 2026-08-03 on head `6909d15` (score 1,486,468,554). Instrument:
 > [`../tools/census/hotness.rs`](../tools/census/hotness.rs), extended to count fires alongside
@@ -7,8 +7,8 @@
 
 ## Result
 
-Same instrument, same gate — the attributed charge still reconstructs the scorer's total exactly
-(`attributed = toffoli_gates = 11,623,826,906`, `avgT = 1288101.386`) — now also accumulating, per
+Same instrument, same gate. The attributed charge still reconstructs the scorer's total exactly
+(`attributed = toffoli_gates = 11,623,826,906`, `avgT = 1288101.386`), now also accumulating, per
 gate, the number of shots on which its **effect mask is non-zero**.
 
 | quantity | shot-charges | as avgT | share of score |
@@ -20,7 +20,7 @@ gate, the number of shots on which its **effect mask is non-zero**.
 A semantics-preserving condition must be true on every shot where the gate fires, so
 `charge − fire` is the most any condition could save. Summed over the stream, and granting a
 **perfect oracle condition to every one of the 1,343,361 gates at once**, the ceiling on the cooling
-lever is 987,913 avgT — 76.7% of the entire score.
+lever is 987,913 avgT, which is 76.7% of the entire score.
 
 That number is real, and it is also almost entirely unreachable. The reason is in the distribution,
 not in the total.
@@ -46,7 +46,7 @@ And that is precisely the part no condition can remove:
 - The condition stack takes a **classical bit** (`PushCondition(BitId)`), and the charge is
   `popcount` of that mask (`src/sim.rs:77-86`).
 - Whether a gate fires is a function of its **quantum control qubits**.
-- In this circuit the classical bits are measurement outcomes (`Hmr`) — which is why the 8.2% of
+- In this circuit the classical bits are measurement outcomes (`Hmr`), which is why the 8.2% of
   gates that *are* conditioned sit at hotness 0.4999, a fair coin
   ([`gate-hotness-census.md`](gate-hotness-census.md)).
 
@@ -54,7 +54,7 @@ So cooling a gate requires a classical bit that is true whenever the quantum con
 No such bit exists to be found: a measurement outcome is independent of the control values, and the
 probability that a given gate's ~2,256 firing shots all fall inside a given fair coin's 4,512 true
 shots is `2^-2256`, or about `10^-679`. Manufacturing the bit instead means *measuring* the
-controls — an `Hmr`, which destroys the qubit and costs Cliffords, to save at most 0.75 of one
+controls, an `Hmr`, which destroys the qubit and costs Cliffords, to save at most 0.75 of one
 Toffoli.
 
 **This is a structural block, not a search that came up empty.** The 76.7% is the gap between "a
@@ -68,8 +68,8 @@ Of the post-strip stream, **46,134 gates (3.4%) fired on none of the 9,024 offic
 carrying 389,977,573 shot-charges = **43,215.6 avgT, 3.35% of the score**. Only 80 gates in the
 whole circuit fire on every shot they are charged for.
 
-Against a strict-beat bar of **0.886 avgT** — the head is `1,288,101 × 1154`, so
-`round(avgT) ≤ 1,288,100` wins by 1,154 points — deleting a *single* never-firing full-hotness gate
+Against a strict-beat bar of **0.886 avgT** (the head is `1,288,101 × 1154`, so
+`round(avgT) ≤ 1,288,100` wins by 1,154 points), deleting a *single* never-firing full-hotness gate
 would clear it.
 
 **It is not harvestable, and the reason is the trap this project has already documented twice.**
@@ -82,7 +82,7 @@ objection that
 raised against harness-order census mining: **only a stream-agnostic certificate is shippable.**
 
 The quantitative version: these 46,134 gates survived upstream's `union max-coverage` census, so
-they are not census-dead — they are gates whose fire probability is small enough to miss in 9,024
+they are not census-dead. They are gates whose fire probability is small enough to miss in 9,024
 draws but not in the census's. Deleting a gate with true fire rate `p` costs about `9024·p` λ. At
 `p ≈ 1e-5` the whole set would cost ≈ 4,163 λ; the circuit currently has to hit λ ≈ 0 to ship. There
 is no subset of this set that is both large enough to matter and safe, because the ones large enough

@@ -145,7 +145,7 @@ two rewrite ideas were investigated and did not pan out:
    budget, poor effort/reward; deprioritized.
 
 Everything else (symmetry, diagonal, NAF reduction) is already at its floor; don't spend math there.
-The GCD engine (~95% of the budget) is where any real leverage would be, and it is already at its
+The GCD engine (~95% of the budget) is where any real room for improvement would be, and it is already at its
 frontier.
 
 ## 7. Experiment log & corrected algebra

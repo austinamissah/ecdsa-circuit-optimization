@@ -1,17 +1,23 @@
-# Census re-mine at `TLM_SCHED_J2_DELTA=2` — RESULT
+# Census re-mine at `TLM_SCHED_J2_DELTA=2`: RESULT
 
 Superseded the incomplete handoff of the same name. The re-mine is done and
 harness-verified.
+
+> **Head: `801dd20`** (score 1,487,590,242, λ_total 20.04). Dated session state, kept as a record.
+> The fork was rebased onto `ed4b529` / `6909d15` later the same day. Current score is
+> 1,486,468,554, λ_total 20.560 ([`lambda-6909d15.md`](lambda-6909d15.md)). Every score and λ
+> figure below is priced against the superseded head, and the re-mined table is keyed to the old
+> stream ([`rebase-2026-08-03-upstream-ed4b529.md`](rebase-2026-08-03-upstream-ed4b529.md#what-this-invalidates)).
 
 ## The four numbers
 
 | | avgT | peak q | score | vs head |
 |---|---|---|---|---|
-| head (shipped, delta 0, shipped strip) | 1,289,073 | 1154 | **1,487,590,242** | — |
+| head (shipped, delta 0, shipped strip) | 1,289,073 | 1154 | **1,487,590,242** | n/a |
 | delta 2, strip OFF | 1,319,429 | 1155 | 1,523,940,495 | **+2.444%** |
 | delta 2, **re-mined strip ON** | 1,307,877 | 1155 | **1,510,597,935** | **+1.547%** |
 
-**The re-mined strip recovers 13,342,560 of score — 0.897% of head.**
+**The re-mined strip recovers 13,342,560 of score, which is 0.897% of head.**
 
 **λ (n=400 per arm, same instrument that measured the shipped strip's 0.682):**
 
@@ -20,7 +26,7 @@ harness-verified.
 | delta 2, strip OFF | 5.787 | ±0.125 |
 | delta 2, re-mined strip ON | **5.777** | ±0.115 |
 
-**Δλ = −0.010 ± 0.170 — statistically zero.** The shipped table costs
+**Δλ = −0.010 ± 0.170, statistically zero.** The shipped table costs
 +0.682 ± 0.273 λ on its own stream; **the re-mined table costs nothing
 measurable. The re-mine does recover the 0.682 λ.**
 
@@ -30,10 +36,10 @@ Both arms built and evaluated with `build_circuit` + `eval_circuit`:
 
 | arm | ops | qubits | classical | phase | ancilla | stale keys | md5 ops.bin |
 |---|---|---|---|---|---|---|---|
-| strip OFF | 9,214,624 | 1155 | 6 | 5 | 0 | — | `baac874cfdd26ec6b7f25ac15cb6a9dc` |
+| strip OFF | 9,214,624 | 1155 | 6 | 5 | 0 | n/a | `baac874cfdd26ec6b7f25ac15cb6a9dc` |
 | re-mined strip ON | 9,204,392 | 1155 | 7 | 6 | 0 | **0** | `4991360767a0f364a146b039de3f2d65` |
 
-Both sit in the intrinsic band, and **0 stale keys** is the load-bearing number:
+Both sit in the intrinsic band, and **0 stale keys** is the number that carries this:
 the old table applied to this same delta-2 stream discards 13,484 keys and takes
 the circuit to 9,022/9,024 mismatches. The re-mined table addresses every gate
 it names.
@@ -57,8 +63,8 @@ consistent with the measured −0.010 ± 0.170.
 **This corrects the pessimism in my earlier handoff.** I predicted a 120 M
 re-mine would cost 2–3× the 0.682 λ it replaces, from
 `λ ≈ (dead keys) × 3/N × 9024` = 2.3. That formula assumes every dead key sits
-at the detection threshold. Most do not — they are structurally dead with
-p = 0 — so it is a wild overestimate. **The held-out measurement is the right
+at the detection threshold. Most do not, since they are structurally dead
+with p = 0, so it is a wild overestimate. **The held-out measurement is the right
 estimator and it says the opposite.** Census depth mattered far less than I
 argued; 120 M was ample.
 
@@ -82,7 +88,7 @@ buys λ_total 20.04 → ~8 (see `lambda-levers.md`). The strip is now free on th
   would corrupt the shipped delta-0 circuit. The repo table is untouched.
 - A delta-0 control re-mine, which would check the tool against the shipped
   12,543 / 3,923 counts. Still the strongest available validation of the
-  predicates and still unrun — the delta-2 harness rows are strong evidence but
+  predicates and still unrun. The delta-2 harness rows are strong evidence but
   not that check.
 - λ_total for the re-mined arm (only λ_classical was measured at n=400; the
   single-nonce harness phase counts, 5 vs 6, are n=1 and prove nothing).

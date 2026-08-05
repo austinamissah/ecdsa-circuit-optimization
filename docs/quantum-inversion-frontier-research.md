@@ -7,8 +7,15 @@
 
 A research synthesis on the cost floor of a reversible elliptic-curve point addition scored by
 **Toffoli count × peak qubit width** (the ecdsa.fail metric), and on which algorithmic levers can and
-cannot move it. Compiled from a multi-source, adversarially-verified survey of the quantum-ECC
+cannot move it. Compiled from a multi-source survey, independently checked, of the quantum-ECC
 literature (2017–2026). Sources are listed at the end; every quantitative claim is cited.
+
+> **Units. Read this before quoting any 10⁸ figure from this document.** Every quantity here is
+> **score**, i.e. Toffoli × peak qubits. The recurring **~5×10⁸ score** is the challenge README's
+> "about 3× lower" target, against this circuit's ~1.5×10⁹ score. It is *not* the similar-looking
+> **~8.5×10⁸ trials per clean seed** from [`lambda-6909d15.md`](lambda-6909d15.md), which is a
+> count of benchmark runs and belongs to the λ axis. Two different quantities, adjacent magnitudes,
+> no relationship; every occurrence below carries its unit inline.
 
 ## TL;DR
 
@@ -33,9 +40,9 @@ literature (2017–2026). Sources are listed at the end; every quantitative clai
   addition; these are not bare single-addition scores. (An earlier back-of-envelope "about 140 to 180K
   per addition" was an artifact of dividing the 70 to 90M full-attack total by a mis-estimated 350 to
   512 additions; the real divisor is 28, giving about 2.0 to 2.6M per windowed addition.) The README's
-  "about 3x lower" target (about 5×10⁸) corresponds to no disclosed standalone single-addition circuit;
-  it is below the two-inversion cost and would require cross-addition windowing a single-addition
-  benchmark does not use.
+  "about 3x lower" target (**~5×10⁸ of score**, i.e. Toffoli × qubits) corresponds to no disclosed
+  standalone single-addition circuit; it is below the two-inversion cost and would require
+  cross-addition windowing a single-addition benchmark does not use.
 
 ## 1. The metric and the two-inversion floor
 
@@ -103,7 +110,8 @@ anyway [HJN+20, App. A.3].
 ## 4. What the disclosed circuits cost, and their scopes (mined directly)
 
 The ecdsa.fail README cites a published Pareto frontier about 3x below a ~1.5×10⁹ single-addition
-score (about 5×10⁸). To check whether that is a standalone single-addition figure, we mined the one
+score, meaning **~5×10⁸, Toffoli × qubits**. To check whether that is a standalone single-addition
+figure, we mined the one
 fully disclosed circuit, Schrottenloher 2026, whose Qarton source is public
 (`gitlab.inria.fr/capsule/qarton-projects/ec-point-addition`).
 
@@ -143,10 +151,11 @@ per add.
 
 Conclusion: the disclosed figures are per-windowed-addition (Schrottenloher), the full 28-addition
 attack, or resource estimates with withheld circuits (Babbush); none is a bare single-addition figure
-directly comparable to ~1.32M / 1152. The README's "about 3x lower" target (about 5×10⁸) corresponds
-to no disclosed standalone single-addition circuit; being below the two-inversion cost, it would
-require cross-addition windowing a single-addition benchmark does not use, or an inversion with a
-lower reversible Toffoli count than any in the surveyed literature.
+directly comparable to ~1.32M / 1152. The README's "about 3x lower" target is **~5×10⁸ of score**,
+meaning Toffoli × qubits. It corresponds to no disclosed standalone single-addition circuit. Being
+below the two-inversion cost, reaching it would require either cross-addition windowing that a
+single-addition benchmark does not use, or an inversion with a lower reversible Toffoli count than
+any in the surveyed literature.
 
 ## 5. The one real lever (constant-factor, uncertain)
 
@@ -180,7 +189,8 @@ quick win.
    multiplication needs lookup tables (more qubits) and a design at its width cap cannot spend them
    for free. Prototype only if a genuine standalone-single-addition improvement is the goal, with an
    uncertain ceiling.
-4. **Verify the challenge's target metric.** The README's "≈3× lower" (~5×10⁸) matches no disclosed
+4. **Verify the challenge's target metric.** The README's "≈3× lower" (**~5×10⁸ of score**,
+   Toffoli × qubits) matches no disclosed
    standalone single-addition circuit and lies below the two-inversion floor; before investing,
    confirm whether ecdsa.fail scores a truly isolated addition (in which case ~1.5×10⁹ is at/near the
    floor) or something windowed/amortized.
@@ -250,6 +260,6 @@ circuits are withheld, so these are not read off a disclosed circuit.
 
 ---
 
-*Method: 5-angle parallel web survey → 21 primary sources → 94 extracted claims → 25 adversarially
+*Method: 5-angle parallel web survey → 21 primary sources → 94 extracted claims → 25 independently
 verified (3-vote, 2/3-to-refute) → 20 confirmed. Findings above are the confirmed set; refuted claims
 (e.g. batch-inversion avoiding the second inversion; Babbush "2–3× in both axes") were dropped.*

@@ -88,7 +88,7 @@ Supporting/adjacent hooks:
 
 ## 5. Surprises / opportunities (flagged, not implemented)
 
-1. **Multiply and inversion share one GCD engine, run 4× total.** Any Toffoli saved per GCD jump-step is multiplied by ~1,032. This is almost certainly where >70% of the budget lives, the single highest-leverage target. Optimize the GCD inner loop (comparator + controlled mod-sub + Gidney adder) before anything else.
+1. **Multiply and inversion share one GCD engine, run 4× total.** Any Toffoli saved per GCD jump-step is multiplied by ~1,032. This is almost certainly where >70% of the budget lives, the single most valuable target. Optimize the GCD inner loop (comparator + controlled mod-sub + Gidney adder) before anything else.
 2. **Multiply-as-replayed-GCD is unusual.** A dedicated windowed modular multiplier *might* be cheaper than replaying a full 258-step GCD transform for `tlm_forward_multiply`, worth measuring the multiply phase's share to see if a purpose-built multiplier could undercut it.
 3. **Emitted (1.40M) vs executed (1.32M) gap ≈ 78k Toffolis** are emitted but not executed on average (condition-gated). Worth checking whether any phase emits many never-executed CCX that could be dropped outright.
 4. **Dead code is large** (`rounds/dialog` ~9.7k lines + most of `arith/`). Not a scoring factor, but it makes the live path hard to see and risks editing the wrong module, the trap here is that `arith/modular.rs`, `arith/adder.rs`, and the whole `dialog` tree *look* like the arithmetic but aren't live.
@@ -171,4 +171,4 @@ Inversion and multiply are near-identical (same GCD engine run twice), each ~47.
 
 Caveats (neither changes the conclusion): the 0.33% tail can't be split square-vs-coordinate exactly because `TRACE_TLM_CCX` hard-caps at top 30 (the remaining 20 phases would need a source change to print); and the 5,341 CCZ gates (~0.38% of Toffoli-class) sit outside this table but belong to the same buckets.
 
-**Bottom line:** the Toffoli budget is ~95% the two GCD passes (inversion + multiply, ~666k each), ~4.5% squaring, <0.4% everything else. The GCD inner loop holds essentially all optimization leverage.
+**Bottom line:** the Toffoli budget is ~95% the two GCD passes (inversion + multiply, ~666k each), ~4.5% squaring, <0.4% everything else. The GCD inner loop is where essentially all the room for optimization is.
