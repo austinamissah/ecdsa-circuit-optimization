@@ -4,3 +4,7 @@ score.*
 .autoresearch
 **/.DS_Store
 ops.bin
+# Python bytecode (upstream ships some under src/point_add/memory/repro/;
+# this stops new ones being added by local runs)
+__pycache__/
+*.pyc
