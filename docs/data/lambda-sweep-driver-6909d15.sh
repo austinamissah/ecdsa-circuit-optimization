@@ -8,7 +8,7 @@
 #   - NWORK 14 -> 6: the machine lost its desktop session under full load.
 set -uo pipefail
 
-SCRATCH=/tmp/claude-1000/-home-anna-ecdsa-circuit-optimization/75b4c101-7630-4a77-8bdb-b54c6f524932/scratchpad
+SCRATCH="${SCRATCH:-$(mktemp -d)}"   # override to reuse worker trees between runs
 BASE=200321420125
 NWORK=6
 OUT="$SCRATCH/sweep_results.tsv"

@@ -87,7 +87,7 @@ All three sub-cases from the original framing are now answered:
 No gate was deleted, and no configuration was produced, so the grind trigger did not fire. Removing
 any of the 46,134 on the strength of the 9,024-shot observation would be precisely the
 stream-specificity error that `04-traps.md` §1 documents and that
-[`HANDOFF-2026-08-03-remine-2.md`](HANDOFF-2026-08-03-remine-2.md) raised against harness-order
+[`deep-strip-remine.md`](deep-strip-remine.md) raised against harness-order
 mining. **Prove before removing**, and nothing here proved anything.
 
 ## Rung 2: affine-relation analysis over GF(2), also zero, and also not empty

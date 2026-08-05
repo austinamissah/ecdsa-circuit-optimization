@@ -81,7 +81,7 @@ disagreement collapses.
 ## What this invalidates, and what it does not
 
 - **Does not invalidate the delta-2 re-mine result**
-  ([`HANDOFF-2026-08-03-remine.md`](HANDOFF-2026-08-03-remine.md)): that table
+  ([`deep-strip-remine.md`](deep-strip-remine.md)): that table
   was harness-verified correct (7 classical / 6 phase, 0 stale keys) and
   measured λ-free. Subset-safety explains why it worked.
 - **Does invalidate any claim that this miner reproduces the shipped census.**

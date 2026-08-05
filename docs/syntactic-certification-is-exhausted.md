@@ -93,7 +93,7 @@ population in dispute.
 
 **This identifies the mechanism behind the 25%/43% gap**, an open question carried across
 [`census-miner-validation.md`](census-miner-validation.md),
-[`HANDOFF-2026-08-03-remine-2.md`](HANDOFF-2026-08-03-remine-2.md) and
+[`deep-strip-remine.md`](deep-strip-remine.md) and
 [`census-stream-provenance.md`](census-stream-provenance.md), which had already ruled out the
 stream difference as the cause. The gap is not a bug in our miner and not a defect in the shipped
 table: **it is the signature of certifying by observation something that is true by invariant.**

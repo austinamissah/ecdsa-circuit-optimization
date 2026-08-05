@@ -3,7 +3,7 @@
 # Full ./benchmark.sh per trial. No custom screen.
 set -uo pipefail
 
-SCRATCH=/tmp/claude-1000/-home-anna-ecdsa-circuit-optimization/7fc1a1ef-15b2-4b1e-985a-eee934adaa89/scratchpad
+SCRATCH="${SCRATCH:-$(mktemp -d)}"   # override to reuse worker trees between runs
 BASE=62000008397024
 NWORK=14
 OUT="$SCRATCH/sweep_results.tsv"

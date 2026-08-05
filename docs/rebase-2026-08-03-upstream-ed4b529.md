@@ -4,7 +4,7 @@
 > [`lambda-measurement.md`](lambda-measurement.md). Supersedes the
 > `1,487,590,242` baseline used by every table in
 > [`lambda-levers.md`](lambda-levers.md), [`census-miner-validation.md`](census-miner-validation.md)
-> and [`HANDOFF-2026-08-03-remine-2.md`](HANDOFF-2026-08-03-remine-2.md).
+> and [`deep-strip-remine.md`](deep-strip-remine.md).
 
 Upstream accepted submission `248dfb4a` as commit **`ed4b529`** on 2026-08-03: 67 files,
 12,028 insertions, touching `mod.rs`, `arith.rs`, `ec_add.rs` and a wholesale rewrite of

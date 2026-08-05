@@ -56,3 +56,25 @@ tools/sat/portfolio.sh /path/to.cnf /path/to/outdir tag
 
 **A timeout is a timeout, not UNSAT.** Nothing here may be recorded as an UNSAT proof
 unless an arm exits 20 and `symbreak.py --selftest` passed on the same build.
+
+## Status: no verdict
+
+The baseline 14-arm portfolio has been run on the unmodified CNF with no wall cap and
+returned **no result**: every arm was still searching when it was stopped, which already
+exceeds the two-CPU-hour cap the upstream run stopped at. So this reproduces upstream's
+"no witness and no UNSAT proof" rather than improving on it.
+
+**`--selftest` has not passed yet.** It builds exact-9 and requires SAT both with and
+without the break, at 900 s per solve; on a loaded machine it did not return in the
+window. Until it passes, the broken CNF must not be used and no UNSAT from it may be
+believed, because a break that loses a solution turns an open question into a false
+UNSAT. Re-run it on an idle machine
+(`--selftest --kissat <path> --timeout 1800`); if exact-9 times out rather than returning
+SAT, that is a failure of the *test*, not of the break.
+
+No SAT solver ships with this repo. kissat 4.0.4 and cadical 3.0.1 were built from source
+(`./configure && make -j8` in each clone) and are not committed, being cheap to rebuild.
+
+Reopening conditions 2 to 4 (stronger encoding, distinct representation, compiled witness)
+are untouched. Note also that even a SAT verdict is not a score: it would be an 8-CCX
+joint codec, and turning that into a scored circuit is a substantial implementation.

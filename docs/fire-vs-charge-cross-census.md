@@ -69,7 +69,8 @@ carrying 389,977,573 shot-charges = **43,215.6 avgT, 3.35% of the score**. Only 
 whole circuit fire on every shot they are charged for.
 
 Against a strict-beat bar of **0.886 avgT** (the head is `1,288,101 × 1154`, so
-`round(avgT) ≤ 1,288,100` wins by 1,154 points), deleting a *single* never-firing full-hotness gate
+`round(avgT) ≤ 1,288,100` wins by 1,154 points), which is **7,995 shot-charges out of
+11,623,826,906**, deleting a *single* never-firing full-hotness gate
 would clear it.
 
 **It is not harvestable, and the reason is the trap this project has already documented twice.**
@@ -78,7 +79,7 @@ are a SHAKE256 hash of the whole op stream (`eval_circuit.rs:204`), so deleting 
 every one of them, and the gates that were quiet on the old draw are not the gates that will be
 quiet on the new one. This is `memory/04-traps.md` §1 exactly, and it is the same stream-specificity
 objection that
-[`HANDOFF-2026-08-03-remine-2.md`](HANDOFF-2026-08-03-remine-2.md#stream-specificity-if-harness-order-mining-ever-does-win)
+[`deep-strip-remine.md`](deep-strip-remine.md#if-harness-order-mining-ever-does-win-the-table-is-still-not-shippable)
 raised against harness-order census mining: **only a stream-agnostic certificate is shippable.**
 
 The quantitative version: these 46,134 gates survived upstream's `union max-coverage` census, so

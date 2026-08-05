@@ -5,9 +5,10 @@
 #
 #   portfolio.sh <cnf> <outdir> [tag]
 set -uo pipefail
-SP=/tmp/claude-1000/-home-anna-ecdsa-circuit-optimization/8942013c-930f-4db1-ae40-f079b7a03bc6/scratchpad
-K="$SP/solvers/kissat/build/kissat"
-C="$SP/solvers/cadical/build/cadical"
+# Solver binaries are not committed (see README). Point these at your own builds,
+# or put kissat/cadical on PATH and leave them alone.
+K="${KISSAT:-$(command -v kissat || echo kissat)}"
+C="${CADICAL:-$(command -v cadical || echo cadical)}"
 
 CNF=$1; OUT=$2; TAG=${3:-base}
 mkdir -p "$OUT"

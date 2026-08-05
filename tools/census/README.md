@@ -1,8 +1,10 @@
 # `census` — re-mine the identity-keyed deep strip
 
-> **Status: built and smoke-tested; the full re-mine at `TLM_SCHED_J2_DELTA=2` was still running
-> when the session ended. No re-mined key table has been validated yet.** See
-> [`../../docs/HANDOFF-2026-08-03-remine.md`](../../docs/HANDOFF-2026-08-03-remine.md).
+> **Status: built, and the re-mine at `TLM_SCHED_J2_DELTA=2` completed and was harness-verified**
+> (7 classical / 6 phase, 0 stale keys, +1.547% of score against head, λ-free). Results:
+> [`../../docs/deep-strip-remine.md`](../../docs/deep-strip-remine.md). The miner does **fail its
+> known-answer test** at delta 0, conservatively, certifying a strict subset of what is dead:
+> [`../../docs/census-miner-validation.md`](../../docs/census-miner-validation.md).
 
 The census tooling that produced `src/point_add/deep_strip_keys.rs` did not survive — it lived in
 `/tmp` and `/dev/shm` on a VM (`memory/05-qubit-reduction.md` step 6). This is a replacement, built

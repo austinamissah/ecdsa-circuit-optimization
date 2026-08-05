@@ -35,13 +35,6 @@ baseline](#superseded-baseline-2026-08-02), [Frontier & literature
 research](#frontier--literature-research), [Per-component
 analyses](#per-component-analyses) and [Reference](#reference), below.
 
-**Handoffs**: dated session state, kept as a record, not as current findings.
-[`HANDOFF-2026-08-04-overnight.md`](HANDOFF-2026-08-04-overnight.md) (most recent; start here to
-resume), [`HANDOFF-2026-08-03.md`](HANDOFF-2026-08-03.md) (the λ-lever session),
-[`HANDOFF-2026-08-03-remine.md`](HANDOFF-2026-08-03-remine.md) and
-[`HANDOFF-2026-08-03-remine-2.md`](HANDOFF-2026-08-03-remine-2.md) (the deep-strip re-mine, two
-passes). All four price λ and score against the older `801dd20` head.
-
 > **Provenance.** Everything under "Frontier & literature research" and "Per-component analyses"
 > was written 2026-07-11 against commit `422f21d`. The fork was rebased onto upstream `8af8a6f`
 > on 2026-08-02, 25 accepted submissions later, and the circuit changed materially (`ITERS`
@@ -66,10 +59,6 @@ passes). All four price λ and score against the older `801dd20` head.
   constant control, because `build()`'s own CONSTPROP already harvested that class. Their
   non-firing is a data invariant, which is also why the census miner over-observes. Names the
   affine-relation analysis as the next rung.
-- [`HANDOFF-2026-08-04-overnight.md`](HANDOFF-2026-08-04-overnight.md), **the overnight queue's
-  state**: item 1 closed (the cooling lever is structurally empty), item 2 in flight with the
-  11,416/54,051 known-answer test passed and the symmetry-break selftest unvalidated, items 3-4
-  correctly not fired. Start here to resume.
 - [`fire-vs-charge-cross-census.md`](fire-vs-charge-cross-census.md), 76.70% of the score is
   charge on gates that do nothing that shot, and it is unreachable, because fire depends on
   quantum controls and conditions are classical bits independent of them.
@@ -94,6 +83,10 @@ passes). All four price λ and score against the older `801dd20` head.
   on the score axis**, measured on `801dd20` at n=400 per arm. `TLM_SCHED_J2_DELTA=2` takes λ_total
   from 20.04 to 8.111 for 1.27% of score, so a clean seed goes from 279 years to 16 hours. Also:
   `ITERS` is spent, the `ITERS ≡ 0 mod 3` rule does not exist, and the deep strip is not zero-error.
+- [`deep-strip-remine.md`](deep-strip-remine.md), **re-mining the deep strip against a delta-2
+  stream**: recovers 0.897% of score and all of the shipped strip's 0.682 λ, harness-verified at
+  0 stale keys, with held-out shards putting the residual error at ≈0.08 λ. Also closes delta 0,
+  and rules the harness-order hypothesis out on cost (~40 TB of SHAKE output).
 - [`census-miner-validation.md`](census-miner-validation.md), the census miner **fails its
   known-answer test** and the miner is the thing that is wrong: the keying machinery replays the
   tripwire exactly, so the gap is observation, not indexing. The upstream half of the

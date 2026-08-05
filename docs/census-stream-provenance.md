@@ -1,7 +1,7 @@
 # The census stream, identified, and what the stream difference does not explain
 
 > Measured 2026-08-03 by rebuilding every commit that touched Rust sources since the census header
-> first appeared. Read alongside [`HANDOFF-2026-08-03-remine-2.md`](HANDOFF-2026-08-03-remine-2.md)
+> first appeared. Read alongside [`deep-strip-remine.md`](deep-strip-remine.md)
 > and [`census-miner-validation.md`](census-miner-validation.md), whose step 1, *"diff the streams
 > first, cheapest and most likely cause"*, this document carries out.
 >
@@ -39,8 +39,9 @@ false:
 | 2,081 downgrade keys already present at `d9ef3e9` | **2,081 / 2,081 (100.00%)** |
 | 1,842 downgrade keys added *after* `d9ef3e9` | **1,842 / 1,842 (100.00%)** |
 
-Zero mismatches, zero tuples absent, zero ordinals out of range. Every key in the shipped table
-describes one stream, and the header names it correctly.
+Zero mismatches, zero tuples absent, zero ordinals out of range. **All 16,466 keys stamp that one
+stream at 100%.** Every key in the shipped table describes one stream, and the header names it
+correctly.
 
 One precision. The table is also consistent with every repo stream from `d9ef3e9` through
 `5265674`, because those differ only on tuples the table never names (see the `−344` row below).
@@ -90,7 +91,7 @@ not a single key in the table whose tuple survives with a changed count.
 
 ### The correction
 
-[`HANDOFF-2026-08-03-remine-2.md`](HANDOFF-2026-08-03-remine-2.md) records the 251 as *"not zero,
+[`deep-strip-remine.md`](deep-strip-remine.md) records the 251 as *"not zero,
 so in principle there was something to recover"*, and
 [`lambda-levers.md`](lambda-levers.md) says a re-mine *"should recover both the 251 stale keys and
 this 0.68 [λ]"*.
@@ -123,7 +124,7 @@ head stream with unchanged occupancy**:
 The tripwire accepts them, `build_circuit` applies all 12,292 + 3,923 of them, and the resulting
 circuit passes 9,024/9,024. So the miner's **25.02% dead / 42.67% downgrade over-observation is
 measured on gates that are identical in both streams.** The stream difference cannot be the cause,
-and step 1 of the handoff's plan is now closed.
+and that line of enquiry is now closed.
 
 What remains, from that same plan: the CCZ effective condition (this census folds the target in as
 `cond & t & c1 & c2`; the shipped census may not), condition-stack handling of nested
@@ -196,7 +197,7 @@ histogram. Build it with `cargo build --release --example dump_gates` after copy
 **Gate on the instrument.** Replaying the occupancy tripwire against the head dump reproduces
 `build_circuit` exactly, at **12,292 dead accepted / 251 stale, 3,923 downgrades / 0 stale**, so the
 dump is the same stream the strip sees. Every count in this document comes from these dumps, not
-from `compare_d0.py`, whose occupancy bug is described in the handoff.
+from `compare_d0.py`, whose occupancy bug is described in [`deep-strip-remine.md`](deep-strip-remine.md).
 
 **Stream walk.** 18 commits from `d9ef3e9` to HEAD, each checked out into a detached worktree,
 rebuilt, and dumped. Results in

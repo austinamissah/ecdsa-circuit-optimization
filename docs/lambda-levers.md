@@ -232,6 +232,12 @@ And with the screen in front of it, the two-stage search is better still: a clas
 candidate every ~4.5 minutes, of which `e^-1.90 = 15%` are also phase-clean, so **≈7 candidates and
 under an hour per clean seed** on this laptop.
 
+> **⚠ Corrected by direct measurement.** The `1.90` above is λ_total − λ_classical, an inferred
+> figure. Measuring λ_phase_only *directly* on classical-clean nonces gives **3.000 ± 0.426**, not
+> 1.90. See [Grind round 1](#grind-round-1-measures-λ_phase_only-directly) below. That makes
+> `P(phase-clean | classical-clean) = e^-3.0 = 5.0%`, so **≈20 candidates per seed, not ≈7**.
+> Feasibility is unchanged and the wall-clock is still about an hour; only the constant moved.
+
 **This is the result the project needed.** `lambda-measurement.md` concluded that "nonce grinding is
 not merely impractical on this hardware; it is off by three orders of magnitude", and that λ
 reduction carried essentially all the weight. It did, and it was available: 11.9 λ-units of it, for
@@ -242,6 +248,34 @@ is ~0.42 and λ_total inherits more than that. Read 8.111 as "about 8", meaning 
 per seed rather than hundreds of millions. That is an order-of-magnitude claim, and the order of
 magnitude is what changed. The directional argument in `lambda-measurement.md` still applies: the
 covariance estimate is on the safe side for planning and cannot understate the cost of a grind.
+
+### Grind round 1 measures λ_phase_only directly
+
+A two-stage grind was run at delta 2: screen nonces in ladder mode, then send every classical-clean
+hit to the full harness. **4,000 nonces screened from base `170000000000000` produced 12
+classical-clean candidates**, against 12.2 predicted, and **12 of 12 came back `classical = 0` on the real harness.** The screen's
+classical channel is therefore exact in the field, not only on the 199-nonce gate.
+
+No clean seed was found, and the phase counts on those 12 correct a published figure. They were
+`1 2 2 2 2 2 3 3 4 4 5 6`, so λ_phase_only measured *conditionally on classical-clean* is
+**3.000 ± 0.426**, against the 1.90 obtained by subtracting λ_classical from the covariance estimate
+of λ_total. The conditional figure is the directly measured one and should be preferred:
+
+- **P(phase-clean | classical-clean) = e^-3.0 = 5.0%, so ≈20 candidates per seed, not ≈7.**
+- λ_total ≈ 5.787 + 3.000 = **8.79**, against 8.111 from the covariance estimator at n=42. The two
+  agree inside their uncertainties; treat λ_total at delta 2 as "about 8 to 9".
+- A seed costs ~6,500 nonces screened plus ~20 harness confirmations, so roughly **an hour** at the
+  round-1 rate. Feasibility is unchanged; only the constant moved.
+
+Getting 0 phase-clean in 12 has probability `0.85^12 = 0.14` under the old figure and
+`0.95^12 = 0.54` under the corrected one, which is itself mild evidence the corrected figure is
+right.
+
+**The shot ladder's saving collapses at low λ.** At λ_classical = 5.79 roughly 19% of nonces reach
+the full 9,024-shot rung, so expected shots per nonce is ~6,100 rather than the ~1,255 the ladder
+gives at λ = 20. The ladder was designed for a high-λ regime; at delta 2 it saves ~33%, not 7×.
+That does not change the conclusion, but it does mean the ladder is not where the remaining speed
+is.
 
 ## Status: what is and is not established
 
@@ -255,8 +289,13 @@ covariance estimate is on the safe side for planning and cannot understate the c
 - `TLM_SCHED_J2_DELTA` buys 6.9 to 10.7 λ_classical at 0.098 to 0.237% of score per λ-unit.
 
 - **λ_total = 8.111 at delta 2** (n=42, full harness), against 20.04 shipped. The phase channel
-  moved with the classical one; λ_phase_only falls 3.80 → 1.90. A clean seed costs ~3,340 harness
-  trials, ~16 hours, against 279 years.
+  moved with the classical one. A clean seed costs ~3,340 harness trials, ~16 hours, against 279
+  years.
+- **λ_phase_only at delta 2 is 3.000 ± 0.426**, measured directly on classical-clean nonces, not the
+  1.90 inferred by subtraction. That is ~20 candidates per seed rather than ~7, and it puts λ_total
+  at ~8.79 against the estimator's 8.111. Both readings agree inside their uncertainties.
+- **The screen's classical channel is exact in the field**: 12 of 12 screen-clean candidates came
+  back `classical = 0` on the full harness.
 
 **Not established:**
 
@@ -283,6 +322,14 @@ covariance estimate is on the safe side for planning and cannot understate the c
   untested.
 
 ## Method
+
+**Hold `SUB4_APPLY_STRIP=0` in every arm of any λ or structural experiment.** The strip repoints
+under any stream edit, so with it on you measure its corruption rather than your knob. That is what
+made the `ITERS ≡ 0 mod 3` rule look true. Two smaller operational notes from the same work: the
+`avgT`, qubits and score of a *failing* config are still readable from `results.tsv`, because
+`eval_circuit` appends on its FAIL path, which is what lets a lever be priced even when the shipped
+nonce is dirty under it; and `pkill -f <pattern>` will match the killing script's own command line
+if the pattern appears in it.
 
 **Instrument.** [`../tools/lam-screen/`](../tools/lam-screen/), re-gated against all 199 harness
 nonces at two lane widths before use. Every arm is 400 nonces × 9,024 shots = 3.6 M simulated
