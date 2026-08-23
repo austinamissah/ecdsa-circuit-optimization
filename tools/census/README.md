@@ -5,6 +5,16 @@
 > [`../../docs/deep-strip-remine.md`](../../docs/deep-strip-remine.md). The miner does **fail its
 > known-answer test** at delta 0, conservatively, certifying a strict subset of what is dead:
 > [`../../docs/census-miner-validation.md`](../../docs/census-miner-validation.md).
+> **Update 2026-08-23.** Upstream moved `point_add` out of the shared `quantum_ecc` library, so
+> every tool here stopped compiling on `use quantum_ecc::point_add`. They now pull it in with the
+> same `#[path]` module `build_circuit` uses; the build commands below are unchanged. All are
+> verified building and running again against the current head.
+>
+> Note what that means for the numbers in this file: they were measured on the 1,154-qubit
+> trailmix construction, which is now legacy and gated behind `SUB4_LEGACY_POINT_ADD`. These tools
+> now analyze the ping-pong circuit (1,278 qubits, 12,912,890 ops). The measurements below are
+> kept as the record of what was measured then, not as claims about the circuit that ships today.
+
 
 The census tooling that produced `src/point_add/deep_strip_keys.rs` did not survive. It lived in
 `/tmp` and `/dev/shm` on a VM (`memory/05-qubit-reduction.md` step 6). This is a replacement, built

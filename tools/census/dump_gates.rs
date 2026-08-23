@@ -24,7 +24,20 @@
 //!   stdout: summary counts
 
 use quantum_ecc::circuit::Op;
-use quantum_ecc::point_add;
+// `point_add` is no longer a module of the shared `quantum_ecc` library. It is
+// compiled directly into each binary via `#[path]`, because that library is also
+// linked into the trusted `eval_circuit`, where an `.init_array` constructor in
+// contestant code would run before `main` and could forge `score.json`. Analysis
+// tools take the same route `build_circuit` does, which keeps every existing
+// `crate::point_add` path inside `src/point_add/**` resolving as before.
+#[allow(dead_code)]
+#[path = "../point_add/mod.rs"]
+mod point_add;
+
+// Root bindings backing the `crate::{circuit,sim,weierstrass_elliptic_curve}`
+// paths used inside `src/point_add/**`.
+#[allow(unused_imports)]
+use quantum_ecc::{circuit, sim, weierstrass_elliptic_curve};
 use std::collections::HashMap;
 use std::io::Write;
 
