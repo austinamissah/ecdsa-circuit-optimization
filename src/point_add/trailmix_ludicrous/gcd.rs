@@ -1,6 +1,6 @@
 
 use super::arith::{self, F_SECP256K1};
-use super::schedule::{gap_j2, sched_j2, ITERS, JUMP};
+use super::schedule::{GAP_J2, ITERS, JUMP, SCHED_J2};
 
 fn gap_j2_delta() -> usize {
     std::env::var("TLM_GAP_J2_DELTA")
@@ -18,7 +18,7 @@ fn gap_j2_mask_trunc_only() -> bool {
 // baseline window is ALREADY a strict truncation (GAP_J2[i] < current_n),
 // leaving the exact-comparison tail steps untouched.
 fn cmp_window(i: usize, current_n: usize) -> usize {
-    let g = gap_j2(i) as usize;
+    let g = GAP_J2[i] as usize;
     let base = g.min(current_n).max(1);
     let d = gap_j2_delta();
     if d == 0 {
@@ -1218,12 +1218,13 @@ pub fn forward_gcd_jump(circ: &mut B, v: &mut Vec<QubitId>, apply_inv: Option<(&
         crate::point_add::set_op_trace_context(
             0xa000_0000 | (u32::from(apply_inv.is_none()) << 24) | ((i as u32) & 0xffff),
         );
+        crate::point_add::set_cur_divstep(0xa000_0000 | (u32::from(apply_inv.is_none()) << 24) | ((i as u32) & 0xffff));
         circ.set_phase(if apply_inv.is_some() {
             "tlm_inverse_gcd_forward_shift"
         } else {
             "tlm_multiply_gcd_forward_shift"
         });
-        let current_n = (sched_j2(i) as usize).max(1);
+        let current_n = (SCHED_J2[i] as usize).max(1);
         while u.len() > current_n {
             let q = u.pop().expect("u nonempty");
             circ.zero_and_free(q);
@@ -1467,12 +1468,13 @@ pub fn reverse_gcd_jump(circ: &mut B, v: &mut Vec<QubitId>, tape: &mut Vec<Qubit
         crate::point_add::set_op_trace_context(
             0xa200_0000 | (u32::from(apply_fwd.is_none()) << 24) | ((i as u32) & 0xffff),
         );
+        crate::point_add::set_cur_divstep(0xa200_0000 | (u32::from(apply_fwd.is_none()) << 24) | ((i as u32) & 0xffff));
         circ.set_phase(if apply_fwd.is_some() {
             "tlm_multiply_gcd_reverse_decode"
         } else {
             "tlm_inverse_gcd_reverse_decode"
         });
-        let current_n = (sched_j2(i) as usize).max(1);
+        let current_n = (SCHED_J2[i] as usize).max(1);
         while u.len() < current_n {
             u.push(circ.alloc_qubit());
         }
