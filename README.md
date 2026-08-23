@@ -78,6 +78,15 @@ claims. This fork's own analysis is in the next section.
 
 *Project write-up: **[amissah.net](https://amissah.net)**.*
 
+> **Read this first: the circuit changed underneath all of it.** Sections 1 to 5 below, and most of
+> [`docs/`](docs/), measure the trailmix/dialog construction at 1,154 qubits, score 1,486,468,554.
+> Since 2026-08-23 the benchmark ships a fixed-depth **ping-pong division** at 1,273 qubits, score
+> **1,156,903,673**, and the old code is gated behind `SUB4_LEGACY_POINT_ADD`. Upstream says the
+> same of its own notes. Those measurements are kept as the record of what was measured, not as
+> claims about the circuit that ships today. The new construction, the tooling built for it, and
+> two conclusions of mine that turned out to be wrong are in
+> [`docs/pingpong-2026-08-23.md`](docs/pingpong-2026-08-23.md), and summarized in §6.
+
 **What is mine and what is not.** The circuit is not mine. It came from the challenge, built by the
 community, and as of `6909d15` it also carries **13,909 lines across 50 files** under
 `src/point_add/` written by another contestant, not by us. See
@@ -211,6 +220,37 @@ loop **means**, proved for a single divstep and then extended by induction acros
 research project on its own, and it is now the only route identified. Nothing was removed:
 [`docs/syntactic-certification-is-exhausted.md`](docs/syntactic-certification-is-exhausted.md).
 
+#### 6. Two more conclusions of mine were wrong, and one of them was refuted in twenty minutes
+
+Section 2 records the first pass getting it wrong. The same thing happened twice more on the new
+construction, and both are worth reading for the shape of the error rather than the numbers.
+
+**A search cost quoted from too few samples.** λ, the expected number of failing shots per draw,
+sets how many nonces you must try to find a valid one, and the cost is `e^λ`. I measured λ from
+**eight** draws with a standard deviation of 6.0, exponentiated it, and published "about 2.9 × 10⁸
+draws, 25 to 37 days, not viable on this hardware". Measured properly, from sixty draws, λ is
+17.717 with a 95% confidence interval of 16.80 to 18.63, which is about **107 hours**, interval 43
+to 267. Off by six to eight times, and in the direction that abandons an affordable plan. The
+arithmetic was never wrong; taking a point estimate from a small sample and putting it through an
+exponential was. The fix cost two minutes of compute.
+
+**A negative result about one method, published as a negative result about the surface.** The
+squaring step is the one component upstream flags as never fully optimized, with a specific
+algorithm, Toom-3, named as the open lead. I priced Toom-3, found it capped near 1.3% because its
+recombination needs expensive reversible divisions, and then wrote that *the square* was bounded.
+Twenty minutes later a submission landed that added a second level of Karatsuba to the square and
+took 2,650 Toffoli out of it. Karatsuba's recombination is additions and subtractions, with none of
+the expensive division that had sunk Toom-3, which is to say the very criterion I used to rule one
+option out was the criterion that selected the option I never tried.
+
+The structural model I had built was correct, and it *predicted* the win: the square computes each
+partial product and then uncomputes it, so anything that shrinks the core is worth roughly twice
+its apparent saving. That argues for attacking the algorithm, not against it. Right model, wrong
+conclusion read off it.
+
+Both are corrected in [`docs/pingpong-2026-08-23.md`](docs/pingpong-2026-08-23.md) and in the
+retraction note published upstream.
+
 #### Contributed upstream
 
 Three of the findings above went back to the challenge repository instead of staying in this fork.
@@ -225,6 +265,12 @@ All three are open at the time of writing:
 - **[PR #28](https://github.com/Layr-Labs/ecdsafail-challenge/pull/28)**: the λ correction from §1,
   replacing the out-of-date 23.29 in `memory/02-lambda.md` with 20.560 on the current head, plus the
   stability result.
+
+Both pull requests were rebased and scoped on 2026-08-23 to say which construction they measured,
+since the circuit has moved on. Three solver notes were also published through the challenge's own
+notes system: the schedule-narrowing cliff and the corrected search arithmetic, a configuration trap
+plus a small improvement handed over to anyone with the throughput to grind a nonce for it, and the
+retraction described in §6.
 
 #### Where the cost actually is
 

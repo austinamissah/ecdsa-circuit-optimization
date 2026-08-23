@@ -3,6 +3,16 @@
 Analyses from the optimization campaign on this reversible secp256k1 point-addition circuit
 (metric: **average executed Toffoli × peak qubit width**).
 
+> **Scope: almost everything here measures a circuit that no longer ships.** These analyses are of
+> the trailmix/dialog construction (1,154 qubits, score 1,486,468,554). Since 2026-08-23 the
+> benchmark ships a fixed-depth **ping-pong division** (1,273 qubits, score **1,156,903,673**), and
+> the old code sits behind `SUB4_LEGACY_POINT_ADD`. Upstream's `memory/WAYFINDER.md` says the same
+> about its own notes 01 to 06. Nothing below has been rewritten to look current: these are the
+> records of what was measured, on the circuit they were measured on.
+>
+> For the construction that ships now, the tooling built for it, and two conclusions of mine that
+> were wrong, start at [`pingpong-2026-08-23.md`](pingpong-2026-08-23.md).
+
 **New here?** The top-level [README](../README.md#what-this-fork-did-and-what-it-found) has the
 short version of what this fork measured and what it got wrong. Project write-up:
 [amissah.net](https://amissah.net). The three things worth knowing:
@@ -22,6 +32,7 @@ Nothing here has moved or been renamed. This is a map over the same paths.
 
 | | |
 |---|---|
+| [`pingpong-2026-08-23.md`](pingpong-2026-08-23.md) | **the circuit that ships now.** The ping-pong construction, the classical pre-filter built to measure it, the corrected search arithmetic, and two retractions |
 | [`CONCLUSION.md`](CONCLUSION.md) | the campaign verdict, with its wrong verdicts marked in place and a [lever verdict audit](CONCLUSION.md#lever-verdict-audit) of what refuted each |
 | [`lambda-6909d15.md`](lambda-6909d15.md) | **λ, the current figure.** λ_total = 20.560 on the current head `6909d15`, and unchanged from `801dd20` across eight accepted submissions |
 | [`syntactic-certification-is-exhausted.md`](syntactic-certification-is-exhausted.md) | the consolidated negative: three ways to certify a dead gate, all closed, each with a passing control |
