@@ -86,7 +86,7 @@ mod geom {
         head.push_str(&format!(
             "#windows\\t{}\\t{}\\t{}\\t{}\\t{}\\n",
             super::replay_fold_window(),
-            super::replay_fold_window_mul(),
+            super::replay_fold_window(), // fold_window_mul was removed at d919bc6
             super::endpoint_fold_window(),
             super::replay_chunk_compare(),
             super::replay_flag_compare(),
