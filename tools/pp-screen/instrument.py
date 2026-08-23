@@ -80,6 +80,17 @@ mod geom {
         let div = super::rounds_for(super::PingPongDirection::Divide);
         let mul = super::rounds_for(super::PingPongDirection::Multiply);
         let mut head = format!("#rounds\\t{div}\\t{mul}\\n");
+        // Resolved truncation windows. These are set by `set_default_env` in
+        // mod.rs, NOT by the literals in this file, so reading the source gives
+        // the wrong config. The divide and multiply fold windows also differ.
+        head.push_str(&format!(
+            "#windows\\t{}\\t{}\\t{}\\t{}\\t{}\\n",
+            super::replay_fold_window(),
+            super::replay_fold_window_mul(),
+            super::endpoint_fold_window(),
+            super::replay_chunk_compare(),
+            super::replay_flag_compare(),
+        ));
         for r in 0..div.max(mul) {
             head.push_str(&format!("#width\\t{r}\\t{}\\n", super::value_width(r)));
         }

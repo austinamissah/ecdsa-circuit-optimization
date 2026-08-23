@@ -118,6 +118,16 @@ const VALUE_WIDTH: usize = N + 3;
 // the round-0 special case already applied, so this is a pure lookup.
 static SCHEDULE: std::sync::OnceLock<Vec<u16>> = std::sync::OnceLock::new();
 static DUMPED_ROUNDS: std::sync::OnceLock<(usize, usize)> = std::sync::OnceLock::new();
+/// Resolved truncation windows: (fold_div, fold_mul, endpoint, chunk_cmp, flag_cmp).
+/// Read from the dump for the same reason as the schedule: these are set by
+/// `set_default_env` in mod.rs, not by the literals in `pingpong_div.rs`, and the
+/// two traversals no longer share a fold window.
+static WINDOWS: std::sync::OnceLock<(usize, usize, usize, usize, usize)> =
+    std::sync::OnceLock::new();
+
+fn win() -> (usize, usize, usize, usize, usize) {
+    *WINDOWS.get().expect("windows not loaded; pass --geometry")
+}
 
 fn value_width(round: usize) -> usize {
     let table = SCHEDULE.get().expect("width schedule not loaded; pass --geometry");
@@ -139,6 +149,10 @@ fn load_geometry(path: &str) -> Result<(), String> {
                     f[2].parse().map_err(|_| "bad #rounds")?,
                 ));
             }
+            Some("#windows") if f.len() >= 6 => {
+                let g = |i: usize| f[i].parse::<usize>().map_err(|_| "bad #windows");
+                let _ = WINDOWS.set((g(1)?, g(2)?, g(3)?, g(4)?, g(5)?));
+            }
             Some("#width") if f.len() >= 3 => {
                 widths.push((
                     f[1].parse().map_err(|_| "bad #width round")?,
@@ -149,6 +163,9 @@ fn load_geometry(path: &str) -> Result<(), String> {
         }
     }
     let (div, mul) = rounds.ok_or("geometry file has no #rounds line")?;
+    if WINDOWS.get().is_none() {
+        return Err("geometry file has no #windows line; re-run instrument.py".into());
+    }
     if widths.is_empty() {
         return Err("geometry file has no #width rows".into());
     }
@@ -1226,13 +1243,13 @@ fn replay_mul_escapes(
 
         let (next, escaped) = if round > 1 {
             // The caller wraps this cell in X(sign), so the cell sees !s.
-            replay_double_round(&tgt, &src, !s, f, negf, 54)
+            replay_double_round(&tgt, &src, !s, f, negf, win().1)
         } else if round == 1 {
-            let (doubled, e1) = replay_double_pm(&tgt, f, 20);
+            let (doubled, e1) = replay_double_pm(&tgt, f, win().2);
             let (seeded, e2) = replay_seed_round_one_inverse(&doubled, &src, s, f_minus_one, 32);
             (seeded, e1 || e2)
         } else {
-            replay_double_pm(&tgt, f, 20)
+            replay_double_pm(&tgt, f, win().2)
         };
 
         escapes += usize::from(escaped);
@@ -1258,20 +1275,20 @@ fn replay_div_escapes(tape: &[bool], numer: U256, f: &R, negf: &R, f_minus_one: 
     for (round, &s) in tape.iter().enumerate() {
         let even = round % 2 == 0;
         if round == 0 {
-            let (next, escaped) = replay_halve_pm(&y, f, 20);
+            let (next, escaped) = replay_halve_pm(&y, f, win().2);
             y = next;
             escapes += usize::from(escaped);
             continue;
         }
         if round == 1 {
             let (seeded, e1) = replay_seed_round_one(&y, s, f_minus_one, 32);
-            let (next, e2) = replay_halve_pm(&seeded, f, 20);
+            let (next, e2) = replay_halve_pm(&seeded, f, win().2);
             x = next;
             escapes += usize::from(e1 || e2);
             continue;
         }
         let (src, tgt) = if even { (x, y) } else { (y, x) };
-        let (next, lost) = replay_halve_round(&tgt, &src, s, f, negf, 54);
+        let (next, lost) = replay_halve_round(&tgt, &src, s, f, negf, win().0);
         // Which polarity of the dropped carry is the error depends on the
         // branch: a subtract is meant to carry out, an add is not.
         let t1 = if s { r_not(&tgt) } else { tgt };
@@ -1352,7 +1369,7 @@ fn replay_selftest(curve: &WeierstrassEllipticCurve, p_w: &W) -> Result<(), Stri
     let modulus = curve.modulus;
     let f_u = U256::MAX.wrapping_sub(modulus).wrapping_add(U256::from(1));
     let f = r_from_u256(f_u);
-    let window = 54;
+    let window = win().0;
     let negf = neg_f_bits(&f, window);
     let f_minus_one = r_from_u256(U256::MAX.wrapping_sub(modulus));
     let inv2 = U256::from(2u64).inv_mod(modulus).expect("2 is invertible");
@@ -1383,7 +1400,7 @@ fn replay_selftest(curve: &WeierstrassEllipticCurve, p_w: &W) -> Result<(), Stri
                 // Even round, so target is y. Round 0 ignores the sign entirely
                 // and is a bare mod_halve_pm; the coefficient register is still
                 // empty, so there is nothing to add in.
-                let (rnext, escaped) = replay_halve_pm(&ry, &f, 20);
+                let (rnext, escaped) = replay_halve_pm(&ry, &f, win().2);
                 if escaped {
                     truncation_errors += 1;
                 }
@@ -1398,7 +1415,7 @@ fn replay_selftest(curve: &WeierstrassEllipticCurve, p_w: &W) -> Result<(), Stri
                 // Odd round, so target is x, which is empty: seed_round_one
                 // writes (-1)^sign * source into it, then it is halved.
                 let (seeded, escaped_seed) = replay_seed_round_one(&ry, s, &f_minus_one, 32);
-                let (rnext, escaped_halve) = replay_halve_pm(&seeded, &f, 20);
+                let (rnext, escaped_halve) = replay_halve_pm(&seeded, &f, win().2);
                 if escaped_seed || escaped_halve {
                     truncation_errors += 1;
                 }
@@ -1630,7 +1647,7 @@ fn main() {
         // the predicate is wrong, whatever the selftest says.
         let f_u = U256::MAX.wrapping_sub(curve.modulus).wrapping_add(U256::from(1));
         let f = r_from_u256(f_u);
-        let negf = neg_f_bits(&f, 54);
+        let negf = neg_f_bits(&f, win().0);
         let f_minus_one = r_from_u256(U256::MAX.wrapping_sub(curve.modulus));
         for nonce in &jobs {
             let mut xof = t.seed(*nonce);
