@@ -2237,6 +2237,12 @@ fn ccz_self_inverse_cancel_conservative(ops: Vec<Op>) -> Vec<Op> {
 }
 
 pub fn build() -> Vec<Op> {
+    // Diagnostic: dump the width schedule (base + rescaled) and exit without
+    // emitting.  Byte-neutral to the shipped stream (gated, default-off).
+    if std::env::var_os("SUB4_DUMP_WSCHED").is_some() {
+        pingpong_div::dump_width_schedule();
+        return Vec::new();
+    }
     // Reproduce the exact source parent used by the q1150 route.  These are
     // intentionally forced instead of defaults so the benchmark environment
     // cannot select a different geometry.
@@ -2539,8 +2545,7 @@ pub fn build() -> Vec<Op> {
         let nonce = std::env::var("SUB4_PINGPONG_TAIL_NONCE")
             .unwrap_or_default()
             .parse::<u64>()
-            // Exact g1000 island. The environment knob remains an opt-out.
-            .unwrap_or(135608492183);
+            .unwrap_or(65700024945645);
         let mut x = Op::empty();
         x.kind = OperationType::X;
         x.q_target = QubitId(0);

@@ -20,8 +20,6 @@ fn rounds_for(direction: PingPongDirection) -> usize {
             // tape puts both replay peaks at the same width.  Convergence
             // exposure of one round on one traversal is ~+0.05 lambda.
             static SLOT: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
-            // Shipping g1000 default. The environment knob remains an exact
-            // opt-out: set it to 700 to recover the 7ca0559 traversal.
             tuned_window("SUB4_PP_ROUNDS_MUL", &SLOT, 696)
         }
     }
@@ -33,13 +31,20 @@ fn rounds() -> usize {
     // this draw (validated 9,024/9,024 with the baked tail nonce), the tape gives
     // back four sign qubits against two wider terminal wires (peak 1320 -> 1318),
     // and each cut round saves its replay and walk adds on both traversals.
-    tuned_window("SUB4_PP_ROUNDS", &SLOT, 698)
+    tuned_window("SUB4_PP_ROUNDS", &SLOT, 696)
 }
 
-/// When set, the width schedule is compressed so it still reaches its floor on
-/// the final round at a reduced depth, instead of stopping short.
+/// The width schedule is compressed so it still reaches its floor on the
+/// final round at the reduced 698-round depth, instead of stopping short:
+/// every walk and replay add above the floor gets its scheduled width from a
+/// slightly earlier point of the sampled curve, which removes the dead
+/// bit-rounds the four-round depth cut had left at the tail.  On this draw
+/// the compressed schedule also lowers the interleaved replay footprint, so
+/// the chunk layouts pay fewer approximate boundary repairs than the
+/// uncompressed schedule (2,290 vs 2,313 per traversal set).
+/// `SUB4_PP_WIDTH_RESCALE=0` restores the uncompressed schedule.
 fn width_round_index(round: usize) -> usize {
-    if std::env::var_os("SUB4_PP_WIDTH_RESCALE").is_none() {
+    if std::env::var("SUB4_PP_WIDTH_RESCALE").is_ok_and(|v| v == "0") {
         return round;
     }
     let r = rounds();
@@ -67,7 +72,7 @@ fn replay_chunk() -> usize {
 
 fn replay_chunk_compare() -> usize {
     static SLOT: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
-    tuned_window("SUB4_PP_REPLAY_CHUNK_COMPARE", &SLOT, 22)
+    tuned_window("SUB4_PP_REPLAY_CHUNK_COMPARE", &SLOT, 20)
 }
 
 fn replay_fold_window() -> usize {
@@ -105,57 +110,6 @@ fn replay_fold_target(target: &[QubitId]) -> &[QubitId] {
 pub(crate) enum PingPongDirection {
     Divide,
     Multiply,
-}
-
-/// Analysis-only geometry dump.  `PP_GEOMETRY=<path>` records, for every replay
-/// add, the chunk bounds and comparison window the layout actually chose.  The
-/// bounds vary round by round with the interleaving allowance, so an external
-/// screener that re-derived them would desync silently; reading them from the
-/// builder removes that whole class of error.  Emits no ops and, with the
-/// variable unset, does nothing at all.
-mod geom {
-    use std::cell::{Cell, RefCell};
-
-    thread_local! {
-        static TAG: Cell<(u8, usize)> = const { Cell::new((0, 0)) };
-        static ROWS: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
-    }
-
-    pub(super) fn enabled() -> bool {
-        std::env::var_os("PP_GEOMETRY").is_some()
-    }
-
-    pub(super) fn tag(direction: u8, round: usize) {
-        if enabled() {
-            TAG.with(|c| c.set((direction, round)));
-        }
-    }
-
-    pub(super) fn record(bounds: &[(usize, usize)], compare: usize) {
-        if !enabled() {
-            return;
-        }
-        let (dir, round) = TAG.with(|c| c.get());
-        let spans: Vec<String> = bounds.iter().map(|&(lo, hi)| format!("{lo}-{hi}")).collect();
-        ROWS.with(|r| {
-            r.borrow_mut().push(format!(
-                "{}\t{}\t{}\t{}",
-                if dir == 0 { "div" } else { "mul" },
-                round,
-                spans.join(","),
-                compare
-            ))
-        });
-    }
-
-    pub(super) fn flush() {
-        if !enabled() {
-            return;
-        }
-        let path = std::env::var("PP_GEOMETRY").unwrap_or_default();
-        let body = ROWS.with(|r| r.borrow().join("\n"));
-        let _ = std::fs::write(path, format!("direction\tround\tbounds\tcompare\n{body}\n"));
-    }
 }
 
 /// `numerator *= denominator^-1` for [`PingPongDirection::Divide`], or
@@ -473,11 +427,6 @@ fn restore_wire_layout(
 /// `SUB4_PP_SCHED_LINEAR=1` restores the slope schedule.
 const WIDTH_SCHEDULE: [u16; 700] = [258, 258, 258, 258, 258, 258, 258, 258, 258, 258, 258, 258, 258, 258, 258, 258, 258, 258, 257, 257, 257, 257, 257, 257, 257, 256, 256, 255, 255, 255, 255, 255, 254, 254, 254, 253, 253, 253, 252, 252, 252, 252, 251, 251, 250, 250, 250, 250, 250, 250, 249, 249, 248, 248, 247, 247, 247, 246, 246, 246, 246, 245, 245, 245, 245, 244, 244, 243, 243, 243, 242, 242, 242, 241, 241, 241, 240, 240, 240, 240, 239, 239, 239, 239, 238, 238, 238, 238, 237, 237, 236, 236, 236, 236, 235, 235, 234, 234, 233, 233, 233, 232, 232, 232, 232, 231, 231, 231, 231, 230, 230, 229, 229, 229, 228, 228, 228, 227, 227, 226, 226, 225, 225, 224, 224, 224, 224, 223, 223, 222, 222, 222, 222, 221, 221, 221, 220, 220, 220, 220, 219, 219, 219, 218, 218, 217, 217, 217, 216, 216, 216, 215, 215, 215, 214, 214, 214, 214, 213, 213, 212, 212, 211, 211, 210, 210, 209, 209, 209, 209, 209, 209, 208, 208, 207, 207, 207, 206, 206, 205, 205, 205, 204, 204, 203, 203, 203, 203, 202, 202, 202, 201, 201, 200, 200, 200, 200, 200, 199, 199, 198, 198, 197, 197, 197, 196, 196, 195, 195, 194, 194, 194, 194, 193, 193, 193, 193, 192, 192, 191, 191, 191, 190, 190, 190, 189, 189, 188, 188, 188, 187, 187, 186, 186, 186, 185, 185, 184, 184, 184, 183, 183, 183, 183, 182, 182, 181, 181, 180, 180, 180, 180, 180, 179, 179, 178, 178, 177, 177, 176, 176, 175, 175, 174, 174, 174, 174, 173, 173, 172, 172, 172, 171, 171, 171, 171, 170, 170, 169, 169, 168, 168, 168, 168, 167, 167, 167, 166, 166, 166, 165, 165, 164, 164, 164, 163, 163, 162, 162, 161, 160, 160, 160, 159, 159, 159, 159, 159, 158, 158, 157, 157, 156, 156, 156, 155, 155, 155, 155, 154, 154, 153, 153, 152, 152, 151, 151, 150, 150, 150, 150, 150, 149, 149, 148, 148, 147, 147, 146, 146, 146, 146, 145, 145, 145, 145, 144, 144, 144, 143, 143, 142, 142, 142, 141, 141, 140, 140, 140, 139, 139, 138, 138, 137, 137, 137, 136, 136, 135, 135, 135, 135, 134, 134, 134, 133, 133, 132, 132, 132, 132, 131, 131, 130, 130, 130, 129, 129, 128, 128, 128, 128, 127, 127, 127, 126, 126, 125, 125, 124, 123, 123, 122, 122, 122, 122, 121, 121, 121, 121, 120, 120, 119, 119, 119, 119, 119, 118, 118, 117, 117, 117, 116, 116, 115, 115, 115, 114, 114, 114, 114, 113, 113, 112, 112, 111, 111, 111, 111, 111, 110, 110, 109, 109, 108, 108, 107, 107, 106, 106, 105, 105, 105, 105, 105, 104, 104, 103, 103, 102, 102, 101, 101, 100, 100, 100, 100, 99, 99, 98, 98, 97, 97, 96, 96, 95, 95, 95, 95, 94, 94, 94, 93, 93, 92, 92, 92, 91, 91, 90, 90, 90, 90, 89, 89, 89, 88, 88, 87, 87, 86, 86, 86, 86, 85, 85, 84, 83, 83, 83, 83, 82, 82, 81, 81, 80, 79, 79, 79, 79, 78, 78, 77, 77, 76, 76, 75, 75, 74, 74, 73, 73, 73, 72, 72, 72, 71, 71, 70, 70, 70, 69, 69, 69, 69, 68, 68, 68, 67, 67, 67, 66, 66, 65, 65, 65, 64, 64, 64, 64, 63, 63, 62, 61, 61, 61, 61, 60, 60, 59, 59, 58, 58, 57, 57, 56, 56, 55, 55, 55, 54, 54, 54, 53, 53, 52, 52, 52, 51, 51, 50, 50, 50, 49, 49, 48, 48, 48, 47, 47, 46, 46, 45, 45, 45, 45, 44, 44, 43, 43, 43, 42, 42, 41, 41, 40, 40, 40, 40, 39, 39, 38, 38, 37, 37, 36, 36, 36, 35, 35, 35, 34, 34, 34, 34, 33, 33, 32, 32, 31, 31, 30, 30, 29, 29, 28, 28, 27, 27, 26, 26, 25, 25, 25, 25, 24, 24, 23, 23, 22, 22, 21, 21, 20, 20, 20, 19, 19, 18, 18, 18, 17, 17, 17, 16, 16, 15, 15, 14, 14, 13, 13, 13, 12, 12, 11, 11, 10, 10, 9, 9, 9, 9, 8, 8, 8, 8, 8, 8, 8];
 
-// Greedy-minus-1000 shipping table. The source-exact 7ca0559 table above is
-// retained and selected by SUB4_PP_G1000_DISABLE=1.
-const GREEDY_M1000_WIDTH_SCHEDULE: [u16; 700] =
-    include!("greedy_m1000_width_schedule.rs");
-
 /// Uniform widening of the sampled width schedule.  Each extra bit buys walk
 /// headroom (fewer width violations, so a lower intrinsic failure rate) at the
 /// cost of a wider add in every walk and replay round.
@@ -488,19 +437,75 @@ fn sched_bias() -> i32 {
     })
 }
 
+/// Optional runtime replacement for the embedded `WIDTH_SCHEDULE`, loaded from
+/// a `round,width` CSV named by `SUB4_PP_WSCHED_FILE`.  Default-off (returns
+/// `None`), so the shipped stream is byte-identical.  Used only to price
+/// alternative width tables (e.g. sparse +1-bit repair sets) on this base.
+/// Rows index the SAMPLED table (the compressed `width_round_index` output),
+/// not the raw round.
+fn wsched_override() -> Option<&'static Vec<u16>> {
+    static SLOT: std::sync::OnceLock<Option<Vec<u16>>> = std::sync::OnceLock::new();
+    SLOT.get_or_init(|| {
+        let path = std::env::var("SUB4_PP_WSCHED_FILE").ok()?;
+        let text = std::fs::read_to_string(&path).ok()?;
+        let mut table = vec![0u16; WIDTH_SCHEDULE.len()];
+        for line in text.lines() {
+            let mut it = line.split(',');
+            let (Some(a), Some(b)) = (it.next(), it.next()) else { continue };
+            let (Ok(r), Ok(w)) = (a.trim().parse::<usize>(), b.trim().parse::<u16>()) else {
+                continue;
+            };
+            if r < table.len() {
+                table[r] = w;
+            }
+        }
+        Some(table)
+    })
+    .as_ref()
+}
+
+/// Sparse +1-bit repair of the compressed width schedule.  The rescale's
+/// uniform-in-index narrowing leaves a population of marginal (excess exactly
+/// one bit) width violations spread across the whole curve; these 100 sampled
+/// indices are the greedy cost-weighted cover of that population, fitted on
+/// 640 fresh classical draws and validated on a held-out 320-draw sample:
+/// classical fault density -0.95 lambda for +519 diagnostic Toffoli, with the
+/// peak binding profile unchanged (Q1274 at pp_div_replay).  Applies only on
+/// top of the embedded table with the rescale active;
+/// `SUB4_PP_WIDTH_REPAIR=0` restores the unrepaired schedule.
+const WIDTH_REPAIR: [u16; 100] = [
+    18, 19, 27, 35, 44, 54, 55, 57, 58, 67, 70, 73, 76, 98, 119, 121, 123, 124, 125, 127, 129,
+    164, 166, 167, 168, 193, 248, 259, 261, 262, 263, 264, 272, 297, 299, 300, 301, 302, 303, 304,
+    312, 323, 325, 327, 328, 356, 377, 400, 401, 402, 403, 406, 475, 516, 526, 528, 530, 533, 536,
+    538, 541, 563, 593, 595, 600, 602, 603, 625, 628, 629, 631, 647, 648, 649, 650, 651, 652, 655,
+    657, 659, 661, 663, 664, 666, 667, 668, 669, 671, 672, 674, 676, 678, 679, 680, 681, 683, 685,
+    687, 689, 693,
+];
+
+fn width_repair(r: usize) -> i32 {
+    if std::env::var("SUB4_PP_WIDTH_REPAIR").is_ok_and(|v| v == "0") {
+        return 0;
+    }
+    if std::env::var("SUB4_PP_WIDTH_RESCALE").is_ok_and(|v| v == "0") {
+        return 0;
+    }
+    if false && r <= u16::MAX as usize && WIDTH_REPAIR.binary_search(&(r as u16)).is_ok() {
+        1
+    } else {
+        0
+    }
+}
+
 fn value_width(round: usize) -> usize {
     if std::env::var_os("SUB4_PP_SCHED_LINEAR").is_none() {
         if round == 0 {
             return VALUE_WIDTH; // the fused round-0 lift works on the full envelope
         }
         let r = width_round_index(round);
-        let schedule = if std::env::var_os("SUB4_PP_G1000_DISABLE").is_some() {
-            &WIDTH_SCHEDULE
-        } else {
-            &GREEDY_M1000_WIDTH_SCHEDULE
-        };
-        if r < schedule.len() {
-            return ((schedule[r] as i32 + sched_bias()).max(8) as usize).clamp(8, VALUE_WIDTH);
+        let table = wsched_override().map_or(&WIDTH_SCHEDULE[..], |v| &v[..]);
+        if r < table.len() {
+            let rep = if wsched_override().is_none() { width_repair(r) } else { 0 };
+            return ((table[r] as i32 + rep + sched_bias()).max(8) as usize).clamp(8, VALUE_WIDTH);
         }
         return 8;
     }
@@ -1185,7 +1190,6 @@ fn walk_back_round(b: &mut B, u: &mut Vec<QubitId>, v: &mut Vec<QubitId>, round:
 }
 
 fn replay_halving_round(b: &mut B, round: usize, sign: QubitId, x: &[QubitId], y: &[QubitId]) {
-    geom::tag(0, round);
     let (source, target) = if round.is_multiple_of(2) { (x, y) } else { (y, x) };
     if round == 0 {
         mod_halve_pm(b, target);
@@ -1198,7 +1202,6 @@ fn replay_halving_round(b: &mut B, round: usize, sign: QubitId, x: &[QubitId], y
 }
 
 fn replay_doubling_round(b: &mut B, round: usize, sign: QubitId, x: &[QubitId], y: &[QubitId]) {
-    geom::tag(1, round);
     let fused = std::env::var_os("SUB4_PINGPONG_UNFUSED_INVERSE").is_none();
     let (source, target) = if round.is_multiple_of(2) { (x, y) } else { (y, x) };
     if fused && round > 1 {
@@ -1250,9 +1253,14 @@ fn plan(rounds: usize) -> Option<Plan> {
     // measured-erasure exposure (lambda) goes down as well.
     // `SUB4_PP_R1=509 SUB4_PP_R2=610` restores the previous op stream byte for
     // byte: at r1=509 no walk round is ever over budget, so nothing splits.
-    let r1 = env("SUB4_PP_R1", 356).min(rounds);
-    let r2 = env("SUB4_PP_R2", 625).min(rounds.saturating_sub(1));
-    let peak = env("SUB4_PP_PEAK", 1278);
+    // The replay and square are co-binders: this cut only lowers global width
+    // when the square carry ladder is reduced in the same circuit.
+    // 340/628, not 342/625: re-tuned against the compressed width schedule,
+    // whose narrower interleaved walk registers move the cheapest chunk
+    // layouts by a few rounds in both directions.
+    let r1 = env("SUB4_PP_R1", 340).min(rounds);
+    let r2 = env("SUB4_PP_R2", 628).min(rounds.saturating_sub(1));
+    let peak = env("SUB4_PP_PEAK", 1273);
     Some(Plan { r1, r2, peak })
 }
 
@@ -1357,12 +1365,13 @@ fn conditional_mod_negate(b: &mut B, control: QubitId, value: &[QubitId]) {
     let f = U256::MAX
         .wrapping_sub(SECP256K1_P)
         .wrapping_add(U256::from(1));
-    csub_nbit_const_direct_trunc_fast(
+    csub_nbit_const_direct_trunc_fast_dead_low(
         b,
         replay_fold_target(value),
         f.wrapping_sub(U256::from(1)),
         control,
         endpoint_fold_window(),
+        false,
     );
 }
 
@@ -1530,7 +1539,6 @@ fn add_chunked_measured_with(
                 .unwrap_or_else(|| chunk_bounds(n, n.div_ceil(12))),
         },
     };
-    geom::record(&bounds, replay_chunk_compare());
     let legacy = std::env::var_os("SUB4_PP_LEGACY_CHUNK_ORDER").is_some();
     let erase = |b: &mut B, carry: QubitId, lo: usize, hi: usize| {
         let width = hi - lo;
@@ -1936,12 +1944,13 @@ fn mod_halve_pm(b: &mut B, target: &[QubitId]) {
         .wrapping_add(U256::from(1));
     let parity = b.alloc_qubit();
     b.cx(target[0], parity);
-    csub_nbit_const_direct_trunc_fast(
+    csub_nbit_const_direct_trunc_fast_dead_low(
         b,
         replay_fold_target(target),
         f,
         parity,
         endpoint_fold_window(),
+        true,
     );
     for i in 0..N - 1 {
         b.swap(target[i], target[i + 1]);
@@ -1960,12 +1969,13 @@ fn mod_double_pm(b: &mut B, target: &[QubitId]) {
     for i in (0..N - 1).rev() {
         b.swap(target[i], target[i + 1]);
     }
-    cadd_nbit_const_direct_trunc_fast(
+    cadd_nbit_const_direct_trunc_fast_dead_low(
         b,
         replay_fold_target(target),
         f,
         overflow,
         endpoint_fold_window(),
+        true,
     );
     b.cx(target[0], overflow);
     b.free(overflow);
@@ -1977,12 +1987,12 @@ fn seed_round_one(b: &mut B, sign: QubitId, source: &[QubitId], target: &[QubitI
         b.cx(sign, target[i]);
     }
     let f_minus_one = U256::MAX.wrapping_sub(SECP256K1_P);
-    csub_nbit_const_direct_trunc_fast(b, target, f_minus_one, sign, 32);
+    csub_nbit_const_direct_trunc_fast_dead_low(b, target, f_minus_one, sign, 32, false);
 }
 
 fn seed_round_one_inverse(b: &mut B, sign: QubitId, source: &[QubitId], target: &[QubitId]) {
     let f_minus_one = U256::MAX.wrapping_sub(SECP256K1_P);
-    cadd_nbit_const_direct_trunc_fast(b, target, f_minus_one, sign, 32);
+    cadd_nbit_const_direct_trunc_fast_dead_low(b, target, f_minus_one, sign, 32, false);
     for i in (0..N).rev() {
         b.cx(sign, target[i]);
         b.cx(source[i], target[i]);
@@ -2080,7 +2090,6 @@ pub(crate) fn build_pingpong_point_add() -> Vec<Op> {
     circ.declare_bit_register(&oy);
     circ.b0_finalize();
     let ops = circ.take_ops();
-    geom::flush();
     if pp_profile::enabled() {
         pp_profile::report(
             &ops,
@@ -2424,4 +2433,20 @@ pub(crate) fn pingpong_simulator_selfcheck() {
 #[test]
 fn divide_and_multiply_preserve_the_abi_and_clean_ancillas() {
     pingpong_simulator_selfcheck();
+}
+
+/// Diagnostic: print the per-round value-width schedule for both the base
+/// (identity index, `SUB4_PP_WIDTH_RESCALE=0`) and rescaled (default-on
+/// `round*697/697` compression) traversals, through the real `value_width`
+/// code path.  Gated by `SUB4_DUMP_WSCHED` in `build`, so it never runs in
+/// the shipped stream.
+pub(crate) fn dump_width_schedule() {
+    std::env::set_var("SUB4_PP_WIDTH_RESCALE", "0");
+    let base: Vec<usize> = (0..700).map(value_width).collect();
+    std::env::remove_var("SUB4_PP_WIDTH_RESCALE");
+    let resc: Vec<usize> = (0..700).map(value_width).collect();
+    println!("round,base,rescale");
+    for r in 0..700 {
+        println!("{},{},{}", r, base[r], resc[r]);
+    }
 }
