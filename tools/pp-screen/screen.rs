@@ -104,19 +104,68 @@ const NUM_TESTS: usize = 9024;
 
 const N: usize = 256;
 const VALUE_WIDTH: usize = N + 3;
-const GREEDY_M1000_WIDTH_SCHEDULE: [u16; 700] = include!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/src/point_add/greedy_m1000_width_schedule.rs"
-));
+// The width schedule is READ FROM THE BUILDER, never recomputed here.
+//
+// It has moved three times: a sampled table, then a greedy table in its own
+// file, then back to the embedded table with a compressing rescale switched on
+// by default and a sparse repair set switched off. An earlier version of this
+// tool hard-coded one of those and stopped compiling the moment upstream
+// deleted the file. Worse than not compiling would have been still compiling
+// against a stale table, which produces confident nonsense.
+//
+// `tools/pp-screen/instrument.py` adds a dump to the builder; `grind.sh` runs
+// it. The `#width` rows are the resolved widths, with rescale, repair, bias and
+// the round-0 special case already applied, so this is a pure lookup.
+static SCHEDULE: std::sync::OnceLock<Vec<u16>> = std::sync::OnceLock::new();
+static DUMPED_ROUNDS: std::sync::OnceLock<(usize, usize)> = std::sync::OnceLock::new();
 
 fn value_width(round: usize) -> usize {
-    if round == 0 {
-        return VALUE_WIDTH; // the fused round-0 lift works on the full envelope
+    let table = SCHEDULE.get().expect("width schedule not loaded; pass --geometry");
+    table.get(round).map_or(8, |w| (*w as usize).clamp(8, VALUE_WIDTH))
+}
+
+/// Load the resolved geometry the builder dumped under `PP_GEOMETRY`.
+fn load_geometry(path: &str) -> Result<(), String> {
+    let text = std::fs::read_to_string(path)
+        .map_err(|e| format!("{path}: {e} (run grind.sh, or build with PP_GEOMETRY set)"))?;
+    let mut widths: Vec<(usize, u16)> = Vec::new();
+    let mut rounds: Option<(usize, usize)> = None;
+    for line in text.lines() {
+        let f: Vec<&str> = line.split('\t').collect();
+        match f.first().copied() {
+            Some("#rounds") if f.len() >= 3 => {
+                rounds = Some((
+                    f[1].parse().map_err(|_| "bad #rounds")?,
+                    f[2].parse().map_err(|_| "bad #rounds")?,
+                ));
+            }
+            Some("#width") if f.len() >= 3 => {
+                widths.push((
+                    f[1].parse().map_err(|_| "bad #width round")?,
+                    f[2].parse().map_err(|_| "bad #width value")?,
+                ));
+            }
+            _ => {}
+        }
     }
-    if round < GREEDY_M1000_WIDTH_SCHEDULE.len() {
-        return (GREEDY_M1000_WIDTH_SCHEDULE[round] as usize).clamp(8, VALUE_WIDTH);
+    let (div, mul) = rounds.ok_or("geometry file has no #rounds line")?;
+    if widths.is_empty() {
+        return Err("geometry file has no #width rows".into());
     }
-    8
+    let mut table = vec![0u16; widths.iter().map(|(r, _)| *r).max().unwrap() + 1];
+    for (r, w) in widths {
+        table[r] = w;
+    }
+    if table.len() < div.max(mul) {
+        return Err(format!(
+            "geometry covers {} rounds but the walk runs {}",
+            table.len(),
+            div.max(mul)
+        ));
+    }
+    let _ = SCHEDULE.set(table);
+    let _ = DUMPED_ROUNDS.set((div, mul));
+    Ok(())
 }
 
 // ─── 320-bit two's-complement arithmetic ───────────────────────────────────
@@ -1506,7 +1555,9 @@ fn main() {
     let mut from: u64 = 0;
     let mut count: u64 = 1;
     let mut threads: usize = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
-    let mut cfg = Cfg { rounds: 698, rounds_mul: 696 };
+    // Depth is taken from the builder's dump unless overridden explicitly.
+    let mut cfg = Cfg { rounds: 0, rounds_mul: 0 };
+    let mut geometry = "geom.tsv".to_string();
     let mut out_path: Option<String> = None;
     let mut explicit: Vec<u64> = Vec::new();
     let mut verbose = false;
@@ -1519,6 +1570,7 @@ fn main() {
         let mut next = || args.next().unwrap_or_else(|| panic!("{a} needs a value"));
         match a.as_str() {
             "--ops" => ops_path = next(),
+            "--geometry" => geometry = next(),
             "--from" => from = next().parse().expect("--from"),
             "--count" => count = next().parse().expect("--count"),
             "--threads" => threads = next().parse().expect("--threads"),
@@ -1534,6 +1586,21 @@ fn main() {
         }
     }
 
+    load_geometry(&geometry).unwrap_or_else(|e| panic!("pp_screen: {e}"));
+    let (dumped_div, dumped_mul) = *DUMPED_ROUNDS.get().expect("rounds loaded");
+    if cfg.rounds == 0 {
+        cfg.rounds = dumped_div;
+    }
+    if cfg.rounds_mul == 0 {
+        cfg.rounds_mul = dumped_mul;
+    }
+    if cfg.rounds != dumped_div || cfg.rounds_mul != dumped_mul {
+        eprintln!(
+            "pp_screen: WARNING depth overridden to {}/{} but the geometry dump says {}/{}; \
+             the width schedule in that dump was resolved at the dumped depth",
+            cfg.rounds, cfg.rounds_mul, dumped_div, dumped_mul
+        );
+    }
     let curve = secp256k1();
     let fb = Arc::new(FixedBase::new(fe_from_u256(curve.gx), fe_from_u256(curve.gy)));
     selftest(&curve, &fb).unwrap_or_else(|e| panic!("pp_screen selftest failed: {e}"));

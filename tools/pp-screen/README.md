@@ -45,19 +45,58 @@ On the shipped 698/696 configuration the model catches about 65% of classical fa
 false positives. It buys a great deal on verification overhead, taking the number of full
 `eval_circuit` runs needed per clean nonce from roughly 87,000 down to about 830.
 
-It does not make a grind viable on a single workstation, and no better model would. The chance a
-draw is clean is about e^-19.5, which is a property of the circuit rather than of the filter, so a
-clean nonce costs about 2.9 x 10^8 draws no matter how good the screening is. At the rate one
-16-thread machine sustains, that is weeks. The bottleneck is draw throughput, not filter quality.
+The filter does not change how many draws a clean nonce costs; that is a property of
+the circuit. Measured with `lamscreen` at head `4eb93cb`, n=60: lambda_classical
+17.717, 95% CI 16.80 to 18.63, so 4.95e7 draws (CI 1.98e7 to 1.23e8). At the 128
+nonces/s this tool sustains on 15 threads that is about **101 hours**, CI 40 to 252.
+
+An earlier version of this file put that at "weeks" on the strength of an n=8
+sample. Exponentiating a mean with sem +/-2.1 turns a 4-day job into a 5-week one.
+When the answer is e^x of a measured x, quote the interval, and measure x with
+enough samples that the interval means something.
 
 ## Files
 
 | | |
 |---|---|
 | `screen.rs` | the model: walk, replay, secp256k1 field and group, Fiat-Shamir seeding |
-| `grind.sh` | screen a nonce block at one depth, rebuilding `ops.bin` first |
+| `instrument.py` | re-applies the geometry dump to `pingpong_div.rs` after a sync |
+| `grind.sh` | screen a nonce block at one depth, rebuilding `ops.bin` and the dump first |
 | `verify.sh` | run survivors through the real scorer |
 | `firstfail.sh` | compare the model's first failing shot against the simulator's |
+
+## The width schedule is read, never recomputed
+
+This is the most important design decision in the tool, and it was learned the
+expensive way. The schedule has moved three times: a sampled table, then a greedy
+table in its own file, then back to the embedded table with a compressing rescale
+switched **on** by default and a sparse repair set switched **off**. An earlier
+version hard-coded one of those and stopped compiling when upstream deleted the
+file. The worse outcome was available too: still compiling, against a stale table,
+producing confident nonsense.
+
+So the builder dumps what it resolved, and the screener reads it:
+
+```
+PP_GEOMETRY=geom.tsv ./target/release/build_circuit
+```
+
+The dump carries the depth for both traversals, the width scheduled at every round
+(rescale, repair, bias and the round-0 case already applied, so the screener does a
+pure lookup), and the chunk bounds and comparison window for every replay add. It
+emits no operations: `ops.bin` is byte-identical with the variable set or unset.
+
+**Every sync drops it.** `src/point_add` is taken from upstream wholesale, so the
+instrumentation disappears without a conflict or a warning. That is exactly what
+happened on 2026-08-23. Re-apply it, then rebuild:
+
+```
+python3 tools/pp-screen/instrument.py
+```
+
+`grind.sh` refuses to run if the builder is not instrumented, and checks that the
+depth the builder resolved matches the depth requested, rather than guessing from
+whether `ops.bin` moved.
 
 ## Building
 
@@ -112,19 +151,7 @@ Other modes:
   magnitude too high. Real draws come from actual curve points, where the two are tied together by
   the curve equation, and that relationship is what keeps the fold window from saturating. The
   model was correct the whole time; the test inputs were unreachable.
-
-## Chunk geometry
-
-The replay's chunk boundaries are not fixed. They are chosen per round against the interleaving
-allowance, and across 1,408 replay adds the layout uses two chunks 734 times, three chunks 262
-times, four chunks 248 times, and a tail of shapes with a deliberately narrow leading chunk whose
-repair is exact because the chunk is narrower than the 22-bit comparison window.
-
-Re-deriving that in the screener would desync silently, which is the worst failure mode available
-here, so the builder dumps what it actually chose:
-
-```
-PP_GEOMETRY=geom.tsv ./target/release/build_circuit
-```
-
-The dump is inert. With the variable unset or set, `ops.bin` is byte-identical.
+- **Every sync silently drops the instrumentation.** `src/point_add` is taken from upstream
+  wholesale, so the geometry dump vanishes with no conflict and no warning. `grind.sh` refuses to
+  run without it; re-apply with `python3 tools/pp-screen/instrument.py`.
+- **Do not exponentiate a small sample.** See the note above on the four-day figure.
