@@ -36,9 +36,9 @@ Evidence, committed:
 - [`../../docs/data/screen-gate-801dd20.tsv`](../../docs/data/screen-gate-801dd20.tsv), raw screen output
 - [`../../docs/data/lambda-sweep-801dd20.tsv`](../../docs/data/lambda-sweep-801dd20.tsv), the harness reference it was checked against
 
-**Re-run the gate against any new circuit head before trusting the screen there.** It validates a
-transcription of `eval_circuit`'s test loop, and that is only known correct for the stream it was
-checked on.
+**The gate has to be re-run against any new circuit head before the screen can be trusted there.**
+It validates a transcription of `eval_circuit`'s test loop, and that is only known correct for the
+stream it was checked on.
 
 ## Measured throughput
 
@@ -76,7 +76,7 @@ secp256k1 scalar multiplications), or better hardware. Which, we do not know.
 
 **Against λ = 20.04 this is not close to sufficient.** A one-day single-core grind needs λ ≈ 8.9;
 the shortfall is ~11 λ-units and the screen closes 2.2 of them. Even on the full machine, assuming
-it parallelises as well as the harness did, a one-day grind affords only λ ≈ 10.7. So this tool
+it parallelizes as well as the harness did, a one-day grind affords only λ ≈ 10.7. So this tool
 does not make a grind feasible. **It makes λ work measurable.** λ reduction carries essentially
 all the remaining weight. See
 [`../../docs/lambda-measurement.md`](../../docs/lambda-measurement.md).
@@ -96,8 +96,9 @@ all the remaining weight. See
 
 Classical channel only. With λ_phase_only = 3.80, a screen-clean nonce still has
 P(phase-clean) = e^-3.80 ≈ 2.2 × 10⁻², so **hits are CANDIDATES requiring full-harness
-confirmation**, roughly **45 candidates per true seed**. Never call a hit a clean seed. Doing so
-would be the same class of error as the lazy-XOF bug in `src/point_add/memory/04-traps.md` §4.
+confirmation**, roughly **45 candidates per true seed**. A hit is never a clean seed, and calling
+one that would be the same class of error as the lazy-XOF bug in
+`src/point_add/memory/04-traps.md` §4.
 
 Not reproduced at all: phase-garbage, ancilla-garbage, avgT. avgT is W=64-harness-order only and
 this binary must never report it.

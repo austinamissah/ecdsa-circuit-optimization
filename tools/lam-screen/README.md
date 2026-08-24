@@ -101,4 +101,4 @@ nonces per invocation as possible.
 - Every generated stream is fingerprinted; two identical fingerprints across distinct nonces mean
   the tail edit never reached the stream.
 - avgT is never read from this binary, since it is W=64-harness-order only.
-- **Re-run the gate against any new circuit head before trusting it there.**
+- **The gate has to be re-run against any new circuit head before it can be trusted there.**

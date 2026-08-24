@@ -52,8 +52,8 @@ nonces/s this tool sustains on 15 threads that is about **101 hours**, CI 40 to 
 
 An earlier version of this file put that at "weeks" on the strength of an n=8
 sample. Exponentiating a mean with sem +/-2.1 turns a 4-day job into a 5-week one.
-When the answer is e^x of a measured x, quote the interval, and measure x with
-enough samples that the interval means something.
+When the answer is e^x of a measured x, the interval is the result, and x needs
+enough samples for the interval to mean something.
 
 ## Files
 
@@ -115,7 +115,7 @@ rm src/bin/pp_screen.rs
 
 ## Running
 
-Always drive screening through `grind.sh`:
+Screening is driven through `grind.sh`:
 
 ```
 tools/pp-screen/grind.sh <rounds> <rounds-mul> <from> <count> [threads] [out]
@@ -142,14 +142,15 @@ Other modes:
   hashes the whole op stream, and the op count moves with the walk depth (12,912,890 at 698/696
   against 12,890,758 at 696/694). Screening one depth against another depth's `ops.bin` produces
   noise that looks like data. `grind.sh` closes this; nothing else does.
-- **All three scripts write `./ops.bin`.** Never run two at once. Use a scratch clone per worker.
+- **All three scripts write `./ops.bin`**, so two cannot run at once, and each worker needs its
+  own scratch clone.
 - **`eval_circuit` appends to `results.tsv` and rewrites `score.json` on every run.** Both are
   measurement records, so the scripts save and restore them rather than let screening traffic
   accumulate.
 - **`eval_circuit` aborts before printing metrics on a dirty nonce**, so it cannot price a
   configuration that has not been ground yet. Use `PP_PROFILE=1`, which tracks the true
   9,024-shot figure to within 0.005%.
-- **Do not validate against constructed inputs.** An earlier version of the replay self-test fed
+- **Constructed inputs validate nothing here.** An earlier version of the replay self-test fed
   synthetic numerator and denominator pairs and reported a fold escape rate four orders of
   magnitude too high. Real draws come from actual curve points, where the two are tied together by
   the curve equation, and that relationship is what keeps the fold window from saturating. The
@@ -157,7 +158,7 @@ Other modes:
 - **Every sync silently drops the instrumentation.** `src/point_add` is taken from upstream
   wholesale, so the geometry dump vanishes with no conflict and no warning. `grind.sh` refuses to
   run without it; re-apply with `python3 tools/pp-screen/instrument.py`.
-- **Do not exponentiate a small sample.** See the note above on the four-day figure.
+- **A small sample does not survive exponentiation.** See the note above on the four-day figure.
 
 ## Before starting a hunt
 
@@ -165,7 +166,7 @@ A clean nonce averages `e^lambda` draws, which on one workstation is days. The l
 around 1%/day, so **a target must be worth more than roughly 5% to survive its own grind**. A seven
 hour run on 2026-08-23 covered 6.2% of its search before the frontier moved past a -0.038% target;
 413 survivors, 263 confirmed, none clean, which is the expected yield at 6%. The pipeline is not
-the constraint. Price the target first.
+the constraint; the price of the target is.
 
-Save `results.tsv` and `score.json` before starting and restore them after: the eval workers write
-to both via a compile-time path, regardless of their working directory.
+`results.tsv` and `score.json` need saving before a hunt and restoring after: the eval workers
+write to both via a compile-time path, regardless of their working directory.

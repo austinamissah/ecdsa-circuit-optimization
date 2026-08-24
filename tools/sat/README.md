@@ -5,7 +5,7 @@ synthesis* open: 11,416 variables / 54,051 clauses, no witness and **no UNSAT pr
 stopped at a preregistered two-CPU-hour cap rather than at a wall. It names four
 reopening conditions; the first is "a machine-checkable symmetry reduction".
 
-## Known-answer test, run this first
+## Known-answer test, which comes first
 
 The encoder is `../../src/point_add/memory/repro/y5_joint_codec_synth.py`, which needs
 `kissat` and `cadical` on `PATH`. Reproducing their CNF is the gate: without it we would
@@ -68,8 +68,8 @@ exceeds the two-CPU-hour cap the upstream run stopped at. So this reproduces ups
 without the break, at 900 s per solve; on a loaded machine it did not return in the
 window. Until it passes, the broken CNF must not be used and no UNSAT from it may be
 believed, because a break that loses a solution turns an open question into a false
-UNSAT. Re-run it on an idle machine
-(`--selftest --kissat <path> --timeout 1800`); if exact-9 times out rather than returning
+UNSAT. It needs an idle machine and
+`--selftest --kissat <path> --timeout 1800`; if exact-9 times out rather than returning
 SAT, that is a failure of the *test*, not of the break.
 
 No SAT solver ships with this repo. kissat 4.0.4 and cadical 3.0.1 were built from source
