@@ -78,14 +78,19 @@ claims. This fork's own analysis is in the next section.
 
 *Project write-up: **[amissah.net](https://amissah.net)**.*
 
-> **Read this first: the circuit changed underneath all of it.** Sections 1 to 5 below, and most of
-> [`docs/`](docs/), measure the trailmix/dialog construction at 1,154 qubits, score 1,486,468,554.
-> Since 2026-08-23 the benchmark ships a fixed-depth **ping-pong division** at 1,273 qubits, score
-> **1,156,903,673**, and the old code is gated behind `SUB4_LEGACY_POINT_ADD`. Upstream says the
-> same of its own notes. Those measurements are kept as the record of what was measured, not as
-> claims about the circuit that ships today. The new construction, the tooling built for it, and
-> two conclusions of mine that turned out to be wrong are in
-> [`docs/pingpong-2026-08-23.md`](docs/pingpong-2026-08-23.md), and summarized in §6.
+> **Read this first: every score in this file is a snapshot, and the circuit itself gets replaced.**
+> This is an open, live benchmark. On 2026-08-23 alone the leaderboard moved six times and the
+> whole construction changed underneath the analysis: sections 1 to 5 below, and most of
+> [`docs/`](docs/), measure a trailmix/dialog circuit at 1,154 qubits and score 1,486,468,554 that
+> no longer ships. It was replaced by a fixed-depth ping-pong division, which by that evening was
+> at 1,267 qubits and 1,154,731,130, and it will have moved again by the time you read this.
+>
+> Nothing here is rewritten to look current. Each measurement names the commit it was taken on, and
+> is kept as a record of what was true then. Upstream keeps its own notes the same way. **What is
+> meant to survive is the method and the lessons, not the numbers**, and the lessons are the point:
+> see §6 for two conclusions of mine that were wrong, and §7 for what happened when I tried to
+> compete on the leaderboard directly. Current-construction detail lives in
+> [`docs/pingpong-2026-08-23.md`](docs/pingpong-2026-08-23.md).
 
 **What is mine and what is not.** The circuit is not mine. It came from the challenge, built by the
 community, and as of `6909d15` it also carries **13,909 lines across 50 files** under
@@ -251,6 +256,44 @@ conclusion read off it.
 Both are corrected in [`docs/pingpong-2026-08-23.md`](docs/pingpong-2026-08-23.md) and in the
 retraction note published upstream.
 
+#### 7. I tried to land a submission, and lost to the clock rather than the arithmetic
+
+Worth recording because the failure is structural, not a slip, and it is the thing anyone arriving
+with one machine should understand before spending a week on it.
+
+**The mechanism.** The 9,024 test inputs are a hash of the circuit's own op stream, so any change
+to the circuit re-rolls them. A submission is therefore two things: an improvement, and a **nonce**,
+a 48-bit tweak to an identity tail that re-rolls the draw until one happens to pass all 9,024
+shots. Finding that nonce is a lottery, and its cost is set by lambda, the expected number of
+failing shots per draw. At the configuration I targeted, lambda was 17.175 (95% CI 15.95 to 18.40),
+so roughly **2.9 x 10^7 draws** per clean nonce.
+
+**The attempt.** I found a real improvement: an interleaving checkpoint (`SUB4_PP_R2`) mistuned by
+33 rounds, worth 322 executed Toffoli, about **-0.038%**, confirmed on two independent proxies at
+unchanged qubit width. Then I built the pipeline to grind a nonce for it and ran it for seven
+hours: about 1.8 million draws, 6.2% of the expected search, 413 survivors of the classical
+pre-filter, 263 of those confirmed against the real scorer, **none clean**. That is exactly the
+expected yield at 6%, so nothing went wrong statistically.
+
+**What went wrong was the clock.** At this machine's throughput a clean nonce averages ~86 hours.
+Over that window the leaderboard drifts about 1.14%/day, so the target has to be worth more than
+about 5% to survive its own grind. Mine was worth 0.038%. It needed the field to go quiet for days;
+the longest stall that day was 6.5 hours, and when it ended the new frontier was already below my
+target, so a clean nonce would have been rejected on arrival.
+
+**Why the others can do it.** Their published notes are explicit: H200 GPU pods, coordinated agent
+fleets, and staged shot ladders that discard a bad nonce after 256 shots instead of 9,024. That is
+two to three orders of magnitude more throughput than one laptop. It is not a cleverness gap, and
+no amount of better filtering closes it: the number of draws is set by the circuit, not by the
+screener.
+
+**So this fork does not compete on throughput, and says so.** What one machine is good for is
+measuring carefully, finding the things that are cheap to check and expensive to assume, and
+writing them down. Several of those went back upstream as solver notes, including one improvement
+handed over precisely because someone with a fleet can spend it in an hour and I cannot. The
+leaderboard will keep moving; the intention here is to keep watching it, keep measuring, and keep
+the record of what was learned and what was wrong.
+
 #### Contributed upstream
 
 Three of the findings above went back to the challenge repository instead of staying in this fork.
@@ -271,6 +314,30 @@ since the circuit has moved on. Three solver notes were also published through t
 notes system: the schedule-narrowing cliff and the corrected search arithmetic, a configuration trap
 plus a small improvement handed over to anyone with the throughput to grind a nonce for it, and the
 retraction described in §6.
+
+#### Where this goes from here
+
+This is a log, not a campaign. The benchmark is live and adversarial, the leaderboard moves several
+times a day, and §7 is the honest account of what happened when one machine tried to race fleets on
+rented datacenter GPUs. I am not going to win that race and am not going to pretend otherwise.
+
+What one machine can do, and what this fork will keep doing when I come back to it:
+
+- **Watch the frontier and read the promotions.** Every accepted submission ships its own source,
+  so the diffs say what actually worked. Four lines of a promotion explained more than a day of my
+  own speculation did.
+- **Measure the things that are cheap to check and expensive to assume.** Most of what is written
+  down here cost minutes to establish and would have cost days to guess at wrongly. Several
+  measurements closed off ideas that looked large in the score column and were unreachable.
+- **Keep the record honest, including the wrong parts.** Sections 2, 6 and 7 are all things I got
+  wrong or lost at, kept in place and marked, because a corrected mistake is more use to the next
+  reader than a tidy narrative. Two of the retractions were published upstream as well.
+- **Hand over what I cannot spend.** One measured improvement went upstream as a solver note
+  specifically because someone with throughput can cash it in an hour and I cannot.
+
+If you are reading this months later, the scores will be wrong and quite possibly the whole
+construction will have been replaced again. That is expected. The commit each measurement names is
+what makes it still readable.
 
 #### Where the cost actually is
 
