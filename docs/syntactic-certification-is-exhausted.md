@@ -216,5 +216,5 @@ cargo build --release --offline --example hotness --example constzero --example 
 rm -rf examples
 ```
 
-Run the controls first. Every `--check` requires that no certified gate fired on any of the 9,024
-shots and exits non-zero otherwise.
+The controls come first in that order deliberately. Every `--check` requires that no certified
+gate fired on any of the 9,024 shots, and exits non-zero otherwise.

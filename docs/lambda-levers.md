@@ -244,7 +244,7 @@ reduction carried essentially all the weight. It did, and it was available: 11.9
 1.27% of score.
 
 **Caveat on precision.** n=42 is a small sample for a covariance estimator; the sem on each channel
-is ~0.42 and λ_total inherits more than that. Read 8.111 as "about 8", meaning thousands of trials
+is ~0.42 and λ_total inherits more than that. 8.111 is "about 8", meaning thousands of trials
 per seed rather than hundreds of millions. That is an order-of-magnitude claim, and the order of
 magnitude is what changed. The directional argument in `lambda-measurement.md` still applies: the
 covariance estimate is on the safe side for planning and cannot understate the cost of a grind.
@@ -263,7 +263,7 @@ of λ_total. The conditional figure is the directly measured one and should be p
 
 - **P(phase-clean | classical-clean) = e^-3.0 = 5.0%, so ≈20 candidates per seed, not ≈7.**
 - λ_total ≈ 5.787 + 3.000 = **8.79**, against 8.111 from the covariance estimator at n=42. The two
-  agree inside their uncertainties; treat λ_total at delta 2 as "about 8 to 9".
+  agree inside their uncertainties, which puts λ_total at delta 2 at "about 8 to 9".
 - A seed costs ~6,500 nonces screened plus ~20 harness confirmations, so roughly **an hour** at the
   round-1 rate. Feasibility is unchanged; only the constant moved.
 
@@ -323,10 +323,11 @@ is.
 
 ## Method
 
-**Hold `SUB4_APPLY_STRIP=0` in every arm of any λ or structural experiment.** The strip repoints
-under any stream edit, so with it on you measure its corruption rather than your knob. That is what
-made the `ITERS ≡ 0 mod 3` rule look true. Two smaller operational notes from the same work: the
-`avgT`, qubits and score of a *failing* config are still readable from `results.tsv`, because
+**Every arm of every λ and structural experiment here ran with `SUB4_APPLY_STRIP=0`.** The strip
+repoints under any stream edit, so with it on an arm measures the strip's corruption rather than
+the knob under test. That is what made the `ITERS ≡ 0 mod 3` rule look true. Two smaller
+operational notes from the same work: the `avgT`, qubits and score of a *failing* config are still
+readable from `results.tsv`, because
 `eval_circuit` appends on its FAIL path, which is what lets a lever be priced even when the shipped
 nonce is dirty under it; and `pkill -f <pattern>` will match the killing script's own command line
 if the pattern appears in it.
@@ -361,5 +362,5 @@ label, and the shared list buys no variance reduction. It is used for protocol h
 nonce, read from `results.tsv`, which records them on the FAIL path too, so a lever can be priced
 even when the shipped nonce is not clean under it. But `TLM_TARGET_Q` and `TLM_SQUARE_PEAK_CAP`
 are both pinned at 1154, fitted to the shipped geometry; an arm that moves peak qubits has not had
-those re-fitted to it. Read every score here as the cost of the lever *before* re-tuning, so an
-upper bound on its cost.
+those re-fitted to it. Every score here is the cost of the lever *before* re-tuning, so an upper
+bound on its cost.

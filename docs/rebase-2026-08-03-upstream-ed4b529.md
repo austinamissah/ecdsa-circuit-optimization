@@ -24,8 +24,8 @@ and its `src/` tree is identical to `ed4b529`'s.
 Built twice from a clean checkout with no `TLM_*` / `SUB4_*` in the environment, byte-identical
 both times, **0 classical / 0 phase / 0 ancilla**. The comment overstates avgT by exactly **980**,
 i.e. the score by 1,130,920. The most likely explanation is that the comment was written before the
-`deep_strip_keys.rs` re-mine landed in the same submission; either way it is stale and **must not be
-quoted as the baseline.** Build it.
+`deep_strip_keys.rs` re-mine landed in the same submission; either way it is stale, and the built
+tree, not the comment, is the baseline.
 
 So the real move is **−1,121,688, or −0.0754%**, in the right direction. Upstream improved; it did
 not regress. Reading the comment at face value inverts the sign of that conclusion, which is
@@ -39,7 +39,7 @@ precisely the failure mode this document exists to prevent.
 | `mod.rs:2379` comment | 1,487,599,474 | stale by 980 avgT; see above. |
 | **`./benchmark.sh`** | **1,486,468,554** | **the tree.** |
 
-**Measure against 1,486,468,554.** The other two are provenance records of earlier states, and both
+**The baseline is 1,486,468,554.** The other two are provenance records of earlier states, and both
 are worse than the circuit actually in the repo.
 
 ## Arms priced against the new baseline
@@ -59,7 +59,7 @@ Full harness, `build_circuit` + `eval_circuit`, at the shipped nonce. "upstream 
 Each arm has a distinct `md5 ops.bin`. Note peak qubits go 1154 → 1155 at every delta ≥ 1, which
 costs **+0.0867%** on its own before any avgT movement.
 
-### Arm C is a foregone conclusion, so do not spend the census
+### Arm C is a foregone conclusion, so the census was not spent on it
 
 C was "delta 1 with a census re-mined at delta 1", and it is worth running only if it can land
 *below* 1,486,468,554. It cannot, and the bound does not depend on how good our miner is:

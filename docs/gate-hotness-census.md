@@ -141,6 +141,7 @@ cargo build --release --offline --example hotness
 ./target/release/examples/hotness -            # summary only
 ```
 
-Honours `SUB4_APPLY_STRIP` / `TLM_SCHED_J2_DELTA`; run it under the same environment as the build
-being priced. **Check the `GATE ok` line and that `avgT` matches `eval_circuit` before reading
-anything else.** The instrument is only meaningful when it reconstructs the scorer's total.
+It honors `SUB4_APPLY_STRIP` / `TLM_SCHED_J2_DELTA`, so it belongs under the same environment as
+the build being priced. **The `GATE ok` line and the `avgT` match against `eval_circuit` are what
+license everything else in the dump.** The instrument is only meaningful when it reconstructs the
+scorer's total.

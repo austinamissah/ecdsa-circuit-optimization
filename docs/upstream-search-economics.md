@@ -5,8 +5,8 @@
 > [`lambda-measurement.md`](lambda-measurement.md)). The current figure is on `6909d15`: **λ_total
 > 20.560, ~8.5e8 trials/seed** at 183 trials/hour, see
 > [`lambda-6909d15.md`](lambda-6909d15.md). Bootstrapped, the two heads are statistically
-> indistinguishable, so every conclusion below is unchanged in kind. Quote `6909d15` for anything
-> current.
+> indistinguishable, so every conclusion below is unchanged in kind, and `6909d15` is the current
+> figure.
 
 At λ_total ≈ 20 a clean seed costs ~5.0e8 full-harness trials on `801dd20`, ~8.5e8 on `6909d15`.
 Upstream landed 25 accepted submissions in 21 days. This document works out how, because the answer

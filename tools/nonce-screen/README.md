@@ -47,7 +47,7 @@ Uncontended, on the machine described in [`../../docs/lambda-measurement.md`](..
 | | per nonce | note |
 |---|---|---|
 | `./benchmark.sh` | **110 s** | build 59 s + eval 57 s, paid on every trial |
-| `screen --mode count` | **~55 s** | eval-equivalent; build amortised |
+| `screen --mode count` | **~55 s** | eval-equivalent; build amortized |
 | `screen --mode ladder` | **~12 s** | mean over 20 nonces |
 
 **9.2× over the harness.** The saving is the rebuild, not the simulation: `point_add::build()` is

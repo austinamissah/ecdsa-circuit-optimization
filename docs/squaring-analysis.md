@@ -2,8 +2,9 @@
 
 > **Provenance:** written 2026-07-11 against commit `422f21d`. The fork was rebased onto upstream
 > `8af8a6f` on 2026-08-02 and the circuit has changed since (`ITERS` 258 → 261, `SCHED_J2` rewritten,
-> new occupancy tripwire, peak 1152 → 1154). Accurate for the circuit it describes; verify specific
-> numbers against current source. See [`CONCLUSION.md`](CONCLUSION.md) for the re-audit.
+> new occupancy tripwire, peak 1152 → 1154). Accurate for the circuit it describes; specific
+> numbers need to be checked against current source. See [`CONCLUSION.md`](CONCLUSION.md) for the
+> re-audit.
 
 Read-only. No source changed. Target: modular squaring, ~4.5% of the Toffoli budget (~62,081 CCX
 across its phases), via `mod_square_sub_pm_secp256k1_symmetric` (square.rs:471) and the live backend
@@ -144,7 +145,8 @@ two rewrite ideas were investigated and did not pan out:
    dual-use terms tie). A risky reversible-arithmetic rewrite with no fast validation loop for ~0.6% of
    budget, poor effort/reward; deprioritized.
 
-Everything else (symmetry, diagonal, NAF reduction) is already at its floor; don't spend math there.
+Everything else (symmetry, diagonal, NAF reduction) is already at its floor, so there is no math
+left to spend there.
 The GCD engine (~95% of the budget) is where any real room for improvement would be, and it is already at its
 frontier.
 

@@ -112,4 +112,4 @@ cargo build --release --offline --example hotness
 rm -rf examples
 ```
 
-Check `GATE ok` and that `avgT` matches `eval_circuit` before using any of it.
+The dump is only usable once `GATE ok` prints and `avgT` matches `eval_circuit`.

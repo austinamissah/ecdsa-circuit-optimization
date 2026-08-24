@@ -2,8 +2,9 @@
 
 > **Provenance:** written 2026-07-11 against commit `422f21d`. The fork was rebased onto upstream
 > `8af8a6f` on 2026-08-02 and the circuit has changed since (`ITERS` 258 → 261, `SCHED_J2` rewritten,
-> new occupancy tripwire, peak 1152 → 1154). Accurate for the circuit it describes; verify specific
-> numbers against current source. See [`CONCLUSION.md`](CONCLUSION.md) for the re-audit.
+> new occupancy tripwire, peak 1152 → 1154). Accurate for the circuit it describes; specific
+> numbers need to be checked against current source. See [`CONCLUSION.md`](CONCLUSION.md) for the
+> re-audit.
 
 Read-only study of the engine that spends ~95% of the Toffoli budget. Scope:
 `src/point_add/trailmix_ludicrous/{gcd,comparator,gidney,mcx,fused,arith}.rs` plus the
@@ -223,7 +224,7 @@ result + clean ancilla/phase. Relevant to this engine:
 Loaded once per build by `load_schedule` (`mod.rs:261-303`) into a thread-local `Sched` struct,
 with env-var override hooks (`LUD_EXTRA_FOLD_*`, `TLM_HYB_V_*`). Two categories:
 
-**Structural / correctness data, do NOT edit blindly:**
+**Structural / correctness data, not safely edited without a derivation:**
 - `ITERS=258`, `JUMP=2`, `PAD=20`, loop structure; `JUMP` is asserted, `ITERS` sets tape length.
   Changing `ITERS` changes the GCD depth and every tape/codec size.
 - `SCHED_J2`, `GAP_J2`, per-iteration live width and comparator width. These bound the arithmetic
@@ -231,7 +232,7 @@ with env-var override hooks (`LUD_EXTRA_FOLD_*`, `TLM_HYB_V_*`). Two categories:
   live bits) but also the main lever (too large wastes gates). Tunable **downward only to the true
   minimal width**, which is not obviously known.
 - `GCD_BRANCH` (`[u8;1032]`, values 0/1/2), selects the step *shape* per iteration. This encodes
-  the GCD schedule structure; a wrong value emits the wrong circuit. Treat as fixed.
+  the GCD schedule structure; a wrong value emits the wrong circuit. It is fixed data.
 
 **Per-step width knobs, the experimentation surface (affect gate count, correctness-linked if cut
 too far):**

@@ -13,8 +13,8 @@
 > **A newer measurement exists.** [`lambda-6909d15.md`](lambda-6909d15.md) repeats this sweep on
 > `upstream/main` `6909d15` (= accepted submission `ed4b529`) and reports λ_total = 20.560, 95% CI
 > 18.007 to 23.016, statistically indistinguishable from the 20.04 below. This document remains the
-> reference for method, traps and the estimator's directional caveat; quote the newer one for the
-> current head.
+> reference for method, traps and the estimator's directional caveat; the newer one carries the
+> figure for the current head.
 
 The score is `average executed Toffoli × peak qubits`. There is a third quantity that decides
 whether a circuit can ship at all, and it is not in the score: **λ, the built-in per-run failure
@@ -152,8 +152,8 @@ Measured uncontended on an idle machine, each binary timed separately:
 **An earlier draft of this document said 61 s.** That measurement was taken early in the session
 on a cold machine; this is a 15 W-class laptop that throttles under sustained load, and 110 s is
 the settled figure after hours of running. It is not a units error: both were single uncontended
-`./benchmark.sh` runs. Treat 110 s as the number, and treat any timing taken in the first minutes
-of a session on this hardware as optimistic.
+`./benchmark.sh` runs. 110 s is the settled number, and any timing taken in the first minutes of a
+session on this hardware is optimistic.
 
 Under 14 concurrent workers the sweep achieved an aggregate of **205 trials/hour**. Against the
 110 s single-core figure (32.7 trials/hour) that is an effective **6.3×**, i.e. **45% parallel
@@ -162,8 +162,8 @@ structural reasons: only 4 of this CPU's 12 cores are performance cores, and eac
 re-emits the full op stream and pushes ~507 MB through zstd to produce a 30 MB `ops.bin`, so
 workers contend on memory bandwidth and I/O rather than on arithmetic.
 
-**Use 205 trials/hour, the measured aggregate, for any whole-machine cost estimate.** It is
-unchanged by the correction above, because it was measured directly rather than extrapolated,
+**The figure for any whole-machine cost estimate is 205 trials/hour, the measured aggregate.** It
+is unchanged by the correction above, because it was measured directly rather than extrapolated,
 which is exactly why the seed-cost figures below did not move.
 
 ### The cost of a seed
@@ -290,15 +290,16 @@ rebuild, so this costs ~15 s per worker rather than ~70 s.
 
 1. **`sudo` must not be usable.** The driver installs a `sudo` shim that exits non-zero, forcing
    `benchmark.sh` onto its `setpriv --no-new-privs bwrap` path. Without it, sudo's `env_reset`
-   strips `SUB4_TAIL_NONCE` and every trial silently measures the default nonce. Verify before
-   trusting anything: two different nonces must produce two different `ops.bin` md5 values.
+   strips `SUB4_TAIL_NONCE` and every trial silently measures the default nonce. The check that
+   settles it: two different nonces must produce two different `ops.bin` md5 values.
 2. **The sandbox must be able to run.** On Ubuntu 24.04+, `kernel.apparmor_restrict_unprivileged_userns=1`
    blocks `bwrap`, and `benchmark.sh` fails closed with
    `bwrap: loopback: Failed RTM_NEWADDR`. An AppArmor profile permitting `userns` for
    `/usr/bin/bwrap` fixes it. Also ensure the scratch path is traversable by uid 65534 (`o+x` on
    every parent directory), or `bwrap` fails with `execvp: Permission denied`.
 3. **The controls must come back clean.** The nonce list includes the shipped nonce three times.
-   If any control row is not `0/0/0` with the baseline md5, the sweep is void. Do not analyze it.
+   If any control row is not `0/0/0` with the baseline md5, the sweep is void and cannot be
+   analyzed.
 
 ### Analysis
 

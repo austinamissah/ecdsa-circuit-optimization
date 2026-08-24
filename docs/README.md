@@ -40,7 +40,8 @@ Nothing here has moved or been renamed. This is a map over the same paths.
 | [`gate-hotness-census.md`](gate-hotness-census.md) | the per-gate charge census the certification work is built on |
 
 **Working notes**: instrument builds, per-component analyses, out-of-date measurements, and
-literature. Accurate for the head each names; check any specific number against current source.
+literature. Accurate for the head each names; any specific number needs to be checked against
+current source.
 Grouped by kind under [Current](#current-2026-08-03--08-04), [Superseded
 baseline](#superseded-baseline-2026-08-02), [Frontier & literature
 research](#frontier--literature-research), [Per-component
@@ -50,16 +51,16 @@ analyses](#per-component-analyses) and [Reference](#reference), below.
 > was written 2026-07-11 against commit `422f21d`. The fork was rebased onto upstream `8af8a6f`
 > on 2026-08-02, 25 accepted submissions later, and the circuit changed materially (`ITERS`
 > 258 → 261, `SCHED_J2` rewritten, a new occupancy tripwire, peak 1152 → 1154). Those documents
-> are accurate for the circuit they describe and are kept as a record; check any specific number
-> against the current source before relying on it. The 2026-08-03 / 08-04 documents are current;
+> are accurate for the circuit they describe and are kept as a record, and any specific number in
+> them needs to be checked against current source. The 2026-08-03 / 08-04 documents are current;
 > the 2026-08-02 group is priced against the older `801dd20` head.
 
 ## Current (2026-08-03 / 08-04)
 - [`lambda-6909d15.md`](lambda-6909d15.md), **the current λ figure**: λ_total = **20.560** (95% CI
   18.007–23.016) on head `6909d15` over 199 nonces, ~8.5e8 trials/seed, ~529 wall-years at the
   measured 183 trials/hour. Bootstrapped against `801dd20`'s 20.04 the difference is +0.525 (95% CI
-  −2.626 to +3.632), so **λ did not move** across eight accepted score-lowering submissions. Quote
-  this document, not [`lambda-measurement.md`](lambda-measurement.md), for anything current.
+  −2.626 to +3.632), so **λ did not move** across eight accepted score-lowering submissions. This
+  document, not [`lambda-measurement.md`](lambda-measurement.md), carries the current figure.
 - [`syntactic-certification-is-exhausted.md`](syntactic-certification-is-exhausted.md), **the
   consolidated negative**: cooling, census sampling and affine relations over GF(2) all fail to
   certify any of the 46,134 never-firing gates, each with a passing control. All three reason about

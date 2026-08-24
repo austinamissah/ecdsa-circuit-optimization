@@ -2,8 +2,9 @@
 
 > **Provenance:** written 2026-07-11 against commit `422f21d`. The fork was rebased onto upstream
 > `8af8a6f` on 2026-08-02 and the circuit has changed since (`ITERS` 258 → 261, `SCHED_J2` rewritten,
-> new occupancy tripwire, peak 1152 → 1154). Accurate for the circuit it describes; verify specific
-> numbers against current source. See [`CONCLUSION.md`](CONCLUSION.md) for the re-audit.
+> new occupancy tripwire, peak 1152 → 1154). Accurate for the circuit it describes; specific
+> numbers need to be checked against current source. See [`CONCLUSION.md`](CONCLUSION.md) for the
+> re-audit.
 
 Read-only. No source changed. Question: could CONSTPROP prove more Toffoli controls constant-zero by
 injecting a bit-growth invariant (`|u|,|v| < 2^{w(i)}` at iteration `i`) that its local dataflow
@@ -142,4 +143,5 @@ index-fragile table entries (`docs/dead-gate-analysis.md`) with provable removal
 Toffoli count, but immune to the emission-order fragility that currently makes every inner-loop edit
 dangerous. That converts an unproven, brittle optimization into a proven, self-maintaining one. If
 the motivation is "make the existing savings safe," this is the right project; if it's "find new
-Toffolis," the ceiling above says temper expectations and run the cheap experiment first.
+Toffolis," the ceiling above is low, and the cheap experiment settles it before any code is
+written.

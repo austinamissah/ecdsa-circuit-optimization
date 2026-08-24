@@ -26,7 +26,7 @@ Rebuilds the instance through the same encoder and appends a **conditional
 lexicographic gate-order break**. Two shears commute unconditionally when four GF(2)
 dot products vanish (`l2.d1 = r2.d1 = l1.d2 = r1.d2 = 0`); for each adjacent pair it
 emits `commute(i,i+1) -> params(i) <=_lex params(i+1)`. Conditioning on `commute` is
-what keeps it sound, since non-commuting neighbours retain both orders.
+what keeps it sound, since non-commuting neighbors retain both orders.
 
 Left/right control commutativity is already broken by
 `y5_normalizer_synth.constrain_gate_shape`. **Wire permutation is not a symmetry here**

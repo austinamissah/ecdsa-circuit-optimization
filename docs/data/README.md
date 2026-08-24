@@ -1,7 +1,8 @@
 # Raw measurement data
 
 Primary data behind [`../lambda-measurement.md`](../lambda-measurement.md). These are the
-measurements themselves, not a summary. Keep them so the analysis can be re-derived or challenged.
+measurements themselves, not a summary, and they are kept so the analysis can be re-derived or
+challenged.
 
 ## New-baseline arms (2026-08-03, after the `ed4b529` rebase)
 
@@ -16,10 +17,11 @@ The per-gate hotness dump behind [`../gate-hotness-census.md`](../gate-hotness-c
 mkdir -p examples && cp tools/census/hotness.rs examples/
 cargo build --release --offline --example hotness
 ./target/release/examples/hotness /tmp/head      # writes /tmp/head.hot.tsv
-rm -rf examples          # transient; do not commit it
+rm -rf examples          # transient, not committed
 ```
 
-Check the `GATE ok` line and that the printed `avgT` matches `eval_circuit` before using the dump.
+The dump is only usable once the `GATE ok` line prints and the printed `avgT` matches
+`eval_circuit`.
 
 ## Stream-provenance dumps
 
@@ -61,7 +63,7 @@ The instrument is [`../../tools/census/dump_gates.rs`](../../tools/census/dump_g
 mkdir -p examples && cp tools/census/dump_gates.rs examples/
 cargo build --release --offline --example dump_gates
 SUB4_APPLY_STRIP=0 ./target/release/examples/dump_gates /tmp/head
-rm -rf examples          # transient; do not commit it
+rm -rf examples          # transient, not committed
 
 # --- the census stream (9,073,163 / 1,361,613) ---
 # d9ef3e9 predates the tool, so the example is copied in from THIS checkout.

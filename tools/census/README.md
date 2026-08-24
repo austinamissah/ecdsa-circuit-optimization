@@ -82,7 +82,7 @@ replaces. That is not a flaw in the re-mine; it is what the estimator is.
 | 64 | 3,924 |
 | 128 | 4,077 |
 
-Wider lanes amortise the 208 MB compact-op stream but grow the 529,634-entry bit array linearly,
+Wider lanes amortize the 208 MB compact-op stream but grow the 529,634-entry bit array linearly,
 so the two effects nearly cancel: L=128 is only 1.33× L=16. Twelve concurrent workers saturate at
 **~14,100 samples/s aggregate**, a 4× per-worker slowdown. This is memory-bandwidth bound, and
 320 M samples is a ~6-hour run.

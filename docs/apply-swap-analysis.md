@@ -2,8 +2,9 @@
 
 > **Provenance:** written 2026-07-11 against commit `422f21d`. The fork was rebased onto upstream
 > `8af8a6f` on 2026-08-02 and the circuit has changed since (`ITERS` 258 → 261, `SCHED_J2` rewritten,
-> new occupancy tripwire, peak 1152 → 1154). Accurate for the circuit it describes; verify specific
-> numbers against current source. See [`CONCLUSION.md`](CONCLUSION.md) for the re-audit.
+> new occupancy tripwire, peak 1152 → 1154). Accurate for the circuit it describes; specific
+> numbers need to be checked against current source. See [`CONCLUSION.md`](CONCLUSION.md) for the
+> re-audit.
 
 Read-only correctness investigation. No code changed. Question: can the apply-swap
 `for j in 0..n { cswap(swp, x[j], y[j]) }` (`gcd.rs:1336`) be bounded to the GCD live width

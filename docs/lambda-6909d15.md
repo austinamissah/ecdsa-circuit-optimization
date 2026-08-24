@@ -191,9 +191,10 @@ the gating project.
 
 ## Reproducing
 
+The measurement runs from a pristine upstream tree, not from this fork's HEAD, which carries
+`schedule.rs` / `gcd.rs` lever edits that are env-gated but not provably inert.
+
 ```bash
-# pristine upstream tree. do NOT measure from our HEAD, which carries
-# schedule.rs/gcd.rs lever edits that are env-gated but not provably inert
 git archive 6909d15 | tar -x -C "$SCRATCH/w00"
 cd "$SCRATCH/w00" && cargo build --release --locked --bin build_circuit --bin eval_circuit
 

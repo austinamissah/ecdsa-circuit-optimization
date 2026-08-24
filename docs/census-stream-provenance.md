@@ -99,7 +99,7 @@ this 0.68 [λ]"*.
 **There was nothing to recover.** Those gates do not exist in the current circuit. A later
 optimization deleted them outright, which is precisely what the strip existed to do, so **the score
 they represented is already banked in the head figure**. No census, at any depth, on any stream,
-can recover a gate that is not in the stream. The 251 is a closed line of enquiry, not a pending
+can recover a gate that is not in the stream. The 251 is a closed line of inquiry, not a pending
 0.02%.
 
 The same three edits also removed **1,178 gates the census certified *live***: 344 at `7726431`,
@@ -124,7 +124,7 @@ head stream with unchanged occupancy**:
 The tripwire accepts them, `build_circuit` applies all 12,292 + 3,923 of them, and the resulting
 circuit passes 9,024/9,024. So the miner's **25.02% dead / 42.67% downgrade over-observation is
 measured on gates that are identical in both streams.** The stream difference cannot be the cause,
-and that line of enquiry is now closed.
+and that line of inquiry is now closed.
 
 What remains, from that same plan: the CCZ effective condition (this census folds the target in as
 `cond & t & c1 & c2`; the shipped census may not), condition-stack handling of nested
@@ -170,10 +170,10 @@ additional non-sampling certification layer, an analytic or restricted-reachabil
 applied on top of the sampling census, which would explain both monotonicity and why a purely
 statistical re-miner reproduces almost none of it.
 
-**Read this as a lead, not a conclusion.** It is the next thing to test, and the test is to look for
-a certification path that can only add: check whether the added keys share a structural property
-(register, condition nesting depth, gadget type) that a proof-based pass could key on, rather than
-looking for a sampling parameter that would produce them.
+**This is a lead, not a conclusion.** It is the next thing to test, and the test is a search for a
+certification path that can only add: whether the added keys share a structural property (register,
+condition nesting depth, gadget type) that a proof-based pass could key on, rather than a sampling
+parameter that would produce them.
 
 ## A prior fix that this analysis depends on
 

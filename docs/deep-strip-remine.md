@@ -88,7 +88,7 @@ geometry simply has fewer dead gates.
   against 15.342 ± 0.189 strip-off, so λ-free, but that buys nothing when the score moves the wrong
   way.
 
-**Do not pursue a delta-0 re-mine with this miner.**
+**A delta-0 re-mine with this miner is not worth pursuing.**
 
 ## The harness-order hypothesis: unresolved, and doubtful on cost
 
