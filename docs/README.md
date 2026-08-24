@@ -28,7 +28,7 @@ short version of what this fork measured and what it got wrong. Project write-up
 
 Nothing here has moved or been renamed. This is a map over the same paths.
 
-**The findings.** The five documents that carry a result, in the order worth reading them:
+**The findings.** The six documents that carry a result, in the order worth reading them:
 
 | | |
 |---|---|
