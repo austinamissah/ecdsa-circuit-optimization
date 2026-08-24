@@ -57,7 +57,7 @@ would double-advance them, so indices are deterministic per build.
 entry and *not* per emitted gate, **suppressing a gate does not change any call index.** Adding an
 entry to a table therefore removes exactly one gate and shifts nothing. So *extending a table is,
 by construction, index-safe*, the danger of candidate D is **not** index perturbation; it is
-solely whether the gate is truly dead.
+solely whether the gate is dead.
 
 **What DOES break the indices.** Any change that alters the **number or order of primitive
 invocations** repoints every baked entry for that primitive downstream of the change. Because entry
@@ -127,12 +127,12 @@ for why the obvious candidate classes are already covered:
 | Reorder phases, add/remove a primitive call, refactor emit order | **shifts** the affected primitive's counter | **dangerous** |
 | Strengthen CONSTPROP (lattice/affine/word-level) | none, CONSTPROP works on the op stream, index-agnostic | **safe & sound** (§5) |
 
-The crucial asymmetry: hand-adding a table entry is index-safe but *unprovable*; the code changes
-that would be *worth* optimizing (widths, reordering) are exactly the ones that **invalidate the
-existing tables**. So the tables are simultaneously (a) safe to append to and (b) a hazard that
-constrains every other edit near the inner loop.
+The asymmetry: hand-adding a table entry is index-safe but *unprovable*; the code changes that would
+be *worth* optimizing (widths, reordering) are exactly the ones that **invalidate the existing
+tables**. So the tables are simultaneously (a) safe to append to and (b) a hazard that constrains
+every other edit near the inner loop.
 
-## 5. Honest verdict, effectively saturated; the only sound "more" is stronger CONSTPROP
+## 5. Verdict, effectively saturated; the only sound "more" is stronger CONSTPROP
 
 Candidate D mirrors the width result (`docs/apply-swap-analysis.md`, `docs/gcd-engine-study.md`): the
 low-hanging deadness is already gone, via two layers that between them cover the provable cases,
@@ -141,8 +141,8 @@ enabled). There is no pure-win table extension identifiable by inspection, becau
 for any *new* entry does not exist in the repo and cannot be reconstructed by reading the code; a
 green eval on 9,024 sampled inputs is not a proof for all inputs.
 
-The one genuinely safe *and* sound version of the idea is **not** editing tables by hand but
-**strengthening CONSTPROP** so it *re-proves* more deadness each build:
+The one safe *and* sound version of the idea is **not** editing tables by hand but **strengthening
+CONSTPROP** so it *re-proves* more deadness each build:
 - It is index-agnostic (operates on the finished op stream), so it is immune to the emission-order
   fragility that makes the baked tables dangerous.
 - It is re-derived per build and empirically re-verifiable (`CONSTPROP_VERIFY`), so its removals are

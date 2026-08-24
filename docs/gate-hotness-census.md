@@ -49,8 +49,7 @@ avgT=1288101.386  (eval_circuit reports 1288101.386)
 ```
 
 That equality is the whole license for what follows. An earlier run drew 9,216 shots instead of
-9,024 and produced `avgT=1288114.585`, which is visibly close and wrong. The gate caught it;
-eyeballing would not have.
+9,024 and produced `avgT=1288114.585`, which is visibly close and wrong. The gate caught it.
 
 ## The distribution
 
@@ -62,7 +61,7 @@ eyeballing would not have.
 | partial | 110,490 | 8.225% | 498,399,002 | 4.288% |
 | **full** (hotness 1.0) | 1,232,871 | 91.775% | 11,125,427,904 | **95.712%** |
 
-By decile, where the empty rows are the result:
+By decile:
 
 | hotness bucket | gates | share of gates | share of charge |
 |---|---:|---:|---:|
@@ -77,9 +76,9 @@ spans `[0.4805, 0.5208]`, 287 distinct charge values, mean hotness **0.4999**.
 
 ### Three findings, in order of how much they constrain the lever
 
-**1. There are no cold gates. Not one.** Every CCX/CCZ in the stream is charged on at least 4,336 of
-9,024 shots. "Cold gates are free" is true of the scorer and empty on this circuit: there is no
-existing free lunch to harvest, and no dead weight that is already costless.
+**1. There are no cold gates.** Every CCX/CCZ in the stream is charged on at least 4,336 of 9,024
+shots. "Cold gates are free" is true of the scorer and empty on this circuit: there is nothing
+already costless to harvest.
 
 **2. The partial band is a fair coin, and cannot be tightened.** Every CCX/CCZ in the stream has
 `c_condition = NO_BIT`, so there is exactly one distinct condition-bit value across all 1.34 M
@@ -118,10 +117,9 @@ circuit as stated, for a reason that is structural rather than incidental:
   synthesis, not a postpass. It pays Clifford ops and classical bits for the bit, and it re-rolls
   the Fiat-Shamir stream and therefore λ.
 
-There is a real prize sitting in plain sight, though, and the census is what makes it a number
-rather than a guess. **The 8.2% of gates that are already conditioned save 4.29% of the total charge
-compared to running them unconditionally.** Conditioning is worth roughly `0.5 × h` of a gate's
-cost, and 95.7% of the charge has not been conditioned at all. The question the census
+The census does price one thing here. **The 8.2% of gates that are already conditioned save 4.29% of
+the total charge compared to running them unconditionally.** Conditioning is worth roughly `0.5 × h`
+of a gate's cost, and 95.7% of the charge has not been conditioned at all. The question the census
 *cannot* answer, and the next instrument to build, is which of those 1.23 M unconditional gates have
 an effect that is only needed on a subset of shots you can determine in advance.
 
@@ -129,8 +127,8 @@ That is a **fire-versus-charge cross-census**: for each unconditional gate, the 
 which its effect mask is non-zero. `census.rs` already computes the effect mask per gate. It
 currently reduces it to a single "ever fired" bit, and would need to keep the per-shot pattern and
 test it against candidate condition bits. A gate that fires on about half the shots, in a pattern
-that matches an available bit, is a genuine cooling candidate worth `0.5` avgT. **No such candidate
-has been identified yet, and this document does not claim any exist.**
+that matches an available bit, is a cooling candidate worth `0.5` avgT. **No such candidate has been
+identified yet, and this document does not claim any exist.**
 
 ## Reproducing
 

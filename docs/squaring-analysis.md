@@ -23,7 +23,7 @@ symmetry, no redundant reduction pass). Two rewrite ideas were investigated and 
 correctness** when measured; and (b) the ~28K compute/uncompute round-trip turns out to be **mostly
 not harvestable**, only the single-use `c` term benefits from going in-place, so the realistic
 ceiling is **~6–9K, not ~28K** (the earlier ~28K figure wrongly lumped all three unbuilds; the two
-dual-use terms tie, per the §7 algebra). **Honest harvestable estimate: effectively 0 at low risk;
+dual-use terms tie, per the §7 algebra). **Harvestable estimate: effectively 0 at low risk;
 ~6–9K only via a speculative in-place rewrite of the `c` term that may not net positive after
 inline-fold overhead.**
 
@@ -69,8 +69,8 @@ controlled-adds (~1 CCX/pair) rather than a raw CCX per pair.**
 `F = 2^32 + 977` is folded via `F_NAF_TERMS` (square.rs:14-20) = **5 signed terms**
 `{(0,−),(4,−),(6,+),(10,−),(32,−)}`, i.e. `977 = 2^10 − 2^6 + 2^4 + 2^0` (NAF weight 4, below the
 binary weight 6) plus `2^32`. **This is the minimum-weight representation, the F-multiply uses no
-redundant or repeated passes, and no fold control is provably zero** (a,b,c high halves genuinely
-reach bits 255–257, e.g. `(2^128−1)² = 2^256−2^129+1`, so nothing is structurally skippable).
+redundant or repeated passes, and no fold control is provably zero** (a,b,c high halves reach bits
+255–257, e.g. `(2^128−1)² = 2^256−2^129+1`, so nothing is structurally skippable).
 
 The one spot **above** the absolute floor: in the `−b·F` term, `apply_shifted_hi_term` (square.rs:43)
 folds the 32 overflow bits of the `shift=32` NAF term **one at a time** with 32 separate F-windows
@@ -95,9 +95,9 @@ cross-term Toffolis, plus O(n) diagonal correction and the mod-p reduction. The 
 combine (~5–6K) is near its NAF floor. **The one component with no theoretical justification is the
 unbuild (~28,344 CCX)**, it exists purely to return the temporary `prod` registers to |0⟩, i.e. it
 is the reversibility "compute–copy–uncompute" tax, not arithmetic. So the implementation is
-**~2× its arithmetic floor**, and essentially all of the excess is the uncompute round-trip.
+**~2× its arithmetic floor**, and nearly all of the excess is the uncompute round-trip.
 
-## 6. Honest yield estimate
+## 6. Yield estimate
 
 **Provably removable right now (skip/tune/table): ~0.** No dead gates, no un-exploited symmetry, no
 redundant reduction pass, no zero-control that isn't already forced. The algorithmic optimizations are
@@ -131,9 +131,9 @@ So the realistic ceiling is **c's unbuild ~9,540, minus the inline-F-fold overhe
 adds to fold sum²'s bits ≥ 256 → net **~6–9K (~0.5–0.7% of the 1.32M budget)**. It is still **not**
 removable by measurement-uncompute (HMR fixups on a multi-bit *arithmetic* register cost ~the same;
 free only for single ANDs, already used). Requires a new reversible primitive
-(`controlled_square_accumulate_shifted_folded`) with **no dedicated unit self-test** (`TLM_SQ_SELFTEST`
-only covers the materialized backend), validated only by the ~4-min build+eval cycle. Genuine
-correctness risk; net could still come out ≤0 after fold overhead.
+(`controlled_square_accumulate_shifted_folded`) with **no dedicated unit self-test**
+(`TLM_SQ_SELFTEST` only covers the materialized backend), validated only by the ~4-min build+eval
+cycle. Correctness risk; net could still come out ≤0 after fold overhead.
 
 ### Verdict
 
@@ -176,5 +176,5 @@ configuration, not an untaken win.
 combine: materialize = build + k·apply + unbuild = (2 + small)·(square cost); in-place = k·(direct
 compute) = k·(square cost). In-place wins **only when k = 1** (1 vs 2). c is k=1 (win ~9,540); a and b
 are k=2 (2 vs 2, tie). Hence only c's unbuild is harvestable. My original §6 lumped all three unbuilds
-(~28,344) into the "prize," which was wrong, the honest ceiling is c's ~9,540 minus inline-fold
+(~28,344) into the "prize," which was wrong; the ceiling is c's ~9,540 minus inline-fold
 overhead.

@@ -8,9 +8,9 @@ an X tail that cancels itself out: it changes no executed gate, but it does chan
 therefore the whole test set. That makes it a free nonce. A circuit is valid if and only if the
 particular draw its own nonce induces happens to hit no failure.
 
-So the search is a lottery, and the ticket price is what matters. Checking one nonce with
-`eval_circuit` takes about 20 seconds. At the shipped configuration roughly one draw in
-3 x 10^8 is clean, so buying tickets at 20 seconds each is hopeless.
+So the search is a lottery. Checking one nonce with `eval_circuit` takes about 20 seconds. At the
+shipped configuration roughly one draw in 3 x 10^8 is clean, so buying tickets at 20 seconds each
+is hopeless.
 
 This tool reproduces the failure conditions in ordinary classical arithmetic, without simulating
 any quantum state, and stops at the first failing shot. Most nonces die in milliseconds.
@@ -70,13 +70,12 @@ enough samples for the interval to mean something.
 
 ## The width schedule is read, never recomputed
 
-This is the most important design decision in the tool, and it was learned the
-expensive way. The schedule has moved three times: a sampled table, then a greedy
-table in its own file, then back to the embedded table with a compressing rescale
-switched **on** by default and a sparse repair set switched **off**. An earlier
-version hard-coded one of those and stopped compiling when upstream deleted the
-file. The worse outcome was available too: still compiling, against a stale table,
-producing confident nonsense.
+The schedule has moved three times: a sampled table, then a greedy table in
+its own file, then back to the embedded table with a compressing rescale
+switched **on** by default and a sparse repair set switched **off**. An
+earlier version hard-coded one of those and stopped compiling when upstream
+deleted the file. The worse outcome was available too: still compiling against
+a stale table, and reporting results that look right.
 
 So the builder dumps what it resolved, and the screener reads it:
 

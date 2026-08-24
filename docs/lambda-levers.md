@@ -1,4 +1,4 @@
-# λ levers: what each one actually buys, measured on `801dd20`
+# λ levers: what each one buys, measured on `801dd20`
 
 > **Measured 2026-08-03** on the hardware in [`lambda-measurement.md`](lambda-measurement.md).
 > Circuit head `801dd20`, with the two source changes described in
@@ -59,16 +59,15 @@ The prediction column is `02-lambda.md`'s divstep convergence tail (`258→5.228
 260→1.114, 261→0.483, 262→0.200, 265→0.014`, from a 1e6-sample convergence distribution), given as
 a delta against the tail term at 261.
 
-**Downward, the model is right, decisively.** 259 predicts +1.970 and measures **+1.658 ± 0.277**,
-a 6.0σ effect at 84% of the predicted magnitude. The small shortfall is in the direction you would
-expect: removing two divsteps also removes two divsteps' worth of their *own* truncation error.
-This is the first direct confirmation of that curve on the current head, and it is the result that
-lets the rest of the row be trusted.
+**Downward, the model is right.** 259 predicts +1.970 and measures **+1.658 ± 0.277**, a 6.0σ effect
+at 84% of the predicted magnitude. The small shortfall is in the direction you would expect:
+removing two divsteps also removes two divsteps' worth of their *own* truncation error. This is the
+first direct confirmation of that curve on the current head.
 
 **Upward, the predicted gain does not appear.** 262, 264 and 267 predict −0.28, −0.45 and −0.48.
-They measure +0.295, +0.353 and −0.375, none individually significant and scattering either side
-of zero; pooled they give **≈ +0.09 ± 0.16**. So the honest statement is a bound, not an effect:
-**|Δλ| < 0.4 at 95% confidence for any `ITERS` above 261, against a predicted gain of 0.3 to 0.5.**
+They measure +0.295, +0.353 and −0.375, none individually significant and scattering either side of
+zero; pooled they give **≈ +0.09 ± 0.16**. So the statement is a bound, not an effect: **|Δλ| < 0.4
+at 95% confidence for any `ITERS` above 261, against a predicted gain of 0.3 to 0.5.**
 
 Two things plausibly absorb the predicted gain, and the data does not separate them. The tail term
 at 261 is already down to 0.483, so an added divstep can recover at most half a λ-unit. Meanwhile
@@ -81,8 +80,8 @@ the 267 arm is not a clean read of the divstep channel alone.
 
 **Either way the lever is spent.** Its entire remaining budget is the 0.483 λ still in the tail at
 261, and buying it costs 0.33% of score per step up, or 1.86% by 267. Nothing above 261 is worth
-taking, and 259 is 1.66 λ worse for 0.48% of score. `ITERS = 261` is the right value; it is simply
-not a place where λ can still be found.
+taking, and 259 is 1.66 λ worse for 0.48% of score. `ITERS = 261` is the right value; it is not a
+place where λ can still be found.
 
 ### The `ITERS ≡ 0 mod 3` rule does not exist
 
@@ -126,9 +125,8 @@ address the gate it was mined against, not a sufficient one. That is the same le
 `04-traps.md`'s "per-phase CCX equality is NOT a soundness certificate", one level up.
 
 The λ cost is small in absolute terms and the strip is worth keeping at its current exchange rate.
-The finding that matters is that **it has a λ cost at all**, so it belongs in the λ budget rather
-than being carried as free, and that a re-mine against the current stream should recover both the
-251 stale keys *and* this 0.68.
+The strip **has a λ cost at all**, so it belongs in the λ budget rather than being carried as free,
+and a re-mine against the current stream should recover both the 251 stale keys *and* this 0.68.
 
 > **Corrected 2026-08-03: the 251 are not recoverable.**
 > [`census-stream-provenance.md`](census-stream-provenance.md) shows all 251 went stale at one
@@ -238,10 +236,9 @@ under an hour per clean seed** on this laptop.
 > `P(phase-clean | classical-clean) = e^-3.0 = 5.0%`, so **≈20 candidates per seed, not ≈7**.
 > Feasibility is unchanged and the wall-clock is still about an hour; only the constant moved.
 
-**This is the result the project needed.** `lambda-measurement.md` concluded that "nonce grinding is
-not merely impractical on this hardware; it is off by three orders of magnitude", and that λ
-reduction carried essentially all the weight. It did, and it was available: 11.9 λ-units of it, for
-1.27% of score.
+`lambda-measurement.md` concluded that "nonce grinding is not merely impractical on this hardware;
+it is off by three orders of magnitude", and that λ reduction carried nearly all the weight. It did,
+and it was available: 11.9 λ-units of it, for 1.27% of score.
 
 **Caveat on precision.** n=42 is a small sample for a covariance estimator; the sem on each channel
 is ~0.42 and λ_total inherits more than that. 8.111 is "about 8", meaning thousands of trials
@@ -336,10 +333,9 @@ if the pattern appears in it.
 nonces at two lane widths before use. Every arm is 400 nonces × 9,024 shots = 3.6 M simulated
 shots, at ~4,360 nonces/hour on 10 workers.
 
-**Sample size and what it can resolve.** Per-nonce λ_classical is Poisson with sd ≈ 3.8, so
-n = 400 gives sem ≈ 0.19 and a two-arm difference sem ≈ 0.27. That resolves a 1 λ-unit change at
-3.7σ and a 0.5 λ-unit change at only 1.8σ, which is stated here rather than buried: the small-Δ
-arms below are bounded, not measured precisely.
+**Sample size and what it can resolve.** Per-nonce λ_classical is Poisson with sd ≈ 3.8, so n = 400
+gives sem ≈ 0.19 and a two-arm difference sem ≈ 0.27. That resolves a 1 λ-unit change at 3.7σ and a
+0.5 λ-unit change at only 1.8σ, so the small-Δ arms below are bounded, not measured precisely.
 
 **The nonce set is fixed across arms but the pairing is cosmetic.** The Fiat–Shamir seed is a hash
 of the *whole* op stream (`eval_circuit.rs:204`), so any change that alters the circuit re-rolls

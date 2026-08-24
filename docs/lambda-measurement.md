@@ -103,12 +103,12 @@ positively correlated beyond the shared term, the covariance overstates λ_both,
 toward the `max(means)` lower bound of **16.23**, and P(clean) up toward 8.9e-8, a grind roughly
 30× cheaper than the point estimate implies.
 
-The error is directional, which is the useful part: the covariance estimate is **conservative for
-planning**. It cannot understate the cost of a grind, only overstate it. There is a plausible
-physical mechanism for such correlation: the four λ sources listed below are all truncation-style
-approximations driven by the same input magnitudes, so an input that stresses one may stress
-another. This is a live possibility, not a formality. Testing it would need per-shot failure
-identities rather than per-run counts, which the harness does not expose.
+The error is directional: the covariance estimate is **conservative for planning**. It cannot
+understate the cost of a grind, only overstate it. There is a plausible physical mechanism for such
+correlation: the four λ sources listed below are all truncation-style approximations driven by the
+same input magnitudes, so an input that stresses one may stress another. This is a live possibility,
+not a formality. Testing it would need per-shot failure identities rather than per-run counts, which
+the harness does not expose.
 
 `memory/02-lambda.md` fits the same structure by a different route (conditional means of
 `E[pg|cm]` over bins, discriminating a "phase ⊂ classical" model from a "phase-only failures
@@ -164,7 +164,7 @@ workers contend on memory bandwidth and I/O rather than on arithmetic.
 
 **The figure for any whole-machine cost estimate is 205 trials/hour, the measured aggregate.** It
 is unchanged by the correction above, because it was measured directly rather than extrapolated,
-which is exactly why the seed-cost figures below did not move.
+which is why the seed-cost figures below did not move.
 
 ### The cost of a seed
 
@@ -176,10 +176,10 @@ which is exactly why the seed-cost figures below did not move.
 
 Nonce grinding is not merely impractical on this hardware; it is off by three orders of magnitude.
 
-**Limitation worth stating plainly: the 95% CI 18.22 to 21.85 spans a factor of ~38 in
-trials-per-seed** (46 to 1,715 wall-years). λ enters the cost exponentially, so even a
-well-determined λ leaves the thing you actually care about loosely determined. Every planning
-figure here should be read as an order of magnitude, not a quantity.
+**Limitation: the 95% CI 18.22 to 21.85 spans a factor of ~38 in trials-per-seed** (46 to 1,715
+wall-years). λ enters the cost exponentially, so even a well-determined λ leaves the thing you care
+about loosely determined. Every planning figure here should be read as an order of magnitude, not a
+quantity.
 
 ### What would make a grind feasible
 
@@ -206,7 +206,7 @@ combination of a faster simulator, cheaper test-pair generation (9,024 pairs is 
 scalar multiplications per nonce), or hardware we do not have. That remains unexplained and is the
 obvious place to look for another order of magnitude.
 
-### λ reduction now carries essentially all the weight
+### λ reduction now carries nearly all the weight
 
 Against λ_total = 20.04 measured, a one-day single-core grind needs λ ≈ 8.9 with the screen. That
 is a shortfall of **≈ 11 λ-units**, and the screen closes 2.2 of it. Even granting the full
@@ -218,7 +218,7 @@ So the screen is necessary instrumentation and nowhere near sufficient. **It doe
 grind feasible; it makes λ work measurable.** Everything now depends on lowering λ itself, and
 `memory/02-lambda.md` prices the four classical sources. Each one is a deliberate
 correctness-for-gates trade, so every λ-unit recovered pushes back against the score axis. That
-tension, not the tooling, is the actual problem.
+tension, not the tooling, is the problem.
 
 See [`upstream-search-economics.md`](upstream-search-economics.md) for why a screen hit is only a
 *candidate*: with λ_phase_only = 3.80 it needs full-harness confirmation at roughly 45 candidates

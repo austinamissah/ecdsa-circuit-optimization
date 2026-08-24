@@ -53,7 +53,7 @@
 //!     ./target/release/examples/hotness out        # writes out.hot.tsv
 //!     ./target/release/examples/hotness -          # summary only, no files
 //!
-//! Honours `SUB4_APPLY_STRIP` / `TLM_SCHED_J2_DELTA` like every other instrument;
+//! Honors `SUB4_APPLY_STRIP` / `TLM_SCHED_J2_DELTA` like every other instrument;
 //! run it with the same environment as the build you are pricing. Default (no env)
 //! is the scored circuit.
 //!

@@ -28,8 +28,7 @@ i.e. the score by 1,130,920. The most likely explanation is that the comment was
 tree, not the comment, is the baseline.
 
 So the real move is **−1,121,688, or −0.0754%**, in the right direction. Upstream improved; it did
-not regress. Reading the comment at face value inverts the sign of that conclusion, which is
-precisely the failure mode this document exists to prevent.
+not regress. Reading the comment at face value inverts the sign of that conclusion.
 
 ### Three numbers disagree; only one was built
 
@@ -108,7 +107,7 @@ The rebased tree at `TLM_SCHED_J2_DELTA=0` with the strip on rebuilds to **md5
 `upstream/main`. The `ITERS`-clamp and the delta lever are still exact identities at delta 0 on the
 new stream, which is the same gate applied at `b1c8f84` / `9f34bb9` on the old one.
 
-## What upstream actually changed
+## What upstream changed
 
 - **Backed out the H3 coordinate-width-18 lever.** `TLM_COORD_MSBS=18` and
   `TLM_COORD_Y_SUB_FINAL_MSBS=19` are gone from `configure_q1153_second512_submission_defaults`,
@@ -144,10 +143,9 @@ define `H2-square` as "reversible modular square", unrelated to the phase channe
 
 **So: upstream does not budget phase risk explicitly, and the `3.0` is not our λ_phase_only.** Our
 3.000 (measured conditional on classical-clean, `c4767be`) matching their `3.0` is a coincidence
-until something connects them, and nothing in the tree does. Worth stating because the coincidence
-is a tempting one.
+until something connects them, and nothing in the tree does.
 
-The one genuinely suggestive detail is `ActionKind.RISK_OR_STRIP_BUDGET` requiring
+The one suggestive detail is `ActionKind.RISK_OR_STRIP_BUDGET` requiring
 `PAIRED_FIXED_RANDOMNESS` and `EXACT_CENSUS` as evidence: upstream's search treats "risk budget"
 and "strip budget" as a single lever class needing paired-randomness plus an exact census, which is
 the same shape as the λ-versus-strip trade we measured. That is a statement about their process,

@@ -87,9 +87,9 @@ claims. This fork's own analysis is in the next section.
 >
 > Nothing here is rewritten to look current. Each measurement names the commit it was taken on, and
 > is kept as a record of what was true then. Upstream keeps its own notes the same way. **What is
-> meant to survive is the method and the lessons, not the numbers**, and the lessons are the point:
-> see §6 for two conclusions of mine that were wrong, and §7 for what happened when I tried to
-> compete on the leaderboard directly. Current-construction detail lives in
+> meant to survive is the method and the lessons, not the numbers**: see §6 for two conclusions of
+> mine that were wrong, and §7 for what happened when I tried to compete on the leaderboard
+> directly. Current-construction detail lives in
 > [`docs/pingpong-2026-08-23.md`](docs/pingpong-2026-08-23.md).
 
 **What is mine and what is not.** The circuit is not mine. It came from the challenge, built by the
@@ -111,14 +111,14 @@ To be clear about what that does and does not mean: **λ does not block anyone, 
 the price has been going up.** Improvements land all the time, 25 of them in three weeks (§2). Each
 one just has to be paid for with a seed search, and λ sets that bill. You can watch the bill rise in
 the leader's own record: eight submissions on one day while λ was still low, down to three on a day
-three weeks later (§3). Nothing stopped working. It got more expensive.
+three weeks later (§3). Nothing stopped working; landing a submission got more expensive.
 
 Measured on the current head `6909d15` over 199 independent seeds, each one a full benchmark run:
 **λ_total = 20.560** (95% CI 18.007 to 23.016), so P(clean seed) ≈ 1.2 × 10⁻⁹, which is about
-**8.5 × 10⁸ trials per usable seed**. At the throughput actually measured on the laptop used (183
-full benchmark runs per hour), that is on the order of **500 years of real time**. The confidence
-interval spans a factor of about 150 in that figure, so read it as an order of magnitude rather
-than an exact number.
+**8.5 × 10⁸ trials per usable seed**. At the throughput measured on the laptop used (183 full
+benchmark runs per hour), that is on the order of **500 years of real time**. The confidence
+interval spans a factor of about 150 in that figure, so read it as an order of magnitude rather than
+an exact number.
 
 **And λ has not moved.** The same measurement on `801dd20` gave 20.04. The bootstrapped difference
 is **+0.525, 95% CI −2.626 to +3.632**, and 37% of the resamples put the difference at zero or
@@ -159,7 +159,7 @@ but I turned them into a hard limit that does not exist. The peak qubit count fo
 configuration cap, and 124 of those qubits come from a borrowed pool that grows to fill whatever
 cap is set.
 
-#### 3. How the leaderboard leader actually operates
+#### 3. How the leaderboard leader operates
 
 The leader is a single automated program (`yukon-autoresearch[bot]`) landing a submission every 0.88
 days, and it ships its search code inside its own submissions. Reading that code explains the pace
@@ -172,8 +172,8 @@ day `ITERS` moved 258 → 261 and made the circuit more aggressive. **Three land
 three weeks later, with λ higher. Same program, same method, fewer submissions per day: the shape of
 the campaign is a rising-λ ramp, which is §1 showing up as a schedule.
 
-Worth noting: **λ appears nowhere in what it selects on.** It is treated as a pass/fail gate and
-never improved. Details: [`docs/upstream-search-economics.md`](docs/upstream-search-economics.md).
+**λ appears nowhere in what it selects on.** It is treated as a pass/fail gate and never improved.
+Details: [`docs/upstream-search-economics.md`](docs/upstream-search-economics.md).
 
 #### 4. Measurement traps that quietly ruin results
 
@@ -200,16 +200,16 @@ instrument detects what it reports absent. Two of those controls caught real def
 negative results were believed.
 
 - **Cooling.** Charge a gate on fewer shots instead of making it fire less often. The ceiling is
-  real and very large: 76.7% of the score is charge on shots where the gate never fires. It is also
-  out of reach. Charging is controlled by a **classical** bit, firing depends on the **quantum**
+  real and large: 76.7% of the score is charge on shots where the gate never fires. It is also out
+  of reach. Charging is controlled by a **classical** bit, firing depends on the **quantum**
   controls, and in this circuit the two are independent. The chance that one gate's roughly 2,256
   firing shots all land inside a given fair coin's true shots is **2⁻²²⁵⁶**. The set of candidates
   is empty for a structural reason, not because the search failed.
 - **Census sampling.** Certify a gate dead by observing it. Our census says 25% of the shipped dead
-  keys fire, in a circuit that demonstrably passes all 9,024 shots, so the census over-observes. The
-  mechanism is the finding: a sampler sees *firing*, and has no access to *why* a gate is quiet, so
-  a data invariant, something that is always true of the data, stays invisible to it at any depth.
-  That also resolves the 25% versus 43% gap left open across three earlier documents.
+  keys fire, in a circuit that demonstrably passes all 9,024 shots, so the census over-observes. A
+  sampler sees *firing*, and has no access to *why* a gate is quiet, so a data invariant, something
+  that is always true of the data, stays invisible to the sampler at any depth. That also resolves
+  the 25% versus 43% gap left open across three earlier documents.
 - **Affine relations over GF(2).** Certify a gate dead by its form, since a `CCX` never fires if its
   two controls are complementary, meaning one is always the opposite of the other. Zero gates
   certified. **Not one gate in the circuit has controls that are affinely related at all**, not
@@ -217,18 +217,18 @@ negative results were believed.
   nonlinear terms.
 
 The three are one result. All three reason about the **form** of a value, and this circuit computes
-modular inversion and modular multiplication, so essentially every value is a nonlinear function of
-the inputs and there is no exploitable form left to inspect. The 46,134 gates are quiet
-because of *what their controls can be*, not because of how those controls are written or how long
-anyone watched them. What would actually prove one dead is an argument about what the binary-GCD
-loop **means**, proved for a single divstep and then extended by induction across all 261. That is a
-research project on its own, and it is now the only route identified. Nothing was removed:
+modular inversion and modular multiplication, so nearly every value is a nonlinear function of the
+inputs and there is no exploitable form left to inspect. The 46,134 gates are quiet because of *what
+their controls can be*, not because of how those controls are written or how long anyone watched
+them. What would prove one dead is an argument about what the binary-GCD loop **means**, proved for
+a single divstep and then extended by induction across all 261. That is a research project on its
+own, and it is now the only route identified. Nothing was removed:
 [`docs/syntactic-certification-is-exhausted.md`](docs/syntactic-certification-is-exhausted.md).
 
 #### 6. Two more conclusions of mine were wrong, and one of them was refuted in twenty minutes
 
 Section 2 records the first pass getting it wrong. The same thing happened twice more on the new
-construction, and both are worth reading for the shape of the error rather than the numbers.
+construction, and in both the shape of the error matters more than the numbers.
 
 **A search cost quoted from too few samples.** λ, the expected number of failing shots per draw,
 sets how many nonces you must try to find a valid one, and the cost is `e^λ`. I measured λ from
@@ -245,21 +245,20 @@ algorithm, Toom-3, named as the open lead. I priced Toom-3, found it capped near
 recombination needs expensive reversible divisions, and then wrote that *the square* was bounded.
 Twenty minutes later a submission landed that added a second level of Karatsuba to the square and
 took 2,650 Toffoli out of it. Karatsuba's recombination is additions and subtractions, with none of
-the expensive division that had sunk Toom-3, which is to say the very criterion I used to rule one
-option out was the criterion that selected the option I never tried.
+the expensive division that had sunk Toom-3. The criterion I used to rule Toom-3 out was the same
+criterion that selected the option I never tried.
 
 The structural model I had built was correct, and it *predicted* the win: the square computes each
 partial product and then uncomputes it, so anything that shrinks the core is worth roughly twice
-its apparent saving. That argues for attacking the algorithm, not against it. Right model, wrong
-conclusion read off it.
+its apparent saving. That argues for attacking the algorithm, not against it.
 
 Both are corrected in [`docs/pingpong-2026-08-23.md`](docs/pingpong-2026-08-23.md) and in the
 retraction note published upstream.
 
 #### 7. I tried to land a submission, and lost to the clock rather than the arithmetic
 
-Worth recording because the failure is structural, not a slip, and it is the thing anyone arriving
-with one machine should understand before spending a week on it.
+The failure is structural, not a slip, and anyone arriving with one machine should understand the
+mechanism before spending a week on it.
 
 **The mechanism.** The 9,024 test inputs are a hash of the circuit's own op stream, so any change
 to the circuit re-rolls them. A submission is therefore two things: an improvement, and a **nonce**,
@@ -270,10 +269,10 @@ so roughly **2.9 x 10^7 draws** per clean nonce.
 
 **The attempt.** I found a real improvement: an interleaving checkpoint (`SUB4_PP_R2`) mistuned by
 33 rounds, worth 322 executed Toffoli, about **-0.038%**, confirmed on two independent proxies at
-unchanged qubit width. Then I built the pipeline to grind a nonce for it and ran it for seven
-hours: about 1.8 million draws, 6.2% of the expected search, 413 survivors of the classical
-pre-filter, 263 of those confirmed against the real scorer, **none clean**. That is exactly the
-expected yield at 6%, so nothing went wrong statistically.
+unchanged qubit width. Then I built the pipeline to grind a nonce for it and ran it for seven hours:
+about 1.8 million draws, 6.2% of the expected search, 413 survivors of the classical pre-filter, 263
+of those confirmed against the real scorer, **none clean**. That is the expected yield at 6%, so
+nothing went wrong statistically.
 
 **What went wrong was the clock.** At this machine's throughput a clean nonce averages ~86 hours.
 Over that window the leaderboard drifts about 1.14%/day, so the target has to be worth more than
@@ -288,11 +287,11 @@ no amount of better filtering closes it: the number of draws is set by the circu
 screener.
 
 **So this fork does not compete on throughput, and says so.** What one machine is good for is
-measuring carefully, finding the things that are cheap to check and expensive to assume, and
-writing them down. Several of those went back upstream as solver notes, including one improvement
-handed over precisely because someone with a fleet can spend it in an hour and I cannot. The
-leaderboard will keep moving; the intention here is to keep watching it, keep measuring, and keep
-the record of what was learned and what was wrong.
+measuring, finding the things that are cheap to check and expensive to assume, and writing them
+down. Several of those went back upstream as solver notes, including one improvement handed over
+because someone with a fleet can spend it in an hour and I cannot. The leaderboard will keep moving;
+the intention here is to keep watching it, keep measuring, and keep the record of what was learned
+and what was wrong.
 
 #### Contributed upstream
 
@@ -318,8 +317,8 @@ retraction described in §6.
 #### Where this goes from here
 
 This is a log, not a campaign. The benchmark is live and adversarial, the leaderboard moves several
-times a day, and §7 is the honest account of what happened when one machine tried to race fleets on
-rented datacenter GPUs. I am not going to win that race and am not going to pretend otherwise.
+times a day, and §7 is the account of what happened when one machine tried to race fleets on rented
+datacenter GPUs. I am not going to win that race.
 
 What one machine can do, and what this fork will keep doing when I come back to it:
 
@@ -329,9 +328,9 @@ What one machine can do, and what this fork will keep doing when I come back to 
 - **Measure the things that are cheap to check and expensive to assume.** Most of what is written
   down here cost minutes to establish and would have cost days to guess at wrongly. Several
   measurements closed off ideas that looked large in the score column and were unreachable.
-- **Keep the record honest, including the wrong parts.** Sections 2, 6 and 7 are all things I got
-  wrong or lost at, kept in place and marked, because a corrected mistake is more use to the next
-  reader than a tidy narrative. Two of the retractions were published upstream as well.
+- **Keep the wrong parts in the record.** Sections 2, 6 and 7 are all things I got wrong or lost at,
+  kept in place and marked, because a corrected mistake is more use to the next reader than a tidy
+  narrative. Two of the retractions were published upstream as well.
 - **Hand over what I cannot spend.** One measured improvement went upstream as a solver note
   specifically because someone with throughput can cash it in an hour and I cannot.
 
@@ -339,7 +338,7 @@ If you are reading this months later, the scores will be wrong and quite possibl
 construction will have been replaced again. That is expected. The commit each measurement names is
 what makes it still readable.
 
-#### Where the cost actually is
+#### Where the cost is
 
 About 95% of the budget is the two modular inversions that reversible affine point addition needs.
 Across the papers surveyed in

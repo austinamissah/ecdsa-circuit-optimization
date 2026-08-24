@@ -26,7 +26,7 @@
 //!
 //! An *atom* is a fresh symbolic unknown, minted whenever a value stops being an
 //! affine function of what came before, the 512 input-register qubits at op 0, the
-//! target of a genuinely nonlinear `CCX`, an `Hmr` measurement outcome, or any write
+//! target of a nonlinear `CCX`, an `Hmr` measurement outcome, or any write
 //! under a partial (`Mixed`) condition.
 //!
 //! Rather than materialise each form as a basis vector, each atom gets a random

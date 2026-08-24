@@ -1,4 +1,4 @@
-# How upstream is actually landing submissions
+# How upstream is landing submissions
 
 > **Which head the λ figures are priced against.** This document was written against `801dd20`
 > (λ_total 20.04, ~5.0e8 trials/seed at 205 trials/hour, see
@@ -79,8 +79,7 @@ weight   = (0.05 + quality) / (1.0 + node.functioning_children)
 all**. λ enters solely as the binary `functioning` gate: pass 0/0/0 or be ineligible. Selection
 pressure is score plus a bonus for under-explored branches. λ is tolerated, never improved.
 
-That is a gap, and it is where our opening is: they are not managing the quantity that gates their
-own throughput.
+That is a gap: they are not managing the quantity that gates their own throughput.
 
 ## The ledger is in the nonces
 
@@ -96,7 +95,7 @@ could not be pinned down; the non-uniformity and the order of magnitude are the 
 
 ## Putting it together
 
-Two dull things, not one clever one:
+Two ordinary mechanisms, not one clever one:
 
 1. **λ was not 20 for most of the campaign.** `ITERS` moved 258 → 261 on 2026-07-26, the same day
    **8 submissions landed**. Our λ = 20.04 is a *late* head (`801dd20`; `6909d15` measures 20.560,
@@ -105,19 +104,19 @@ Two dull things, not one clever one:
    rising-λ ramp.
 2. **Cost per try, not number of tries.** ~1e8 trials in ~1 day is ~1,157 trials/s; on 1,344 vCPU
    that is ~1.2 s/trial, about **90× faster than our 110 s full-harness run**. The ladder supplies
-   7.2× of that. Skipping the rebuild supplies most of the rest, and there is nothing exotic about it.
-   `apply_tail_nonce` touches only the last 96 ops, and `fiat_shamir_seed` is a *streaming* SHAKE256
-   absorb. So the hash state over ops[0 … n−96] can be computed once and cloned per nonce, absorbing
-   5,376 bytes instead of ~507 MB, with no circuit rebuild at all.
+   7.2× of that. Skipping the rebuild supplies most of the rest. `apply_tail_nonce` touches only the
+   last 96 ops, and `fiat_shamir_seed` is a *streaming* SHAKE256 absorb. So the hash state over
+   ops[0 … n−96] can be computed once and cloned per nonce, absorbing 5,376 bytes instead of ~507
+   MB, with no circuit rebuild at all.
 
 **Both of those are now built and measured on our side, and they do not close the gap.** The
 validated screen ([`../tools/nonce-screen/`](../tools/nonce-screen/)) does exactly the above and
 reaches **12 s/nonce against the harness's 110 s, so 9.2× and not 90×**. Since the rebuild was the
-whole of our saving, the remaining ~10× must come from somewhere we have not touched: the
-simulation itself. `eval_circuit` spends 57 s on 9,024 shots, which includes 18,048 secp256k1
-scalar multiplications for test-pair generation. A faster simulator, cheaper pair generation, or
-simply better hardware would each account for it. Which of those they use is **unknown**, since the
-screening code did not ship, and it is the open question worth the most.
+whole of our saving, the remaining ~10× must come from somewhere we have not touched: the simulation
+itself. `eval_circuit` spends 57 s on 9,024 shots, which includes 18,048 secp256k1 scalar
+multiplications for test-pair generation. A faster simulator, cheaper pair generation, or better
+hardware would each account for it. Which of those they use is **unknown**, since the screening code
+did not ship, and it is the open question worth the most.
 
 So they are not beating brute force with a correctness oracle. They are much faster per trial
 through engineering we have only partly reproduced, and they spent most of the campaign at a λ where

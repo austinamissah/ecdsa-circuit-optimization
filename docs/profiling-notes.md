@@ -95,7 +95,7 @@ Supporting/adjacent hooks:
 4. **Dead code is large** (`rounds/dialog` ~9.7k lines + most of `arith/`). Not a scoring factor, but it makes the live path hard to see and risks editing the wrong module, the trap here is that `arith/modular.rs`, `arith/adder.rs`, and the whole `dialog` tree *look* like the arithmetic but aren't live.
 5. **The circuit is schedule-driven** (`schedule.rs` bakes `SCHED_J2`, `GCD_SUB_K`, `CMP_K`, `FOLD_SCHED`, `FFG_G`…). Much "optimization" here is retuning these tables, not rewriting logic, cheap to experiment with, but means correctness depends on the built-in self-tests (`TLM_SQ_SELFTEST`, `*_SELFTEST`).
 
-## Recommended next step (to actually measure)
+## Recommended next step (to measure)
 
 Run the builder once with `TRACE_TLM_CCX=1` (add `CCZ` to the count if any appears) to get the ranked per-phase CCX table, then collapse the phase names into four buckets, inversion, multiply, square, coord add/sub, to get the headline breakdown. That's the smallest read-only-adjacent measurement; it needs only setting an env var when invoking the build binary, no source change. If you later want the breakdown on the *final* (post-constprop/fanout, executed) circuit, that does require a code change, the natural one is emitting durable `DebugPrint` marker ops (kind 17, which the evaluator already preserves) at `set_phase` boundaries and segmenting the simulator's executed count between them.
 
@@ -172,4 +172,4 @@ Inversion and multiply are near-identical (same GCD engine run twice), each ~47.
 
 Caveats (neither changes the conclusion): the 0.33% tail can't be split square-vs-coordinate exactly because `TRACE_TLM_CCX` hard-caps at top 30 (the remaining 20 phases would need a source change to print); and the 5,341 CCZ gates (~0.38% of Toffoli-class) sit outside this table but belong to the same buckets.
 
-**Bottom line:** the Toffoli budget is ~95% the two GCD passes (inversion + multiply, ~666k each), ~4.5% squaring, <0.4% everything else. The GCD inner loop is where essentially all the room for optimization is.
+**Bottom line:** the Toffoli budget is ~95% the two GCD passes (inversion + multiply, ~666k each), ~4.5% squaring, <0.4% everything else. The GCD inner loop is where nearly all the room for optimization is.

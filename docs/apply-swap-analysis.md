@@ -55,7 +55,7 @@ extended-GCD (Bezout-style) coefficients. The GCD *value* register is the separa
 
 ## 2. State of `x[j]`, `y[j]` for `j >= SCHED_J2[i]` at the apply-swap
 
-**Category (d): not provably related, they genuinely differ per input.** Reasoning from the code:
+**Category (d): not provably related, they differ per input.** Reasoning from the code:
 
 - The accumulators are updated every iteration by **full-width modular arithmetic**: in the same
   apply phase, `controlled_mod_add_k(.., &x_reg[..256], &y_reg[..256], ..)` (`gcd.rs:1281-1288`) or
@@ -63,7 +63,7 @@ extended-GCD (Bezout-style) coefficients. The GCD *value* register is the separa
   `fused_double_cdouble(circ, s2, y_reg)` (`gcd.rs:1306/1331`) which doubles `y_reg` mod p across its
   full width. Every one of these writes all 256 bits and reduces mod p via the `F = 2^32+977` fold.
   There is no step that confines the accumulator's meaningful content to the low `current_n` limbs.
-- The values held are reduced field elements mod p (`p ≈ 2^256`), i.e. essentially uniform 256-bit
+- The values held are reduced field elements mod p (`p ≈ 2^256`), i.e. close to uniform 256-bit
   numbers. Their high limbs are ordinary data bits, not structurally zero.
 - The two accumulators start *unequal*: after the initial `swap`, `x = y = 0` and `y = tmp = original y`
   (`gcd.rs:1427-1429`), already different in general, and then diverge further under independent
@@ -73,11 +73,11 @@ There is no invariant in the code forcing `x[j] == y[j]` (nor `x[j]==0 && y[j]==
 limbs at any iteration. The GCD *value* registers `u,v` provably shrink (which is why `current_n`
 tracks them), but the *accumulator* does the opposite, it fills up as coefficients accumulate.
 
-**The width profiles are inverse.** `SCHED_J2[i]` is large for small `i` and small for large `i`
-(it follows the shrinking GCD value). The accumulator is *most fully populated* exactly at large
-`i` (after ~250 iterations of mod-add/double). So bounding the apply-swap by `SCHED_J2[i]` would
-skip the most limbs precisely where those limbs are most certainly meaningful, the truncation is
-backwards relative to where the accumulator's information lives.
+**The width profiles are inverse.** `SCHED_J2[i]` is large for small `i` and small for large `i` (it
+follows the shrinking GCD value). The accumulator is *most fully populated* exactly at large `i`
+(after ~250 iterations of mod-add/double). So bounding the apply-swap by `SCHED_J2[i]` would skip
+the most limbs where those limbs are most likely to be meaningful; the truncation is backwards
+relative to where the accumulator's information lives.
 
 ## 3. Is the accumulator width bounded by any nearby apply-phase op?
 
@@ -97,17 +97,17 @@ Confirming end-state (`gcd.rs:1431-1435`, `1445-1448`): after the sweep, `tmp` m
 iterations the two registers are being driven to *different* full-width values (one → 0, one → the
 256-bit inverse), a concrete case where their high limbs are provably **un**equal.
 
-## 4. "Happens to be equal" vs "provably equal", the honest answer
+## 4. "Happens to be equal" vs "provably equal"
 
-I cannot establish from the code that `x[j] == y[j]` for `j >= SCHED_J2[i]` on all inputs. It is
-not merely "unprovable from a static read", the code gives positive evidence of the *opposite*:
-the accumulators are two independent reduced field elements updated at full width, initialized
-unequal, and ending at different full-width values (result vs 0). A conditional swap
-`cswap(swp, x[j], y[j])` on a high limb `j` is therefore a **real data operation** whenever
-`swp = 1` and `x[j] != y[j]`, which does occur for some inputs. Dropping those cswaps would leave
-the high limbs of the two accumulators unswapped while the low limbs were swapped, corrupting the
-modular result for those inputs. Such a bug would likely pass casual testing (it only manifests when
-`swp=1` and the specific high limbs differ) but is a genuine, input-dependent correctness failure.
+I cannot establish from the code that `x[j] == y[j]` for `j >= SCHED_J2[i]` on all inputs. It is not
+merely "unprovable from a static read"; the code gives positive evidence of the *opposite*: the
+accumulators are two independent reduced field elements updated at full width, initialized unequal,
+and ending at different full-width values (result vs 0). A conditional swap `cswap(swp, x[j], y[j])`
+on a high limb `j` is therefore a **real data operation** whenever `swp = 1` and `x[j] != y[j]`,
+which does occur for some inputs. Dropping those cswaps would leave the high limbs of the two
+accumulators unswapped while the low limbs were swapped, corrupting the modular result for those
+inputs. Such a bug would likely pass casual testing (it only manifests when `swp=1` and the specific
+high limbs differ) but is an input-dependent correctness failure.
 
 ## 5. Is there a width `w(i)` above which the limbs are provably equal/zero?
 

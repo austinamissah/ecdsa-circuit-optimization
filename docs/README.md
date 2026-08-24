@@ -91,7 +91,7 @@ analyses](#per-component-analyses) and [Reference](#reference), below.
   ~5e8 trials **on that head** (~8.5e8 on the current one), and the λ targets that would make a
   grind feasible. Replaced as a *figure* by [`lambda-6909d15.md`](lambda-6909d15.md); still the
   reference for **method, traps and the estimator's directional caveat**.
-- [`lambda-levers.md`](lambda-levers.md), **what each λ source is actually worth and what it costs
+- [`lambda-levers.md`](lambda-levers.md), **what each λ source is worth and what it costs
   on the score axis**, measured on `801dd20` at n=400 per arm. `TLM_SCHED_J2_DELTA=2` takes λ_total
   from 20.04 to 8.111 for 1.27% of score, so a clean seed goes from 279 years to 16 hours. Also:
   `ITERS` is spent, the `ITERS ≡ 0 mod 3` rule does not exist, and the deep strip is not zero-error.

@@ -38,10 +38,11 @@ Fire-rate histogram over the 1,232,871 full-hotness (unconditional) gates:
 | [0.40, 1.00] | 3,618 | 0.29% |
 
 **The mode is 0.25, and 0.25 is exactly the rate at which a Toffoli with two independent uniform
-controls fires.** These gates are not wasteful; they are Toffolis doing what Toffolis do. Three
-quarters of a Toffoli's charge is the price of the shots where its controls happen not to be 1.
+controls fires.** These gates are not wasteful; that is the fire rate of a Toffoli on independent
+uniform controls. Three quarters of a Toffoli's charge is the price of the shots where its controls
+happen not to be 1.
 
-And that is precisely the part no condition can remove:
+No condition can remove that part:
 
 - The condition stack takes a **classical bit** (`PushCondition(BitId)`), and the charge is
   `popcount` of that mask (`src/sim.rs:77-86`).
@@ -89,7 +90,7 @@ draws but not in the census's. Deleting a gate with true fire rate `p` costs abo
 is no subset of this set that is both large enough to matter and safe, because the ones large enough
 to matter are exactly the ones with the highest `p`.
 
-## The honest summary
+## Summary
 
 - The mechanism in `CEILING.md` is correctly stated and now exactly quantified: 76.70% of the score
   is charge on gates that do nothing that shot.

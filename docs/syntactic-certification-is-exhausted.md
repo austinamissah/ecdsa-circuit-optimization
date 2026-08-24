@@ -51,7 +51,7 @@ avgT=1288101.386        (eval_circuit reports 1288101.386)
 
 **Result.** The ceiling on cooling, granting a perfect oracle condition to all 1,343,361 gates at
 once, is `charge − fire` summed over the stream: **8,914,930,315 shot-charges = 987,913 avgT =
-76.70% of the score.** Very large, and unreachable.
+76.70% of the score.** Large, and unreachable.
 
 The fire-rate mode is **0.25**, exactly the rate at which a Toffoli with two independent uniform
 controls fires, with 60.1% of unconditional gates in [0.20, 0.30). Those gates are not wasteful:
@@ -170,17 +170,16 @@ All three approaches reason about the **form** of a value:
 | census | the observed fire rate at depth N | an invariant is not visible in a sample at any depth |
 | affine | the algebraic expression for each wire | 1.23 M distinct nonlinear terms, no two controls related |
 
-**This circuit computes modular inversion and modular multiplication.** Essentially every value is a
+**This circuit computes modular inversion and modular multiplication.** Nearly every value is a
 nonlinear function of the inputs, so there is no exploitable form to inspect: affine structure
 survives only through `CX`/`X` chains that no `CCX` interrupts, and no such chain reaches any gate's
 control pair. The 46,134 gates are quiet because of **what their controls can be**, not because of
 how those controls are written or how often they were watched.
 
-That single sentence covers three separate negative results, and it is the finding that matters:
-**the cheap certification routes are not merely unproductive, they are the wrong kind of argument.**
-The 46,134 are not low-hanging.
+That single sentence covers three separate negative results: **the cheap certification routes are
+not unproductive, they are the wrong kind of argument.** The 46,134 are not low-hanging.
 
-## What would actually certify one
+## What would certify one
 
 A **semantic** argument over the data invariants of the binary-GCD engine, covering register bit
 ranges, mutual exclusion of branch flags, and the loop invariant relating `u`, `v` and the schedule

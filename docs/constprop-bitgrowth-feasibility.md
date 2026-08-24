@@ -101,9 +101,9 @@ Note this is strictly *more* than the schedule already encodes: `SCHED_J2[i]` is
 width* actually allocated; `w(i)` would be the *provable magnitude bound*. The prize is exactly the
 gap `SCHED_J2[i] − w(i)`, and only the part of that gap not already removed by the tables.
 
-## 4. Honest yield estimate
+## 4. Yield estimate
 
-**The prize is very likely small.** Three facts bound it:
+**The prize is likely small.** Three facts bound it:
 
 1. **The width schedule already captures the primary bit-growth truncation.** The adder never
    touches bits `≥ current_n` (`gcd.rs:754-761, 827-828`). So this is not "the adder wastes 256-bit

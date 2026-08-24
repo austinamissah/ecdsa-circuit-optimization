@@ -178,7 +178,7 @@ freed at `i==0`. Any change to the codec must preserve this or the tape/`t1` acc
 
 ## 3. Self-tests and guardrails, the tools to catch mistakes
 
-### The ultimate net: the evaluator's four checks (`src/bin/eval_circuit.rs:278-345`)
+### The evaluator's four checks (`src/bin/eval_circuit.rs:278-345`)
 Runs the built circuit on **9,024 points** whose inputs are a Fiat-Shamir hash of the op stream
 (cannot be tuned against). It enforces:
 1. **CLASSICAL MISMATCH**, output `(x,y)` must equal the true point-add result (`:305`).
@@ -188,7 +188,7 @@ Runs the built circuit on **9,024 points** whose inputs are a Fiat-Shamir hash o
    at end of forward (`:335-345`), catches any ancilla left dirty.
 4. **Reversibility**, the forward+inverse must restore the input (per the file's stated checks).
 
-Caveat to keep honest: passing eval means correct on 9,024 pseudo-random points, **not a proof for
+Caveat: passing eval means correct on 9,024 pseudo-random points, **not a proof for
 all inputs.** A truncation that drops a bit only exercised by rare inputs could pass eval and still
 be wrong. Width/vent trades are fully validated by eval (they are exact by construction); truncation
 schedule changes are only *sampled* by it.
@@ -241,7 +241,7 @@ too far):**
   many carries to hold/vent, which fold layout to pick, how wide the comparator/window is. They
   exploit that high bits are provably zero/known at a given step. **Larger = correct but costlier;
   smaller = fewer gates but wrong if it drops a live bit.** The current values are already tuned
-  near the frontier. These are the honest tuning targets, validated (partially) by eval.
+  near the frontier. These are the tuning targets, validated (partially) by eval.
 
 Env deltas layer on top without editing the tables: `LUD_EXTRA_FOLD_VENTS/_MIN_G/_MAX_G`
 (`mod.rs:271-295`, FFG values capped at 53), `TLM_DIRTY_VENTS` (`gidney.rs:977`), `TLM_HYB_V_DELTA`

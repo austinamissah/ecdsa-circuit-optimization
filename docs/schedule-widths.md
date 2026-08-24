@@ -249,7 +249,7 @@ side-by-side halves: left is `i = 0…128`, right is `i = 129…257`.
 | 127 | 140 | 46 | 46 | | 256 | 12 | 13 | 12 |
 | 128 | 139 | 46 | 46 | | 257 | 11 | 12 | 11 |
 
-## 5. Shape, in words (describing the actual numbers only)
+## 5. Shape, in words (describing the numbers only)
 
 ### SCHED_J2, starts at 256, monotonically non-increasing to 11
 - **Non-increasing across the whole table** (verified: `SCHED_J2[i] ≥ SCHED_J2[i+1]` for all `i`).
@@ -277,11 +277,10 @@ bottoming at 11.
 - **Rise region (`i ≈ 0…198`):** upward overall but noisy, it climbs in small increments with
   frequent ±1 wobble (160 non-decreasing steps vs 38 small dips). It moves through the low-20s at
   the start, into the 30s by `i ≈ 10–30`, the 40s by `i ≈ 100`, and the low-50s / 54 near the peak.
-- **Fall region (`i ≈ 198…257`):** essentially a clean monotone descent, nearly every step is
-  non-increasing (57 of 59 steps down), from `54` at the peak to `12` at the end (`54→53→…→13→12`,
-  with small flats like `22,22`, `18,18`, `17,17,17`, `15,15`).
+- **Fall region (`i ≈ 198…257`):** a clean monotone descent, with 57 of 59 steps down, from `54` at
+  the peak to `12` at the end (`54→53→…→13→12`, with small flats like `22,22`, `18,18`, `17,17,17`,
+  `15,15`).
 - **Interaction with the clamp:** because `cmp_eff = min(GAP_J2, SCHED_J2)` and `SCHED_J2` is
   falling while `GAP_J2` is still elevated in the tail, on `i = 238…257` the raw `GAP_J2` exceeds
-  the register width and is clamped down to `current_n`; on those iterations the comparator simply
-  uses the full (small) register width. Everywhere else (`i = 0…237`) `cmp_eff` equals `GAP_J2`
-  exactly.
+  the register width and is clamped down to `current_n`; on those iterations the comparator uses the
+  full (small) register width. Everywhere else (`i = 0…237`) `cmp_eff` equals `GAP_J2` exactly.

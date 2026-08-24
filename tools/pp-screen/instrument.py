@@ -17,7 +17,7 @@ What it adds, all of it inert unless `PP_GEOMETRY` is set:
     are picked per round against the interleaving allowance, so they cannot be
     predicted from the constants either.
 
-Idempotent, and verifies its own inertness afterwards: with `PP_GEOMETRY` unset
+Idempotent, and verifies its own inertness afterward: with `PP_GEOMETRY` unset
 the op stream must be byte-identical.
 
     python3 tools/pp-screen/instrument.py            # apply

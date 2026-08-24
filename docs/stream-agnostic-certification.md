@@ -17,11 +17,11 @@ it is an exact identity, with no sampling, no stream dependence, and no λ cost.
 
 ## Method
 
-A three-valued (`Zero` / `One` / `Unknown`) constant-propagation pass over the final op stream,
-the one that is actually scored, after CONSTPROP, the fanout pass, the deep strip and the tail
-nonce. It starts from a genuinely strong initial state: `eval_circuit` calls `clear_for_shot()`
-and then writes only the four input registers, so **642 of the 1,154 qubits are provably Zero at
-op 0** and only the 512 input-register qubits are Unknown.
+A three-valued (`Zero` / `One` / `Unknown`) constant-propagation pass over the final op stream, the
+one that is actually scored, after CONSTPROP, the fanout pass, the deep strip and the tail nonce. It
+starts from a strong initial state: `eval_circuit` calls `clear_for_shot()` and then writes only the
+four input registers, so **642 of the 1,154 qubits are provably Zero at op 0** and only the 512
+input-register qubits are Unknown.
 
 Conditions are tracked as `AllOnes` / `AllZeros` / `Mixed` across the shot lanes, combining the
 `PushCondition` stack with each op's own `c_condition`. A write under a `Mixed` condition lands on
@@ -39,7 +39,7 @@ gates inside provably-dead condition blocks: 0
 never-fire gates in dump: 46134   certified structurally: 0   unexplained: 46134
 ```
 
-**And the analysis is not empty. The diagnostics are what carries this result:**
+**The analysis is not empty; the diagnostics are what carry this result:**
 
 | diagnostic | value |
 |---|---|
@@ -52,13 +52,12 @@ never-fire gates in dump: 46134   certified structurally: 0   unexplained: 46134
 | **CCX/CCZ with a provably-`One` control** | **0** |
 
 The lattice carries real information: it tracks 6.3 M unconditional ops exactly, and the Zero
-population moves 63 → 320 → 598 as ancillas are allocated and uncomputed back to `|0⟩`. It simply
-has **no power at the gates**: every one of the 1,343,361 CCX/CCZ has both controls `Unknown`.
+population moves 63 → 320 → 598 as ancillas are allocated and uncomputed back to `|0⟩`. It has **no
+power at the gates**: every one of the 1,343,361 CCX/CCZ has both controls `Unknown`.
 
-That is the expected outcome once you look at it the right way round. `point_add::build()` already
-runs a CONSTPROP pass (`dropped=144, folded_cx=23, aff_drop=9` on this head), which harvests
-exactly this certificate class. By the time the stream is final, **there is nothing left for a
-constant-propagation argument to find**. The class is empty because it has already been emptied.
+That outcome is expected. `point_add::build()` already runs a CONSTPROP pass (`dropped=144,
+folded_cx=23, aff_drop=9` on this head), which harvests exactly this certificate class, so by the
+time the stream is final **there is nothing left for a constant-propagation argument to find**.
 
 ## What this says about the 46,134, and about the census gap
 
@@ -67,11 +66,11 @@ values that happen never to be simultaneously 1. That is a **data invariant of t
 modular-arithmetic engines**, not a dataflow fact. It is a theorem about what values those registers can
 hold, not about which wires are constants.
 
-This also explains the census miner's 25.02% / 42.67% over-observation gap from the other side:
-the miner is a sampler, so it cannot see an invariant either. It observes firing and reports it.
-Neither instrument has access to the thing that actually makes these gates dead. **A structural
-certificate would close both, and neither of the two cheap structural arguments, constant
-propagation and condition-stack domination, is that certificate.**
+This also explains the census miner's 25.02% / 42.67% over-observation gap from the other side: the
+miner is a sampler, so it cannot see an invariant either. It observes firing and reports it. Neither
+instrument has access to the thing that makes these gates dead. **A structural certificate would
+close both, and neither of the two cheap structural arguments, constant propagation and
+condition-stack domination, is that certificate.**
 
 All three sub-cases from the original framing are now answered:
 
@@ -121,7 +120,7 @@ CCX/CCZ whose controls share a tag  : 0
 never-fire in dump: 46134   certified: 0   still unexplained: 46134
 ```
 
-The propagation diagnostics say why, and they are the substance of the result:
+The propagation diagnostics say why:
 
 | diagnostic | value |
 |---|---|
@@ -139,12 +138,12 @@ complementary, not even sharing a single atom. Hash-consing recovers almost noth
 1,338,625 AND terms are reused, so 1,226,517 distinct nonlinear terms are genuinely distinct
 subexpressions.
 
-That is the honest shape of this circuit. It computes modular inversion and multiplication, so
-essentially every value is a *nonlinear* function of the inputs, and affine structure survives only
-through `CX`/`X` chains that no `CCX` interrupts. There are no such chains reaching any gate's
-control pair. The complementary-flag intuition, that GCD sign/branch logic would produce
-`c1 = ¬c2` pairs, is not borne out: whatever complementary flags exist are consumed by nonlinear
-gates before they meet as a control pair, or are never a control pair to begin with.
+That is the shape of this circuit. It computes modular inversion and multiplication, so nearly every
+value is a *nonlinear* function of the inputs, and affine structure survives only through `CX`/`X`
+chains that no `CCX` interrupts. There are no such chains reaching any gate's control pair. The
+complementary-flag intuition, that GCD sign/branch logic would produce `c1 = ¬c2` pairs, is not
+borne out: whatever complementary flags exist are consumed by nonlinear gates before they meet as a
+control pair, or are never a control pair to begin with.
 
 ## The next rung, if this is worth continuing
 
@@ -160,8 +159,8 @@ plausibly discharged by a bounded model checker or an SMT encoding over one divs
 induction. It is a research-scale task, not an overnight one, and it is the same obligation that
 would explain the census miner's 25%/43% gap.
 
-**The cheap structural routes are exhausted.** That is a real finding: it means the 46,134 are not
-low-hanging, and any claim to delete them has to carry a semantic argument.
+**The cheap structural routes are exhausted.** The 46,134 are not low-hanging, and any claim to
+delete them has to carry a semantic argument.
 
 ## Reproducing
 

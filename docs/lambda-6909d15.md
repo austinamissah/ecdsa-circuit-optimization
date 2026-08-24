@@ -131,9 +131,9 @@ Both *per-channel* means did rise, each by a small amount: classical +0.894 ± 0
 p = 0.025), phase +0.714 ± 0.336 (t = 2.12, p = 0.034). λ_total absorbs most of it because λ_both
 rose in step (7.111 → 8.193), which is why the channel-level movement does not carry through to the
 total. Given two uncorrected comparisons and p-values near 0.03, this is weak evidence of a real
-per-channel rise. Worth noting, not worth acting on.
+per-channel rise. It is not strong enough to act on.
 
-The useful observation is the direction: `6909d15` scores **better** than `801dd20`
+`6909d15` scores **better** than `801dd20`
 (1,486,468,554 vs 1,487,590,242) while its channels run slightly **dirtier**. That is the
 score-versus-λ tension `02-lambda.md` describes, showing up across upstream's own progress.
 

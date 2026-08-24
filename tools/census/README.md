@@ -57,8 +57,8 @@ SUB4_APPLY_STRIP=0 TLM_SCHED_J2_DELTA=2 ./census \
 ```
 
 Because shards are per-seed, emitting from different subsets gives the **λ-versus-census-depth
-curve for free**, and holding two shards back gives a genuine out-of-sample estimate of how many
-emitted keys are false. `drivers/finish.sh` does both.
+curve for free**, and holding two shards back gives an out-of-sample estimate of how many emitted
+keys are false. `drivers/finish.sh` does both.
 
 ## The depth/λ tradeoff, the thing to understand before using this
 
@@ -71,7 +71,7 @@ if `pN` is small, and each surviving false key costs about `9024·p` λ. So
 samples with 12,543 dead keys, and measures at 0.682 ± 0.273 λ
 ([`../../docs/lambda-levers.md`](../../docs/lambda-levers.md)), which is the right order for that
 formula. Re-mining shallower than 320 M will recover the score but cost *more* λ than the table it
-replaces. That is not a flaw in the re-mine; it is what the estimator is.
+replaces. That is a property of the estimator, not a flaw in the re-mine.
 
 ## Measured throughput (this laptop, 16 threads)
 

@@ -39,12 +39,12 @@ right and this census over-observes firing.**
 
 ## The failure is conservative, which is why the delta-2 result still stands
 
-The miner certifies a strict subset of what is truly dead:
+The miner certifies a strict subset of what is dead:
 
 - delta 0: 9,378 dead / 2,196 downgrade, against 12,543 / 3,923 shipped.
 - **Keys in the re-mine that are NOT in the shipped table: 0.** A pure subset.
 
-A subset is *safe*, since every gate it deletes really is dead. It just leaves score
+A subset is *safe*, since every gate it deletes is dead. It leaves score
 on the table. That is consistent with everything measured:
 
 | circuit | ops | q | classical | phase | score | vs head |
@@ -60,10 +60,11 @@ on the table. That is consistent with everything measured:
 | delta 0, strip OFF | 15.342 ± 0.189 | n/a |
 | delta 0, **re-mined strip** | **15.258 ± 0.202** | **−0.084 ± 0.277** |
 
-So the re-mined table is λ-free at delta 0 too, but it **costs 0.324% of score**.
-**A delta-0 re-mine is not a score win. It is a score loss.** There is nothing to
-recover: the 251 stale keys are real, but this miner cannot certify replacements
-for them, let alone the 3,165 dead keys it fails to reproduce.
+So the re-mined table is λ-free at delta 0 too, but it **costs 0.324% of
+score**. **A delta-0 re-mine is a score loss, not a score win.** There is
+nothing to recover: the 251 stale keys are real, but this miner cannot
+certify replacements for them, let alone the 3,165 dead keys it fails to
+reproduce.
 
 λ_total is unmeasured for every arm here; only λ_classical was measured.
 

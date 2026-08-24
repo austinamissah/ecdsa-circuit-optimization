@@ -27,7 +27,7 @@ Built with `SUB4_APPLY_STRIP=0`, commit `d9ef3e9` ("Accept submission 8233cd7e")
 **9,073,163 ops / 1,361,613 CCX+CCZ**, bit-for-bit the header's numbers. `7fa872d` is
 md5-identical to it. The census stream is recoverable, not lost with the VM.
 
-**The header is honest, and this has to be established before anything else.** The key table was
+**The header is accurate, and this has to be established before anything else.** The key table was
 rewritten and appended across ~10 commits, growing 9,324 → 12,543 dead, so "a union of censuses
 taken over different streams, all stamped with one stale header" was the obvious hypothesis. It is
 false:
@@ -97,19 +97,16 @@ so in principle there was something to recover"*, and
 this 0.68 [λ]"*.
 
 **There was nothing to recover.** Those gates do not exist in the current circuit. A later
-optimization deleted them outright, which is precisely what the strip existed to do, so **the score
-they represented is already banked in the head figure**. No census, at any depth, on any stream,
-can recover a gate that is not in the stream. The 251 is a closed line of inquiry, not a pending
-0.02%.
+optimization deleted them outright, which is what the strip existed to do, so **the score they
+represented is already banked in the head figure**. No census, at any depth, on any stream, can
+recover a gate that is not in the stream. The 251 is a closed line of inquiry, not a pending 0.02%.
 
 The same three edits also removed **1,178 gates the census certified *live***: 344 at `7726431`,
 758 at `d6eed9a`, 76 at `8af8a6f`. Those are ordinary optimization wins already in the head score,
 and they are the bulk of the 1,429 removals; only 251 of the 1,429 were keyed dead, and 0 were keyed
 downgrade.
 
-## The decisive negative: the stream does not explain the 3,165 / 1,727
-
-This is the result that matters for what to do next.
+## The stream does not explain the 3,165 / 1,727
 
 Every shipped key the re-miner fails to certify addresses a tuple that is **still present in the
 head stream with unchanged occupancy**:
@@ -165,7 +162,7 @@ explanations, and does not on its own establish either.
 
 What is *not* explained by the confound is the direction of the monotonic growth. Rarity predicts
 that a deeper census disagrees more; it does not predict that a deeper census **certifies strictly
-more gates dead and never retracts one**. That asymmetry is the actual signal, and it points at an
+more gates dead and never retracts one**. That asymmetry is the signal, and it points at an
 additional non-sampling certification layer, an analytic or restricted-reachability argument
 applied on top of the sampling census, which would explain both monotonicity and why a purely
 statistical re-miner reproduces almost none of it.
@@ -177,12 +174,12 @@ parameter that would produce them.
 
 ## A prior fix that this analysis depends on
 
-The harness-order census mode committed in `7d844fa` surfaced a bug worth restating, because every
-measurement above assumes the simulator consumes the XOF the way `src/sim.rs` does. Real `sim.rs`
-reads **8 XOF bytes for `R` as well as for `Hmr`** (`src/sim.rs:140–152`), and the census's PRNG
-path did not consume for `R`. Any XOF-order run before that fix would have desynchronized the entire
-downstream stream, since every measurement outcome after the first `R` would have been drawn from the
-wrong offset. It was found and fixed in the previous session, and the fix is what makes
+The harness-order census mode committed in `7d844fa` surfaced a bug that bears on every measurement
+above, because they all assume the simulator consumes the XOF the way `src/sim.rs` does. Real
+`sim.rs` reads **8 XOF bytes for `R` as well as for `Hmr`** (`src/sim.rs:140–152`), and the census's
+PRNG path did not consume for `R`. Any XOF-order run before that fix would have desynchronized the
+entire downstream stream, since every measurement outcome after the first `R` would have been drawn
+from the wrong offset. It was found and fixed in the previous session, and the fix is what makes
 `--harness` mode meaningful at all; it is recorded here because the bug is invisible in PRNG mode
 and would silently invalidate any future harness-order census.
 

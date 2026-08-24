@@ -76,10 +76,9 @@ secp256k1 scalar multiplications), or better hardware. Which, we do not know.
 
 **Against λ = 20.04 this is not close to sufficient.** A one-day single-core grind needs λ ≈ 8.9;
 the shortfall is ~11 λ-units and the screen closes 2.2 of them. Even on the full machine, assuming
-it parallelizes as well as the harness did, a one-day grind affords only λ ≈ 10.7. So this tool
-does not make a grind feasible. **It makes λ work measurable.** λ reduction carries essentially
-all the remaining weight. See
-[`../../docs/lambda-measurement.md`](../../docs/lambda-measurement.md).
+it parallelizes as well as the harness did, a one-day grind affords only λ ≈ 10.7. So this tool does
+not make a grind feasible. **It makes λ work measurable.** λ reduction carries nearly all the
+remaining weight. See [`../../docs/lambda-measurement.md`](../../docs/lambda-measurement.md).
 
 ## Why it is fast
 
@@ -103,7 +102,7 @@ one that would be the same class of error as the lazy-XOF bug in
 Not reproduced at all: phase-garbage, ancilla-garbage, avgT. avgT is W=64-harness-order only and
 this binary must never report it.
 
-## Three invariants that keep it honest
+## Three invariants the screen depends on
 
 Each has already caught a real bug on this project:
 

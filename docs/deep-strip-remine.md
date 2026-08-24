@@ -24,9 +24,8 @@ measures what a re-mine against a delta-2 stream recovers.
 | delta 0, re-mined strip ON | n/a (not recorded) | 1154 | 1,492,415,116 | +0.324% |
 
 **The re-mined strip recovers 13,342,560 of score, which is 0.897% of head.** That figure is a
-**floor, not the true available score**: the miner certifies a strict subset of what is genuinely
-dead (see [`census-miner-validation.md`](census-miner-validation.md)), so a correct miner would
-recover more.
+**floor, not the true available score**: the miner certifies a strict subset of what is dead (see
+[`census-miner-validation.md`](census-miner-validation.md)), so a correct miner would recover more.
 
 λ at n=400 per arm, same instrument that measured the shipped strip's 0.682:
 
@@ -73,7 +72,7 @@ mattered far less than argued; 120 M was ample.
 The re-mined table is smaller than the shipped one (10,232 dead against 12,543; 2,169 downgrade
 against 3,923), which is why it recovers 0.897% rather than the 1.16% the shipped strip is worth on
 its own stream. Part of that is genuine census depth (120 M against 320 M); part is that the delta-2
-geometry simply has fewer dead gates.
+geometry has fewer dead gates.
 
 ## Delta 0 is closed
 
@@ -101,11 +100,11 @@ real Fiat-Shamir XOF, pairs drawn up front, simulator continuing from the same r
 at 1 M samples finished: **19,719 never-fired, 2,170 c1-implied, 3,081 c2-implied**. The harness arm
 did not finish and was killed.
 
-**Why it did not finish is the useful part.** Harness order needs **1,013,644 XOF words per 64-shot
-pass**, which is 8 MB of SHAKE256 output for every 64 shots. 1 M samples is 15,625 passes ≈ 127 GB
-of SHAKE output; the 320 M-sample census the shipped table claims would need ~40 TB. **The shipped
-census therefore almost certainly was not taken in harness order**, which undercuts the hypothesis
-on cost grounds before any measurement lands. Something else explains the 25%/43% disagreement, and
+It did not finish for a cost reason. Harness order needs **1,013,644 XOF words per 64-shot pass**,
+which is 8 MB of SHAKE256 output for every 64 shots. 1 M samples is 15,625 passes ≈ 127 GB of SHAKE
+output; the 320 M-sample census the shipped table claims would need ~40 TB. **The shipped census
+therefore almost certainly was not taken in harness order**, which undercuts the hypothesis on cost
+grounds before any measurement lands. Something else explains the 25%/43% disagreement, and
 [`syntactic-certification-is-exhausted.md`](syntactic-certification-is-exhausted.md) identifies it:
 a sampler cannot see an invariant at any depth.
 
