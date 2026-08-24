@@ -87,8 +87,21 @@ the new stream is unmeasured.
 
 46 commits replayed onto `upstream/main` with **zero conflicts**, since upstream touched none of the
 three files we carry (`trailmix_ludicrous/gcd.rs`, `trailmix_ludicrous/schedule.rs`,
-`memory/05-qubit-reduction.md`). Pre-rebase state is preserved on
-`backup-pre-rebase-7bfbfda`, pushed.
+`memory/05-qubit-reduction.md`). Pre-rebase state was put on a branch
+`backup-pre-rebase-7bfbfda`, recorded here at the time as pushed.
+
+> **Corrected 2026-08-24: that branch is gone, and the sentence above was left standing rather
+> than deleted.** It is not on `origin`, which carries only `main`. The commit `7bfbfda` does not
+> resolve in this repository either, so this is not a branch that merely went unpushed: its objects
+> are no longer here. When or how it went cannot be recovered, because the reflog begins 2026-08-05
+> and the rebase was 2026-08-03.
+>
+> Nothing measured was lost with it. The rebase is commit `8425603`, and the two source changes the
+> branch existed to back up are still in history, at `36bea26` (the `ITERS` clamp) and `38853ea`
+> (the delta lever), with `150a260` carrying the full-harness λ_total confirmation. They also sit
+> on the local `pre-sync-2026-08-22` branch, which holds the state before the 2026-08-23 sync. What
+> is gone is the un-rebased copies of those commits, so a direct pre-rebase against post-rebase
+> diff is no longer possible from this repository.
 
 The rebased tree at `TLM_SCHED_J2_DELTA=0` with the strip on rebuilds to **md5
 `ef30945f3afcb369192ea32897232d2f`, score 1,486,468,554, 0/0/0**, byte-identical to stock
