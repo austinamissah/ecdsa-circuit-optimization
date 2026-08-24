@@ -62,6 +62,9 @@ enough samples that the interval means something.
 | `screen.rs` | the model: walk, replay, secp256k1 field and group, Fiat-Shamir seeding |
 | `instrument.py` | re-applies the geometry dump to `pingpong_div.rs` after a sync |
 | `grind.sh` | screen a nonce block at one depth, rebuilding `ops.bin` and the dump first |
+| `hunt.sh` | one block at a fixed config, with the resolved depth checked against the request |
+| `hunt-loop.sh` | block after block until stopped |
+| `hunt-worker.sh` | one of N parallel eval workers draining the survivor list |
 | `verify.sh` | run survivors through the real scorer |
 | `firstfail.sh` | compare the model's first failing shot against the simulator's |
 
@@ -155,3 +158,14 @@ Other modes:
   wholesale, so the geometry dump vanishes with no conflict and no warning. `grind.sh` refuses to
   run without it; re-apply with `python3 tools/pp-screen/instrument.py`.
 - **Do not exponentiate a small sample.** See the note above on the four-day figure.
+
+## Before starting a hunt
+
+A clean nonce averages `e^lambda` draws, which on one workstation is days. The leaderboard drifts
+around 1%/day, so **a target must be worth more than roughly 5% to survive its own grind**. A seven
+hour run on 2026-08-23 covered 6.2% of its search before the frontier moved past a -0.038% target;
+413 survivors, 263 confirmed, none clean, which is the expected yield at 6%. The pipeline is not
+the constraint. Price the target first.
+
+Save `results.tsv` and `score.json` before starting and restore them after: the eval workers write
+to both via a compile-time path, regardless of their working directory.
