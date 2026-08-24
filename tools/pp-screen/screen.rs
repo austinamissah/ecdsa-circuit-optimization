@@ -1770,7 +1770,15 @@ fn main() {
                 screened.fetch_add(1, Ordering::Relaxed);
                 match first_fail {
                     None => {
+                        // Flush explicitly. Rust's stdout is block-buffered when
+                        // it is a pipe rather than a terminal, so on a run of
+                        // hours a survivor would otherwise sit unwritten until
+                        // the process exits. Nothing is lost either way, but a
+                        // hunt you cannot watch is a hunt you cannot steer, and
+                        // no amount of line-buffering on the CONSUMER side of the
+                        // pipe fixes a producer that has not written yet.
                         println!("SURVIVOR\t{nonce}");
+                        let _ = std::io::Write::flush(&mut std::io::stdout());
                         hits.push((nonce, usize::MAX));
                     }
                     Some(shot) => {

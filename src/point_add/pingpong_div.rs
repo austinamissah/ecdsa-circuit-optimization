@@ -211,6 +211,78 @@ pub(crate) enum PingPongDirection {
     Divide,
     Multiply,
 }
+/// Analysis-only geometry dump.  `PP_GEOMETRY=<path>` records the resolved walk
+/// geometry and, for every replay add, the chunk bounds and comparison window
+/// the layout actually chose.  Both vary with knobs and with the round, so a
+/// screener that re-derived them would desync silently.  Emits no ops, and with
+/// the variable unset does nothing at all.
+mod geom {
+    use std::cell::{Cell, RefCell};
+
+    thread_local! {
+        static TAG: Cell<(u8, usize)> = const { Cell::new((0, 0)) };
+        static ROWS: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+    }
+
+    pub(super) fn enabled() -> bool {
+        std::env::var_os("PP_GEOMETRY").is_some()
+    }
+
+    pub(super) fn tag(direction: u8, round: usize) {
+        if enabled() {
+            TAG.with(|c| c.set((direction, round)));
+        }
+    }
+
+    pub(super) fn record(bounds: &[(usize, usize)], compare: usize) {
+        if !enabled() {
+            return;
+        }
+        let (dir, round) = TAG.with(|c| c.get());
+        let spans: Vec<String> = bounds.iter().map(|&(lo, hi)| format!("{lo}-{hi}")).collect();
+        ROWS.with(|r| {
+            r.borrow_mut().push(format!(
+                "{}\t{}\t{}\t{}",
+                if dir == 0 { "div" } else { "mul" },
+                round,
+                spans.join(","),
+                compare
+            ))
+        });
+    }
+
+    pub(super) fn flush() {
+        if !enabled() {
+            return;
+        }
+        let path = std::env::var("PP_GEOMETRY").unwrap_or_default();
+        let body = ROWS.with(|r| r.borrow().join("\n"));
+
+        let div = super::rounds_for(super::PingPongDirection::Divide);
+        let mul = super::rounds_for(super::PingPongDirection::Multiply);
+        let mut head = format!("#rounds\t{div}\t{mul}\n");
+        // Resolved truncation windows. These are set by `set_default_env` in
+        // mod.rs, NOT by the literals in this file, so reading the source gives
+        // the wrong config. The divide and multiply fold windows also differ.
+        head.push_str(&format!(
+            "#windows\t{}\t{}\t{}\t{}\t{}\n",
+            super::replay_fold_window(),
+            super::replay_fold_window(), // fold_window_mul was removed at d919bc6
+            super::endpoint_fold_window(),
+            super::replay_chunk_compare(),
+            super::replay_flag_compare(),
+        ));
+        for r in 0..div.max(mul) {
+            head.push_str(&format!("#width\t{r}\t{}\n", super::value_width(r)));
+        }
+
+        let _ = std::fs::write(
+            path,
+            format!("{head}direction\tround\tbounds\tcompare\n{body}\n"),
+        );
+    }
+}
+
 
 /// `numerator *= denominator^-1` for [`PingPongDirection::Divide`], or
 /// `numerator *= denominator` for [`PingPongDirection::Multiply`].
@@ -1723,6 +1795,7 @@ fn walk_back_round(
 }
 
 fn replay_halving_round(b: &mut B, round: usize, sign: QubitId, x: &[QubitId], y: &[QubitId]) {
+    geom::tag(0, round);
     let (source, target) = if round.is_multiple_of(2) { (x, y) } else { (y, x) };
     if round == 0 {
         mod_halve_pm(b, target);
@@ -1745,6 +1818,7 @@ fn replay_halving_round(b: &mut B, round: usize, sign: QubitId, x: &[QubitId], y
 }
 
 fn replay_doubling_round(b: &mut B, round: usize, sign: QubitId, x: &[QubitId], y: &[QubitId]) {
+    geom::tag(1, round);
     let fused = std::env::var_os("SUB4_PINGPONG_UNFUSED_INVERSE").is_none();
     let (source, target) = if round.is_multiple_of(2) { (x, y) } else { (y, x) };
     if fused && round > 1 {
@@ -2112,6 +2186,7 @@ fn add_chunked_measured_with(
                 .unwrap_or_else(|| chunk_bounds(n, n.div_ceil(12))),
         },
     };
+    geom::record(&bounds, replay_chunk_compare());
     let legacy = std::env::var_os("SUB4_PP_LEGACY_CHUNK_ORDER").is_some();
     let erase = |b: &mut B, carry: QubitId, lo: usize, hi: usize| {
         let width = hi - lo;
@@ -2930,6 +3005,7 @@ pub(crate) fn build_pingpong_point_add() -> Vec<Op> {
     circ.declare_bit_register(&oy);
     circ.b0_finalize();
     let ops = circ.take_ops();
+    geom::flush();
     if pp_profile::enabled() {
         pp_profile::report(
             &ops,
