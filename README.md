@@ -458,24 +458,17 @@ and re-run the benchmark before relying on them.
 
 Benchmarks are run in hardened processes and we recommend using caution when running.
 
-## How this was built
+## How this work gets made
 
-The profiling, the optimization analysis, the λ measurement, and the documents under
-`docs/` in this fork were produced with Claude Code, Anthropic's agentic coding tool.
-The reversible circuit itself is the community's work from the challenge repository.
-My part was building and checking it locally, measuring where its cost is and what
-actually holds progress back, and writing up both the findings and the errors. I did
-that work with Claude Code.
-
-Every number quoted from this fork's own measurements can be reproduced from the repo:
-the score from `./benchmark.sh`, and the λ figures from the raw per-trial data in
-[`docs/data/`](docs/data/). Figures quoted from outside papers were checked against
-their sources; see `docs/quantum-inversion-frontier-research.md` for where each one
-came from. Where a claim is an inference rather than a measurement, the documents say so.
+Built with help from an AI assistant, Claude Code: it wrote and debugged much of the Rust and
+tooling and helped draft the docs. The measurements, the claims and their strength, the upstream
+filings, and any errors are mine. Working method:
+[amissah.net/about#how-its-made](https://amissah.net/about#how-its-made)
 
 ### What is not this fork's work
 
-Beyond the circuit itself, the 2026-08-02 rebase onto upstream `8af8a6f` first brought in a large
+The reversible circuit itself is the community's work from the challenge repository, not this
+fork's. Beyond the circuit, the 2026-08-02 rebase onto upstream `8af8a6f` first brought in a large
 body of another contestant's material, and the 2026-08-03 rebase to the current head brought in a
 great deal more. It ships inside `src/point_add/` because that is the challenge's `editablePaths`
 root. As of `6909d15` that is **13,909 lines across 50 files**, none of it ours:
@@ -493,6 +486,14 @@ root. As of `6909d15` that is **13,909 lines across 50 files**, none of it ours:
 
 Our documents cite these heavily and say so at each point. `docs/` is this fork's work.
 `src/point_add/` is not.
+
+## Checking the numbers
+
+Every number quoted from this fork's own measurements can be reproduced from the repo:
+the score from `./benchmark.sh`, and the λ figures from the raw per-trial data in
+[`docs/data/`](docs/data/). Figures quoted from outside papers were checked against
+their sources; see `docs/quantum-inversion-frontier-research.md` for where each one
+came from. Where a claim is an inference rather than a measurement, the documents say so.
 
 ## Credits
 
