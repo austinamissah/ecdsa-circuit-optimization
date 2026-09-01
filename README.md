@@ -1,3 +1,13 @@
+> **This is my fork of the challenge repo.** I analyzed the leading circuit and concluded in July
+> 2026 that it could not be improved. Twenty-five accepted improvements over the next three weeks
+> proved me wrong. This fork keeps that conclusion word for word, marks which of its eleven claims
+> survived (seven did), and measures what I had missed: an intrinsic error rate, λ, that makes every
+> improvement cost a search for a passing seed. My findings start at
+> [What this fork did, and what it found](#what-this-fork-did-and-what-it-found). Everything between
+> here and there is upstream's description of the challenge.
+>
+> ---
+
 # The secp256k1 Point-Addition Challenge
 
 > **Goal.** Build the cheapest reversible quantum circuit that performs one
@@ -74,7 +84,7 @@ baseline, that the published Pareto frontier sits about 3× lower still, and tha
 both points on that frontier and points below them are beatable. Those are the upstream authors'
 claims. This fork's own analysis is in the next section.
 
-### What this fork did, and what it found
+## What this fork did, and what it found
 
 *Project write-up: **[amissah.net](https://amissah.net)**.*
 
@@ -100,7 +110,7 @@ the analysis: building the circuit locally, finding where its cost goes, checkin
 comparisons against the papers they came from, listing what could be improved, and then, when that
 list turned out to be partly wrong, measuring why.
 
-#### 1. The score is not what limits you. λ is.
+### 1. The score is not what limits you. λ is.
 
 The benchmark builds its 9,024 test inputs by hashing the circuit's own op stream. So **any change
 that lowers the score also re-rolls the test inputs.** That means a circuit is never simply passing
@@ -142,7 +152,7 @@ figure above is measured on that head. Figures elsewhere in `docs/` that are mea
 `801dd20` head (λ_total 20.04, about 5.0 × 10⁸ tries per seed at 205 runs per hour) name that head
 where they appear.
 
-#### 2. My first conclusion was wrong, and the record of that is kept
+### 2. My first conclusion was wrong, and the record of that is kept
 
 The first pass, written against commit `422f21d`, measured 1,320,763 × 1,152 (about 1.52 × 10⁹),
 listed eleven possible improvements, found all eleven blocked, and concluded that **no improvement
@@ -159,7 +169,7 @@ but I turned them into a hard limit that does not exist. The peak qubit count fo
 configuration cap, and 124 of those qubits come from a borrowed pool that grows to fill whatever
 cap is set.
 
-#### 3. How the leaderboard leader operates
+### 3. How the leaderboard leader operates
 
 The leader is a single automated program (`yukon-autoresearch[bot]`) landing a submission every 0.88
 days, and it ships its search code inside its own submissions. Reading that code explains the pace
@@ -175,7 +185,7 @@ the campaign is a rising-λ ramp, which is §1 showing up as a schedule.
 **λ appears nowhere in what it selects on.** It is treated as a pass/fail gate and never improved.
 Details: [`docs/upstream-search-economics.md`](docs/upstream-search-economics.md).
 
-#### 4. Measurement traps that quietly ruin results
+### 4. Measurement traps that quietly ruin results
 
 Several findings are about *method*, and they apply outside this project. The main one: the
 benchmark script runs the build under `sudo`, and sudo's `env_reset` **quietly removes the
@@ -186,7 +196,7 @@ sudo's saved credentials expire partway through a run.
 The only thing that caught it was a rule taken from the other contestant's notes: *a null result is
 only a result if the output hash changed.* That rule is used throughout the work here.
 
-#### 5. The cheap ways to prove a gate is dead are the wrong kind of argument
+### 5. The cheap ways to prove a gate is dead are the wrong kind of argument
 
 On this fork's head `6909d15`, 46,134 gates fire on **none** of the 9,024 official shots, and the
 charge sitting on them is 3.35% of the score. The bar to beat is 0.886 avgT (avgT is 1,288,101.386,
@@ -225,7 +235,7 @@ proved for a single divstep and then extended by induction across all 261. That 
 project on its own, and it is now the only route identified. Nothing was removed:
 [`docs/syntactic-certification-is-exhausted.md`](docs/syntactic-certification-is-exhausted.md).
 
-#### 6. Two more conclusions of mine were wrong, and one of them was refuted in twenty minutes
+### 6. Two more conclusions of mine were wrong, and one of them was refuted in twenty minutes
 
 Section 2 records the first pass getting it wrong. The same thing happened twice more on the new
 construction, and in both the shape of the error matters more than the numbers.
@@ -255,7 +265,7 @@ its apparent saving. That argues for attacking the algorithm, not against it.
 Both are corrected in [`docs/pingpong-2026-08-23.md`](docs/pingpong-2026-08-23.md) and in the
 retraction note published upstream.
 
-#### 7. I tried to land a submission, and lost to the clock rather than the arithmetic
+### 7. I tried to land a submission, and lost to the clock rather than the arithmetic
 
 The failure is structural, not a slip, and anyone arriving with one machine should understand the
 mechanism before spending a week on it.
@@ -291,7 +301,7 @@ several of those measurements went back upstream as solver notes, including one 
 over because someone with a fleet can spend it in an hour and I cannot. The leaderboard will keep
 moving, and I plan to keep measuring against it and recording what I get wrong.
 
-#### Contributed upstream
+### Contributed upstream
 
 Three of the findings above went back to the challenge repository instead of staying in this fork.
 All three are open at the time of writing:
@@ -312,7 +322,7 @@ notes system: the schedule-narrowing cliff and the corrected search arithmetic, 
 plus a small improvement handed over to anyone with the throughput to grind a nonce for it, and the
 retraction described in §6.
 
-#### Where this goes from here
+### Where this goes from here
 
 I am keeping this as a log rather than running it as a campaign. The benchmark is live and
 adversarial, the leaderboard moves several times a day, and §7 is the account of what happened when
@@ -335,7 +345,7 @@ If you are reading this months later, the scores will be wrong and quite possibl
 construction will have been replaced again. That is expected. The commit each measurement names is
 what makes it still readable.
 
-#### Where the cost is
+### Where the cost is
 
 About 95% of the budget is the two modular inversions that reversible affine point addition needs.
 Across the papers surveyed in
