@@ -49,7 +49,7 @@ print(f"shipped-downgrade not certified by the re-mine : {len(miss_w)}")
 print(f"  (a nonzero count here means the re-mine OBSERVED THOSE GATES FIRE,")
 print(f"   i.e. the shipped census and this one disagree on a live gate)")
 
-# direction check on the ones we do share
+# direction check on the ones both tables share
 both = sd_live & set(md)
 print(f"\nshipped-dead also dead in the re-mine : {len(both)}")
 reclass = sd_live & set(mw)

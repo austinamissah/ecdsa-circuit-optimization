@@ -9,7 +9,7 @@ therefore the whole test set. That makes it a free nonce. A circuit is valid if 
 particular draw its own nonce induces happens to hit no failure.
 
 So the search is a lottery. Checking one nonce with `eval_circuit` takes about 20 seconds. At the
-shipped configuration roughly one draw in 3 x 10^8 is clean, so buying tickets at 20 seconds each
+shipped configuration roughly one draw in 3e8 is clean, so buying tickets at 20 seconds each
 is hopeless.
 
 This tool reproduces the failure conditions in ordinary classical arithmetic, without simulating
@@ -42,18 +42,18 @@ truncation is a measured erasure with a known failure condition:
 ## What it is worth
 
 On the shipped 698/696 configuration the model catches about 65% of classical failures with no
-false positives. It buys a great deal on verification overhead, taking the number of full
+false positives. It cuts verification overhead sharply, taking the number of full
 `eval_circuit` runs needed per clean nonce from roughly 87,000 down to about 830.
 
 The filter does not change how many draws a clean nonce costs; that is a property of
 the circuit. Measured with `lamscreen` at head `4eb93cb`, n=60: lambda_classical
 17.717, 95% CI 16.80 to 18.63, so 4.95e7 draws (CI 1.98e7 to 1.23e8). At the 128
-nonces/s this tool sustains on 15 threads that is about **101 hours**, CI 40 to 252.
+nonces/s this tool sustains on 15 threads that is about **107 hours**, CI 43 to 267.
 
 An earlier version of this file put that at "weeks" on the strength of an n=8
 sample. Exponentiating a mean with sem +/-2.1 turns a 4-day job into a 5-week one.
-When the answer is e^x of a measured x, the interval is the result, and x needs
-enough samples for the interval to mean something.
+The interval has to be carried through as part of the answer, and n=8 is not enough
+samples for it to mean anything.
 
 ## Files
 
@@ -154,9 +154,9 @@ Other modes:
   magnitude too high. Real draws come from actual curve points, where the two are tied together by
   the curve equation, and that relationship is what keeps the fold window from saturating. The
   model was correct the whole time; the test inputs were unreachable.
-- **Every sync silently drops the instrumentation.** `src/point_add` is taken from upstream
-  wholesale, so the geometry dump vanishes with no conflict and no warning. `grind.sh` refuses to
-  run without it; re-apply with `python3 tools/pp-screen/instrument.py`.
+- **Every sync silently drops the instrumentation.** See
+  [The width schedule is read, never recomputed](#the-width-schedule-is-read-never-recomputed)
+  above; `grind.sh` refuses to run without it.
 - **A small sample does not survive exponentiation.** See the note above on the four-day figure.
 
 ## Before starting a hunt

@@ -2,7 +2,7 @@
 """Re-apply the analysis-only geometry dump to src/point_add/pingpong_div.rs.
 
 Why this is a script and not a committed edit: every sync takes `src/point_add`
-from upstream wholesale, which silently drops anything we added there. The dump
+from upstream wholesale, which silently drops anything added there. The dump
 was written once, committed, and then removed by the very next merge without a
 conflict or a warning. So it lives here and gets re-applied after each sync.
 

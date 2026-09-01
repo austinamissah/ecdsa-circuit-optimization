@@ -8,7 +8,7 @@ reopening conditions; the first is "a machine-checkable symmetry reduction".
 ## Known-answer test, which comes first
 
 The encoder is `../../src/point_add/memory/repro/y5_joint_codec_synth.py`, which needs
-`kissat` and `cadical` on `PATH`. Reproducing their CNF is the gate: without it we would
+`kissat` and `cadical` on `PATH`. Reproducing their CNF is the gate: without it I would
 be attacking a different problem.
 
 ```bash

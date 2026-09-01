@@ -68,11 +68,11 @@ On one core, for a one-day grind:
 
 **The screen buys ≈ 2.2 λ-units** (`ln(110/12)`), not the ≈ 4 projected before it was built. That
 projection assumed a 50× per-trial speedup inferred from upstream's cadence; the real figure is
-9.2×, because our entire saving is *not rebuilding*. We did not make the simulation cheaper, and
+9.2×, because my entire saving is *not rebuilding*. I did not make the simulation cheaper, and
 `eval_circuit` at 57 s per 9,024 shots is the floor the ladder cuts into. Upstream's inferred
 ~1.2 s/trial is unreachable by skipping the rebuild alone, so they must also have cut per-shot
 simulation cost: a faster simulator, cheaper test-pair generation (9,024 pairs is 18,048
-secp256k1 scalar multiplications), or better hardware. Which, we do not know.
+secp256k1 scalar multiplications), or better hardware. Which, I do not know.
 
 **Against λ = 20.04 this is not close to sufficient.** A one-day single-core grind needs λ ≈ 8.9;
 the shortfall is ~11 λ-units and the screen closes 2.2 of them. Even on the full machine, assuming

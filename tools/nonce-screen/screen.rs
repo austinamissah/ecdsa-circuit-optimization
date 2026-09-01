@@ -25,7 +25,7 @@
 //! op stream per nonce. Two structural savings over `./benchmark.sh`:
 //!
 //!   1. `point_add::build()` runs ONCE. `apply_tail_nonce` only rewrites
-//!      `q_target` on the last 96 ops, so per nonce we patch those in place.
+//!      `q_target` on the last 96 ops, so per nonce those are patched in place.
 //!      This is the big one: the build is ~59 s and the harness pays it on
 //!      EVERY trial.
 //!   2. `fiat_shamir_seed` is a streaming SHAKE256 absorb. The state over
