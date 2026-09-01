@@ -112,7 +112,7 @@ anyway [HJN+20, App. A.3].
 
 The ecdsa.fail README cites a published Pareto frontier about 3x below a ~1.5×10⁹ single-addition
 score, meaning **~5×10⁸, Toffoli × qubits**. To check whether that is a standalone single-addition
-figure, we mined the one
+figure, I mined the one
 fully disclosed circuit, Schrottenloher 2026, whose Qarton source is public
 (`gitlab.inria.fr/capsule/qarton-projects/ec-point-addition`).
 

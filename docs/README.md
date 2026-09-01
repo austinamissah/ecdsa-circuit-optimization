@@ -80,7 +80,7 @@ analyses](#per-component-analyses) and [Reference](#reference), below.
 - [`rebase-2026-08-03-upstream-ed4b529.md`](rebase-2026-08-03-upstream-ed4b529.md), **read this
   first, because it moves the baseline.** Upstream accepted `ed4b529`; the new head measures
   **1,486,468,554**, not the `1,487,599,474` its own `mod.rs` comment claims. Rebased with zero
-  conflicts and our two source changes re-gated as exact identities. Also: "risk-3.0" is a
+  conflicts and my two source changes re-gated as exact identities. Also: "risk-3.0" is a
   provenance nickname and not a phase-risk budget, and what the 45-minute Blacksmith CI workflow
   requires of a submission. **Every λ and score figure below is priced against the older
   1,487,590,242 head.**

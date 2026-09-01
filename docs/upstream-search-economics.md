@@ -14,11 +14,11 @@ determines what is worth building.
 
 Everything here is read from `src/point_add/memory/repro/dgm_search.py` (2,848 lines) and from the
 upstream commit graph. That file arrived with the 2026-08-02 rebase; it is another contestant's
-work, not ours.
+work, not mine.
 
 ## The cadence, corrected
 
-25 accepted submissions between 2026-07-11 and 2026-08-01: **0.88 days each**, not the ~1.6 we first
+25 accepted submissions between 2026-07-11 and 2026-08-01: **0.88 days each**, not the ~1.6 I first
 assumed. Every one is authored by a single GitHub App, `yukon-autoresearch[bot]`. This is one
 automated program, not a field of contestants.
 
@@ -41,7 +41,7 @@ per candidate.
 
 **Four of the five sibling modules did not ship.** `artifact_io`, `exact_scorer`, `schema_harness`,
 and `world_model` are all imported and all absent. So is the ledger
-(`.autoresearch/measurements.jsonl`). What we can read is the controller skeleton only.
+(`.autoresearch/measurements.jsonl`). What I can read is the controller skeleton only.
 
 Two things worth naming because they are easy to misread: `exact_scorer.score(average_toffoli,
 qubits)` is just the score formula, and `backtest` replays ledger records. Neither one predicts
@@ -98,33 +98,33 @@ could not be pinned down; the non-uniformity and the order of magnitude are the 
 Two ordinary mechanisms, not one clever one:
 
 1. **λ was not 20 for most of the campaign.** `ITERS` moved 258 → 261 on 2026-07-26, the same day
-   **8 submissions landed**. Our λ = 20.04 is a *late* head (`801dd20`; `6909d15` measures 20.560,
+   **8 submissions landed**. My λ = 20.04 is a *late* head (`801dd20`; `6909d15` measures 20.560,
    statistically the same). Earlier, less aggressive circuits were cleaner and their grinds
    correspondingly cheap. The shape of the campaign (8 submissions on 07-26, 3 on 08-01) is a
    rising-λ ramp.
 2. **Cost per try, not number of tries.** ~1e8 trials in ~1 day is ~1,157 trials/s; on 1,344 vCPU
-   that is ~1.2 s/trial, about **90× faster than our 110 s full-harness run**. The ladder supplies
+   that is ~1.2 s/trial, about **90× faster than my 110 s full-harness run**. The ladder supplies
    7.2× of that. Skipping the rebuild supplies most of the rest. `apply_tail_nonce` touches only the
    last 96 ops, and `fiat_shamir_seed` is a *streaming* SHAKE256 absorb. So the hash state over
    ops[0 … n−96] can be computed once and cloned per nonce, absorbing 5,376 bytes instead of ~507
    MB, with no circuit rebuild at all.
 
-**Both of those are now built and measured on our side, and they do not close the gap.** The
+**Both of those are now built and measured on my side, and they do not close the gap.** The
 validated screen ([`../tools/nonce-screen/`](../tools/nonce-screen/)) does exactly the above and
 reaches **12 s/nonce against the harness's 110 s, so 9.2× and not 90×**. Since the rebuild was the
-whole of our saving, the remaining ~10× must come from somewhere we have not touched: the simulation
+whole of my saving, the remaining ~10× must come from somewhere I have not touched: the simulation
 itself. `eval_circuit` spends 57 s on 9,024 shots, which includes 18,048 secp256k1 scalar
 multiplications for test-pair generation. A faster simulator, cheaper pair generation, or better
 hardware would each account for it. Which of those they use is **unknown**, since the screening code
 did not ship, and it is the open question worth the most.
 
 So they are not beating brute force with a correctness oracle. They are much faster per trial
-through engineering we have only partly reproduced, and they spent most of the campaign at a λ where
+through engineering I have only partly reproduced, and they spent most of the campaign at a λ where
 the grind was cheap.
 
 ## Consequence: a screen is a candidate filter, never a seed finder
 
-A screen built on the ladder covers the **classical channel only**. Our measured decomposition is
+A screen built on the ladder covers the **classical channel only**. My measured decomposition is
 λ_classical_only 9.12, λ_both 7.11, λ_phase_only 3.80, so a nonce that is clean on the classical
 channel still has
 

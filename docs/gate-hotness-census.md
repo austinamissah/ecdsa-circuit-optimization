@@ -31,7 +31,7 @@ splits the cost surface into two independent levers:
   `(h − h′)/9024` of avgT **whether or not the gate ever fires**.
 
 A gate that never fires but is unconditional is charged in full. A gate that fires on every shot but
-is conditioned at hotness 0.5 costs half. These are different quantities and we had only ever
+is conditioned at hotness 0.5 costs half. These are different quantities and I had only ever
 measured the first.
 
 ## The instrument, and its gate
@@ -106,7 +106,7 @@ drops, a fanout pass, and a 17,278-key deep strip run over it.
 
 ## What this means for the lever
 
-The framing, *we've been trying to DELETE gates when we should be making them CONDITIONALLY COLD*,
+The framing behind the lever, that gates should be made conditionally cold rather than deleted,
 identifies a real mechanism and describes it correctly. The census says it has no purchase on this
 circuit as stated, for a reason that is structural rather than incidental:
 

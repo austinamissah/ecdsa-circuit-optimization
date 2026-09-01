@@ -6,12 +6,12 @@
 >
 > This document concluded that no lever was available and that only a research-scale rewrite
 > could lower the score. In the 21 days that followed, upstream landed **25 accepted
-> score-lowering submissions**. Our fork was rebased onto `8af8a6f` on 2026-08-02, measuring
+> score-lowering submissions**. This fork was rebased onto `8af8a6f` on 2026-08-02, measuring
 > **1,487,590,242** on `801dd20` (1,289,073.125 executed Toffoli × **1154** qubits), and again onto
 > `ed4b529` on 2026-08-03: the current head `6909d15` measures **1,486,468,554**
 > (1,288,101.386 × 1154, 9,024/9,024 clean), against the 1.52e9 quoted below.
 >
-> Calling that "tuning we missed" would undersell what actually happened. Upstream is a single
+> Calling that "tuning I missed" would undersell what actually happened. Upstream is a single
 > autonomous agent (`yukon-autoresearch[bot]`) running a Darwin-Gödel-Machine loop: it mutates
 > `src/point_add/` in disposable worktrees, screens candidates on a 512/2,048/8,192/9,024 shot
 > ladder, and promotes only what a full verifier passes. It ran that loop **while λ was still low
@@ -20,13 +20,13 @@
 > The pace then fell to 3 on 08-01 as λ rose. That is the shape of the campaign: not a better
 > lever, but a search loop run hard against a constraint that was cheap early and is expensive now.
 >
-> So the real error here is not "we missed a lever." It is that this document was scoring levers
+> So the real error here is not "I missed a lever." It is that this document was scoring levers
 > on Toffoli × qubits while the thing actually governing progress was λ and the cost of a seed
 > search, a quantity it never measures or mentions. See
 > [`upstream-search-economics.md`](upstream-search-economics.md).
 >
 > **The original text is kept intact on purpose.** Each superseded claim is marked in place and
-> itemized in [Lever verdict audit](#lever-verdict-audit). What we got wrong, and why, is the
+> itemized in [Lever verdict audit](#lever-verdict-audit). What I got wrong, and why, is the
 > most useful part of this file.
 >
 > New material from the 2026-08-02 session: [`lambda-measurement.md`](lambda-measurement.md),
@@ -130,7 +130,7 @@ N=160 vs ~7.25 shipped), not a proof. `GAP_J2` must move with it to preserve
 8.36 to 4,646 mismatches. N=258 does break, because the *early* entries are a genuinely tight
 magnitude bound, and the slack is in the tail.
 
-We tested the cap and the schedule separately, concluded neither worked, and never tested them
+I tested the cap and the schedule separately, concluded neither worked, and never tested them
 together. That combination is the whole lever.
 
 ### ⚠ Lever 3, superseded but not wrong
@@ -141,7 +141,7 @@ Correct for `422f21d`, and *more* saturated now. Measured on `801dd20`,
 `apply_deep_strip_identity` removes **12,292/12,543** dead keys and downgrades **3,923/3,923**
 CCX to CX/CZ, so every candidate in the table is taken.
 
-Two corrections to how we described it. The `cond & q1 & ~q2` downgrade is a **census-mined
+Two corrections to how I described it. The `cond & q1 & ~q2` downgrade is a **census-mined
 table** (`deep_strip_keys::DOWNGRADE_KEYS`), not a build-time predicate. And the
 "1,193 → 2,050 on the re-mine" figure in `memory/03-proven-floors.md` is an older census
 generation that upstream has since re-mined well past.
@@ -174,7 +174,7 @@ the cap alone, and the head now runs at **1154** (traced statically through
 
 What *does* survive is "the dial alone loses", independently reproduced by `memory/05` Step 4.
 Lowering the cap without narrowing the schedule costs ~2,590 Toffoli/qubit against a ~1,188
-break-even. We measured that correctly and then over-generalized it into a structural floor that
+break-even. I measured that correctly and then over-generalized it into a structural floor that
 does not exist.
 
 The `1216: FAIL` is suspect for the same reason as lever 5: pre-tripwire.
@@ -254,8 +254,8 @@ current circuit.
 
 > **⚠ Superseded (2026-08-02).** The last sentence is the central error of this document.
 > Twenty-five score-lowering submissions landed in the following three weeks, none of them a
-> jump-k rewrite, all of them tuning. What we mistook for a structural floor was the limit of
-> what we had measured.
+> jump-k rewrite, all of them tuning. What I mistook for a structural floor was the limit of
+> what I had measured.
 >
 > The thing that actually limits progress is not Toffoli count. It is **λ**, the intrinsic error
 > rate, which this document never considers. Measured at **λ_total = 20.04** on `801dd20` (P(clean seed) ≈ 2.0e-9)

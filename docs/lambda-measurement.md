@@ -19,7 +19,7 @@
 The score is `average executed Toffoli × peak qubits`. There is a third quantity that decides
 whether a circuit can ship at all, and it is not in the score: **λ, the built-in per-run failure
 rate**. `src/point_add/memory/02-lambda.md` names it; this document measures it on the rebased
-head and prices what it costs us.
+head and prices what it costs me.
 
 Raw data: [`data/lambda-sweep-801dd20.tsv`](data/lambda-sweep-801dd20.tsv).
 
@@ -197,13 +197,13 @@ contribution can be measured rather than projected. On one core, for a one-day g
 assumed a 50× per-trial speedup inferred from upstream's cadence; the screen actually delivers
 **9.2×**.
 
-The gap is informative. Our 9.2× comes entirely from **not rebuilding**: `point_add::build()` is
-59 s and the harness pays it on every trial, while the screen pays it once per process. What we
+The gap is informative. My 9.2× comes entirely from **not rebuilding**: `point_add::build()` is
+59 s and the harness pays it on every trial, while the screen pays it once per process. What I
 did *not* do is make the simulation itself cheaper, and `eval_circuit` at 57 s for 9,024 shots is
 the floor the ladder then cuts into. Upstream's inferred ~1.2 s/trial cannot be reached by
 skipping the rebuild alone, so **they must also have cut per-shot simulation cost**, by some
 combination of a faster simulator, cheaper test-pair generation (9,024 pairs is 18,048 secp256k1
-scalar multiplications per nonce), or hardware we do not have. That remains unexplained and is the
+scalar multiplications per nonce), or hardware I do not have. That remains unexplained and is the
 obvious place to look for another order of magnitude.
 
 ### λ reduction now carries nearly all the weight

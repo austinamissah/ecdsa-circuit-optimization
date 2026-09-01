@@ -80,7 +80,7 @@ matching the build's own log line. So the *keying* is provably correct.
 
 **This control also fired**, in the useful direction: it isolated the failure to the certification
 predicates rather than the addressing. Of the shipped keys the tripwire accepts, applied in a
-circuit that passes 9,024/9,024, our census claims **3,076 dead keys fire (25.02%)** and
+circuit that passes 9,024/9,024, my census claims **3,076 dead keys fire (25.02%)** and
 **1,674 downgrades are violated (42.67%)**. The shipped table demonstrably yields 0/0/0, so the
 census over-observes.
 
@@ -95,10 +95,10 @@ population in dispute.
 [`census-miner-validation.md`](census-miner-validation.md),
 [`deep-strip-remine.md`](deep-strip-remine.md) and
 [`census-stream-provenance.md`](census-stream-provenance.md), which had already ruled out the
-stream difference as the cause. The gap is not a bug in our miner and not a defect in the shipped
+stream difference as the cause. The gap is not a bug in my miner and not a defect in the shipped
 table: **it is the signature of certifying by observation something that is true by invariant.**
 
-> **Scope note.** This resolves *our* open question, not upstream's. `06-research-status.md`'s
+> **Scope note.** This resolves *my* open question, not upstream's. `06-research-status.md`'s
 > open-problems section lists unrestricted exact-eight joint synthesis and the controlled-addition
 > factor-two gap; it does not list a census over-observation gap, and upstream's own table works
 > for them. The overlap is that their `Deep-strip localization` row concludes "transfer failures

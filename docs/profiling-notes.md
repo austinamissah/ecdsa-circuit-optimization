@@ -63,7 +63,7 @@ Two big sibling trees are **dead relative to the live circuit**:
 
 **Expectation:** the 4 GCD sweeps (inversion + multiply) should dominate the Toffoli budget, squaring second, coordinate add/sub a thin slice. Measurement should confirm this.
 
-## 4. Instrumentation, the answer to "can we already get a per-routine breakdown?"
+## 4. Instrumentation, the answer to "can I already get a per-routine breakdown?"
 
 **Yes, and it's on the live path: `TRACE_TLM_CCX=1`.** In `build_trailmix_ludicrous_ops` (`trailmix_ludicrous/mod.rs:465-490`) this walks `circ.phase_transitions` (the op-index boundaries laid down by every `set_phase` call), slices `circ.ops` per phase, counts `kind==CCX`, and prints a **ranked table with per-phase count, %, and cumulative %** (top 30), then `TLM_CCX_TOTAL`:
 

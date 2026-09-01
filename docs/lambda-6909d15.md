@@ -28,7 +28,7 @@ ed4b529  2026-08-03  Accept 248dfb4a   <- current source
 6909d15  2026-08-03  upstream/main     <- CI-only on top of ed4b529
 ```
 
-`cf5aa02` is also an ancestor of this repo's HEAD, since we rebased past it on 2026-08-03
+`cf5aa02` is also an ancestor of this repo's HEAD, since I rebased past it on 2026-08-03
 ([`rebase-2026-08-03-upstream-ed4b529.md`](rebase-2026-08-03-upstream-ed4b529.md)). It is also
 *worse*: `1,490,805,286` against the built `1,486,468,554` here. So λ on `cf5aa02` would be a
 historical figure, not a current one. **This measurement is on `6909d15`.**
