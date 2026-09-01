@@ -1820,3 +1820,151 @@ fn main() {
         }
     }
 }
+
+// ─── tests ─────────────────────────────────────────────────────────────────
+//
+// `cargo test --bin pp_screen`, which needs the same copy into `src/bin/` that
+// building the tool needs; see the README's Validation section.
+//
+// The width schedule and the truncation windows are read from the builder's
+// dump, never recomputed here, so `walk_ok` and `replay_selftest` panic on a
+// bare `cargo test`. These tests install a synthetic geometry instead of
+// shipping a frozen copy of a table that has already moved three times. What
+// that buys is a check on the walk and replay *logic*; agreement with the real
+// schedule is what the end-to-end runs establish, and they are the right
+// instrument for it.
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Fill the geometry `OnceLock`s with a synthetic schedule.
+    ///
+    /// `cargo test` runs its tests as threads in one process and these are
+    /// process-global, so every test has to agree on one geometry. A `Once`
+    /// makes that explicit rather than leaving it to whichever test wins.
+    fn install_test_geometry() {
+        static ONCE: std::sync::Once = std::sync::Once::new();
+        ONCE.call_once(|| {
+            // Uniform full width: no round can fail on width, so a walk failure
+            // means non-convergence and nothing else.
+            let _ = SCHEDULE.set(vec![VALUE_WIDTH as u16; 700]);
+            // (fold_div, fold_mul, endpoint, chunk_cmp, flag_cmp), in the
+            // shape and rough size instrument.py dumps.
+            let _ = WINDOWS.set((54, 54, 30, 22, 22));
+            let _ = DUMPED_ROUNDS.set((698, 698));
+        });
+    }
+
+    /// A deterministic stand-in for random field elements, the same shape the
+    /// existing selftests use.
+    fn lcg(seed: &mut U256, modulus: U256, i: u64) -> U256 {
+        *seed = seed
+            .mul_mod(U256::from(6364136223846793005u64), modulus)
+            .add_mod(U256::from(i + 1), modulus);
+        *seed
+    }
+
+    fn w_from_i64(v: i64) -> W {
+        let m = from_u256(U256::from(v.unsigned_abs()));
+        if v < 0 {
+            neg(&m)
+        } else {
+            m
+        }
+    }
+
+    #[test]
+    fn selftests_pass() {
+        install_test_geometry();
+        let curve = secp256k1();
+        let fb = FixedBase::new(fe_from_u256(curve.gx), fe_from_u256(curve.gy));
+        assert_eq!(selftest(&curve, &fb), Ok(()));
+        let p_w = from_u256(curve.modulus);
+        assert_eq!(replay_selftest(&curve, &p_w), Ok(()));
+    }
+
+    #[test]
+    fn fe_mul_matches_u256_mul_mod() {
+        let modulus = secp256k1().modulus;
+        let mut sa = U256::from(7u64);
+        let mut sb = U256::from(11u64);
+        for i in 0..200u64 {
+            let a = lcg(&mut sa, modulus, i);
+            let b = lcg(&mut sb, modulus, i * 3 + 1);
+            assert_eq!(
+                fe_to_u256(&fe_mul(&fe_from_u256(a), &fe_from_u256(b))),
+                a.mul_mod(b, modulus),
+                "fe_mul disagrees at i={i}: a={a} b={b}"
+            );
+        }
+    }
+
+    #[test]
+    fn fe_inv_inverts() {
+        let modulus = secp256k1().modulus;
+        let one = fe_from_u256(U256::from(1u64));
+        let mut s = U256::from(3u64);
+        for i in 0..50u64 {
+            let a = lcg(&mut s, modulus, i);
+            if a.is_zero() {
+                continue;
+            }
+            let fa = fe_from_u256(a);
+            assert_eq!(fe_mul(&fe_inv(&fa), &fa), one, "fe_inv wrong at i={i}: a={a}");
+        }
+    }
+
+    #[test]
+    fn fe_sub_undoes_fe_add() {
+        let modulus = secp256k1().modulus;
+        let mut sa = U256::from(13u64);
+        let mut sb = U256::from(17u64);
+        for i in 0..200u64 {
+            let a = fe_from_u256(lcg(&mut sa, modulus, i));
+            let b = fe_from_u256(lcg(&mut sb, modulus, i * 5 + 2));
+            assert_eq!(fe_sub(&fe_add(&a, &b), &b), a, "add/sub not inverse at i={i}");
+        }
+    }
+
+    #[test]
+    fn wrap_signed_is_identity_when_it_fits() {
+        // -1 sign-extends into every width, so it is the sharpest case.
+        for v in [0i64, 1, -1, 2, -2, 127, -128, 65535, -65536] {
+            let a = w_from_i64(v);
+            for w in [8usize, 17, 32, 64, 65, 128, 191, 256, VALUE_WIDTH] {
+                if fits_signed(&a, w) {
+                    assert_eq!(wrap_signed(&a, w), a, "wrap_signed changed v={v} at w={w}");
+                }
+            }
+        }
+        // -1 in particular, at every width including the narrowest legal one.
+        let neg_one = w_from_i64(-1);
+        for w in 1..=VALUE_WIDTH {
+            assert!(fits_signed(&neg_one, w), "-1 should fit at w={w}");
+            assert_eq!(wrap_signed(&neg_one, w), neg_one, "wrap_signed changed -1 at w={w}");
+        }
+    }
+
+    #[test]
+    fn sar1_halves_and_keeps_sign() {
+        assert_eq!(sar1(&w_from_i64(4)), w_from_i64(2));
+        assert_eq!(sar1(&w_from_i64(-4)), w_from_i64(-2));
+        assert_eq!(sar1(&w_from_i64(2)), w_from_i64(1));
+        assert_eq!(sar1(&w_from_i64(-2)), w_from_i64(-1));
+        // An arithmetic shift floors, so -1 stays -1 rather than reaching 0.
+        assert_eq!(sar1(&w_from_i64(-1)), w_from_i64(-1));
+        assert!(is_neg(&sar1(&w_from_i64(-4))));
+        assert!(!is_neg(&sar1(&w_from_i64(4))));
+    }
+
+    #[test]
+    fn walk_ok_on_a_convergent_input() {
+        install_test_geometry();
+        // p = 5, denominator = 3, worked through by hand: the pair goes
+        // (5,3) -> (5,-1) -> (3,-1) -> (3,1) -> (1,1), so four rounds land on
+        // (+/-1, +/-1) and three do not.
+        let p = from_u256(U256::from(5u64));
+        assert!(walk_ok(&p, U256::from(3u64), 4), "should converge in 4 rounds");
+        assert!(!walk_ok(&p, U256::from(3u64), 3), "should not have converged in 3");
+    }
+}

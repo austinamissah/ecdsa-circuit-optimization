@@ -490,7 +490,11 @@ Every number quoted from this fork's own measurements can be reproduced from the
 the score from `./benchmark.sh`, and the λ figures from the raw per-trial data in
 [`docs/data/`](docs/data/). Figures quoted from outside papers were checked against
 their sources; see `docs/quantum-inversion-frontier-research.md` for where each one
-came from. Where a claim is an inference rather than a measurement, the documents say so.
+came from. Where a claim is an inference rather than a measurement, the documents say so. The
+screening tools in [`tools/`](tools/) that those measurements were taken with are themselves
+validated end to end against the official harness, and `cargo test --bin pp_screen` runs the
+ping-pong screen's self-checks and unit tests; see
+[`tools/pp-screen/README.md`](tools/pp-screen/README.md#validation).
 
 ## Credits
 

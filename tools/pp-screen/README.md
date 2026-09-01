@@ -135,6 +135,59 @@ Other modes:
 --verbose        print the first failing shot per nonce
 ```
 
+## Validation
+
+Three layers, in increasing order of what they establish.
+
+**`selftest()` runs on every launch.** The hand-rolled secp256k1 field and fixed-base group are
+checked against the harness curve, which is the definition of what `eval_circuit` will derive: 64
+field cases against ruint's `mul_mod` and `inv_mod`, then 24 group cases against the harness's own
+scalar multiplication and chord slope. A disagreement there would make every screening result
+meaningless, so it panics rather than warns, before any screening happens.
+
+**`--replay-selftest` checks the replay twice per round, against two different things.** An exact
+modular replay says what the replay is supposed to compute; the register-level model that mirrors
+the gates says how the circuit computes it. A mistake in the correction logic breaks the second, a
+mistake in what the replay means breaks the first. It also reports how often a truncated fold loses
+its carry, which is a diagnostic rather than an assertion; see the note at the end of this section.
+
+**`cargo test --bin pp_screen` runs both of those plus seven unit tests**: `fe_mul` against
+`U256::mul_mod` on 200 inputs, `fe_inv` against multiplication by its own argument on 50, `fe_sub`
+undoing `fe_add`, `wrap_signed` as the identity wherever `fits_signed` holds, `sar1` halving and
+keeping sign, and `walk_ok` on a pair small enough to work through by hand. It needs the same copy
+into `src/bin/` that building the tool needs, because `pp_screen` is not a `[[bin]]` in
+`Cargo.toml`: Cargo finds it by scanning `src/bin/`, and `Cargo.toml` is part of the frozen harness.
+
+```
+cp tools/pp-screen/screen.rs src/bin/pp_screen.rs
+cargo test --bin pp_screen
+rm src/bin/pp_screen.rs
+```
+
+The width schedule and the truncation windows are read from the builder's dump, so `walk_ok` and
+`replay_selftest` cannot run without one. The tests install a synthetic geometry instead of
+committing a frozen copy of a table that has already moved three times. That checks the walk and
+replay logic; it says nothing about agreement with the shipped schedule.
+
+**Agreement with the shipped schedule is settled end to end**, which is a stronger oracle than any
+invariant reconstructed inside the model. `firstfail.sh` compares the model's first failing shot
+against the simulator's: for two nonces the model said 223 and 421 and the simulator said 223 and
+421, with no false rejections in any run
+([`../../docs/pingpong-2026-08-23.md`](../../docs/pingpong-2026-08-23.md), under "The tooling").
+The earlier screen in this repo was gated the same way and reproduces the harness's per-nonce
+classical mismatch count on 199/199 nonces exactly
+([`../../docs/README.md`](../../docs/README.md), the `tools/nonce-screen/` entry).
+
+**A note on the fold escape rate.** `--replay-selftest` reports about one lost carry per 220 fused
+rounds, where the comment in `screen.rs` expects roughly 2^-22 per active fold. The gap is in the
+self-test's inputs, not in the model: it draws its numerator and denominator from an LCG, and
+constructed pairs are the case the first trap below describes, where the two are not tied together
+by the curve equation. I checked that this is not an artifact of the synthetic test geometry by
+sweeping the fold window from 40 to 128, over which the count moves only from 49 to 9 instead of
+falling off exponentially the way a genuine window carry-out would. The assertion is unaffected:
+the self-test accepts a disagreement only when a lost carry explains it, and still fails on any
+other.
+
 ## Traps
 
 - **`ops.bin` must be rebuilt for the exact configuration being screened.** The Fiat-Shamir seed
