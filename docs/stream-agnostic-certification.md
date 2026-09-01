@@ -6,10 +6,10 @@
 
 ## The question
 
-46,134 gates fire on none of the 9,024 official shots, which is 3.35% of the score, against a strict-beat
-bar of 0.886 avgT, so **one certified gate is a submission**. But "never fired on this draw" is a
-claim about one draw, and deleting a gate re-rolls all 9,024 inputs. The certificate cannot survive
-its own use.
+46,134 gates fire on none of the 9,024 official shots, carrying 3.35% of the score, against a
+strict-beat bar of 0.886 avgT, so **one certified gate is a submission**. But "never fired on this
+draw" is a claim about one draw, and deleting a gate re-rolls all 9,024 inputs. The certificate
+cannot survive its own use.
 
 The structural version of the question: is a control **provably zero** at that point in the stream,
 for every input? A gate whose control is constant-zero never fires on any input at all, so deleting

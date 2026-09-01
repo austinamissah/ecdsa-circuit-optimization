@@ -14,11 +14,11 @@ finding is that the syntactic routes are closed and only a semantic one is left.
 
 ## The target
 
-46,134 gates, which is 3.35% of the score, fire on **none** of the 9,024 official shots. The
-strict-beat bar is **0.886 avgT** (`round(avgT) ≤ 1,288,100` wins by 1,154 points), so *one*
-certified gate is a submission. The obstacle is that the 9,024 test inputs are a SHAKE256 hash of
-the whole op stream (`eval_circuit.rs:204`): deleting a gate re-rolls every shot, so "never fired on
-this draw" is a certificate that cannot survive its own use.
+46,134 gates fire on **none** of the 9,024 official shots, and the charge sitting on them is 3.35%
+of the score. The strict-beat bar is **0.886 avgT** (`round(avgT) ≤ 1,288,100` wins by 1,154
+points), so *one* certified gate is a submission. The obstacle is that the 9,024 test inputs are a
+SHAKE256 hash of the whole op stream (`eval_circuit.rs:204`): deleting a gate re-rolls every shot,
+so "never fired on this draw" is a certificate that cannot survive its own use.
 
 Three ways to get a certificate that does survive have now been tried. All three fail, and they
 fail for one reason.

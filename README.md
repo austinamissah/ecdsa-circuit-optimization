@@ -188,16 +188,16 @@ only a result if the output hash changed.* That rule is used throughout the work
 
 #### 5. The cheap ways to prove a gate is dead are the wrong kind of argument
 
-On this fork's head `6909d15`, 46,134 gates, which is 3.35% of the score, fire on **none** of the
-9,024 official shots. The bar to beat is 0.886 avgT (avgT is 1,288,101.386, so `round(avgT) ≤
-1,288,100` wins). Every count in this section is on that head. The upstream version of this work
-(PR #27 below) re-measures them on the certified frontier `cf5aa02`, where the bar is 0.802. Either
-way, certifying *one* gate dead would be a submission. The obstacle is §1 again: the test inputs are
-hashed from the op stream, so "never fired on this draw" is a certificate that cannot survive its
-own use. Three ways to get one that does survive were tried. All three are now closed, and each is
-paired with a **positive control**, a case where the answer is known in advance, showing the
-instrument detects what it reports absent. Two of those controls caught real defects before the
-negative results were believed.
+On this fork's head `6909d15`, 46,134 gates fire on **none** of the 9,024 official shots, and the
+charge sitting on them is 3.35% of the score. The bar to beat is 0.886 avgT (avgT is 1,288,101.386,
+so `round(avgT) ≤ 1,288,100` wins). Every count in this section is on that head. The upstream
+version of this work (PR #27 below) re-measures them on the certified frontier `cf5aa02`, where the
+bar is 0.802. Either way, certifying *one* gate dead would be a submission. The obstacle is §1
+again: the test inputs are hashed from the op stream, so "never fired on this draw" is a
+certificate that cannot survive its own use. Three ways to get one that does survive were tried.
+All three are now closed, and each is paired with a **positive control**, a case where the answer
+is known in advance, showing the instrument detects what it reports absent. Two of those controls
+caught real defects before the negative results were believed.
 
 - **Cooling.** Charge a gate on fewer shots instead of making it fire less often. The ceiling is
   real and large: 76.7% of the score is charge on shots where the gate never fires. It is also out
@@ -276,7 +276,7 @@ nothing went wrong statistically.
 
 **What went wrong was the clock.** At this machine's throughput a clean nonce averages ~86 hours.
 Over that window the leaderboard drifts about 1.14%/day, so the target has to be worth more than
-about 5% to survive its own grind. Mine was worth 0.038%. It needed the field to go quiet for days;
+about 4% to survive its own grind. Mine was worth 0.038%. It needed the field to go quiet for days;
 the longest stall that day was 6.5 hours, and when it ended the new frontier was already below my
 target, so a clean nonce would have been rejected on arrival.
 

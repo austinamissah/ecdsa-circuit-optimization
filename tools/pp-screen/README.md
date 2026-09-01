@@ -162,10 +162,10 @@ Other modes:
 ## Before starting a hunt
 
 A clean nonce averages `e^lambda` draws, which on one workstation is days. The leaderboard drifts
-around 1%/day, so **a target must be worth more than roughly 5% to survive its own grind**. A seven
-hour run on 2026-08-23 covered 6.2% of its search before the frontier moved past a -0.038% target;
-413 survivors, 263 confirmed, none clean, which is the expected yield at 6%. The pipeline is not
-the constraint; the price of the target is.
+around 1.14%/day, so **a target must be worth more than roughly 4% to survive its own grind**. A
+seven hour run on 2026-08-23 covered 6.2% of its search before the frontier moved past a -0.038%
+target; 413 survivors, 263 confirmed, none clean, which is the expected yield at 6%. The pipeline
+is not the constraint; the price of the target is.
 
 `results.tsv` and `score.json` need saving before a hunt and restoring after: the eval workers
 write to both via a compile-time path, regardless of their working directory.

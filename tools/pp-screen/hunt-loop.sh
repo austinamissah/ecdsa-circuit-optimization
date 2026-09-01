@@ -10,12 +10,11 @@
 # eval workers may rebuild ./ops.bin in their own directories without
 # corrupting a block in flight.
 #
-# BEFORE RUNNING ONE OF THESE, READ THIS: a clean nonce averages e^lambda draws,
-# which on one workstation is days. The leaderboard drifts around 1%/day, so a
-# target must be worth more than roughly 5% to survive its own grind. A seven
-# hour run on 2026-08-23 covered 6.2% of its search before the frontier moved
-# past a -0.038% target. Price the target first; the pipeline is not the
-# constraint, the economics are.
+# The economics of a hunt: a clean nonce averages e^lambda draws, which on one
+# workstation is days. The leaderboard drifts around 1.14%/day, so a target must
+# be worth more than roughly 4% to survive its own grind. A seven hour run on
+# 2026-08-23 covered 6.2% of its search before the frontier moved past a -0.038%
+# target. The pipeline is not the constraint, the price of the target is.
 #
 # Usage: hunt-loop.sh <r1> <r2> <from> [block] [threads] [dir]
 set -uo pipefail
